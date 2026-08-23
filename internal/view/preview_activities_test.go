@@ -74,10 +74,10 @@ func TestPreviewTabHit(t *testing.T) {
 	if kind, ok := previewTabAtX(0, 1); !ok || kind != previewDetails {
 		t.Fatalf("details tab: kind=%d ok=%v", kind, ok)
 	}
-	if kind, ok := previewTabAtX(0, previewTabWidth("Details")+2); !ok || kind != previewActivities {
+	if kind, ok := previewTabAtX(0, previewTabWidth(previewDetails)+2); !ok || kind != previewActivities {
 		t.Fatalf("activities tab: kind=%d ok=%v", kind, ok)
 	}
-	eventsX := previewTabWidth("Details") + 1 + previewTabWidth("Activities") + 2
+	eventsX := previewTabWidth(previewDetails) + 1 + previewTabWidth(previewActivities) + 2
 	if kind, ok := previewTabAtX(0, eventsX); !ok || kind != previewEvents {
 		t.Fatalf("events tab: kind=%d ok=%v", kind, ok)
 	}

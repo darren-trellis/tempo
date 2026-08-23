@@ -348,11 +348,11 @@ func (wl *WorkflowList) setupPreview() {
 	listFlex.AddItem(wl.eventDetailPanel, 0, 2, false)
 
 	wl.previewTabs = components.NewTabs().
-		SetShowIcons(false).
+		SetShowIcons(true).
 		SetShowBadges(false).
-		AddTab(previewDetails.title(), wl.workflowDetail).
-		AddTab(previewActivities.title(), listFlex).
-		AddTab(previewEvents.title(), listFlex).
+		AddTabWithIcon(previewDetails.title(), previewDetails.icon(), wl.workflowDetail).
+		AddTabWithIcon(previewActivities.title(), previewActivities.icon(), listFlex).
+		AddTabWithIcon(previewEvents.title(), previewEvents.icon(), listFlex).
 		SetOnChange(func(index int, name string) {
 			if index >= 0 && index < len(previewTabOrder) {
 				wl.setPreviewKind(previewTabOrder[index])
@@ -517,14 +517,18 @@ func (wl *WorkflowList) syncFocusFromPrimitives() {
 	wl.applyFocusStyles()
 }
 
-func previewTabWidth(name string) int {
-	return 2 + len(name)
+func previewTabWidth(kind previewKind) int {
+	width := 2 + len(kind.title())
+	if icon := kind.icon(); icon != "" {
+		width += len(icon) + 1
+	}
+	return width
 }
 
 func previewTabAtX(startX, x int) (previewKind, bool) {
 	col := startX
 	for _, kind := range previewTabOrder {
-		width := previewTabWidth(kind.title())
+		width := previewTabWidth(kind)
 		if x >= col && x < col+width {
 			return kind, true
 		}
@@ -552,7 +556,7 @@ func (wl *WorkflowList) syncPreviewChrome() {
 		wl.eventDetailPanel.SetTitle(fmt.Sprintf("%s Activity", theme.IconActivity))
 		return
 	}
-	wl.eventDetailPanel.SetTitle(fmt.Sprintf("%s Event", theme.IconEvent))
+	wl.eventDetailPanel.SetTitle(fmt.Sprintf("%s Event Details", theme.IconEvent))
 }
 
 func (wl *WorkflowList) clearPreview() {
