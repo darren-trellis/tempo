@@ -21,6 +21,7 @@ import (
 type NamespaceList struct {
 	*components.MasterDetailView
 	table         *components.Table
+	tableScroll   *charScrollView
 	preview       *tview.TextView
 	emptyState    *components.EmptyState
 	app           *App
@@ -54,6 +55,8 @@ func (nl *NamespaceList) setup() {
 	nl.table.SetHeaders("NAME", "STATE", "RETENTION")
 	nl.table.SetBorder(false)
 	nl.table.SetBackgroundColor(theme.Bg())
+	nl.table.SetEvaluateAllRows(true)
+	nl.tableScroll = attachTableCharScroll(nl.table, nl.app)
 
 	// Configure preview
 	nl.preview.SetDynamicColors(true)
@@ -71,7 +74,7 @@ func (nl *NamespaceList) setup() {
 	nl.MasterDetailView = components.NewMasterDetailView().
 		SetMasterTitle(fmt.Sprintf("%s Namespaces", theme.IconNamespace)).
 		SetDetailTitle(fmt.Sprintf("%s Details", theme.IconInfo)).
-		SetMasterContent(nl.table).
+		SetMasterContent(nl.tableScroll).
 		SetDetailContent(nl.preview).
 		SetRatio(0.6).
 		ConfigureEmpty(theme.IconInfo, "No Selection", "Select a namespace to view details").
@@ -225,7 +228,7 @@ func (nl *NamespaceList) populateTable() {
 		return
 	}
 
-	nl.SetMasterContent(nl.table)
+	nl.SetMasterContent(nl.tableScroll)
 
 	for _, ns := range nl.namespaces {
 		stateStatus := temporal.GetNamespaceState(ns.State)
@@ -385,6 +388,9 @@ func (nl *NamespaceList) Start() {
 		})
 
 	nl.table.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		if handleTableCharScroll(nl.tableScroll, nl.table, event) {
+			return nil
+		}
 		if bindings.Handle(event) {
 			return nil
 		}

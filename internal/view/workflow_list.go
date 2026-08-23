@@ -44,6 +44,7 @@ type WorkflowList struct {
 	previewTabs           *components.Tabs
 	rightFlex             *tview.Flex
 	eventTable            *components.Table
+	eventTableScroll      *charScrollView
 	eventDetail           *tview.TextView
 	eventDetailPanel      *components.Panel
 	eventsPanel           *components.Panel

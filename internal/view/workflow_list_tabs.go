@@ -34,8 +34,8 @@ func (wl *WorkflowList) setupListTabs() {
 		SetShowIcons(true).
 		SetShowBadges(false).
 		AddTabWithIcon("Workflows (List)", theme.IconWorkflow, wl.tableScroll).
-		AddTabWithIcon("Task Queues", theme.IconTaskQueue, wl.taskQueues.queueTable).
-		AddTabWithIcon("Schedules", theme.IconSchedule, wl.schedules.table).
+		AddTabWithIcon("Task Queues", theme.IconTaskQueue, wl.taskQueues.queueScroll).
+		AddTabWithIcon("Schedules", theme.IconSchedule, wl.schedules.tableScroll).
 		AddTabWithIcon("Workers", theme.IconUsers, wl.workers.tableScroll).
 		SetOnChange(func(index int, name string) {
 			wl.setListKind(listKind(index))
@@ -129,6 +129,9 @@ func (wl *WorkflowList) bindTaskQueueKeys() {
 		if wl.handleFocusCycleKey(event) || wl.handleListTabKey(event) {
 			return nil
 		}
+		if handleTableCharScroll(tq.queueScroll, tq.queueTable, event) {
+			return nil
+		}
 		if event.Key() == tcell.KeyEnter {
 			wl.setPollersVisible(true)
 			wl.setFocusPane(focusPollers)
@@ -148,6 +151,9 @@ func (wl *WorkflowList) bindTaskQueueKeys() {
 		if wl.handleFocusCycleKey(event) {
 			return nil
 		}
+		if handleTableCharScroll(tq.pollerScroll, tq.pollerTable, event) {
+			return nil
+		}
 		if event.Rune() == 'r' {
 			tq.refreshCurrentQueue()
 			return nil
@@ -163,6 +169,9 @@ func (wl *WorkflowList) bindScheduleKeys() {
 	sl := wl.schedules
 	sl.table.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		if wl.handleFocusCycleKey(event) || wl.handleListTabKey(event) {
+			return nil
+		}
+		if handleTableCharScroll(sl.tableScroll, sl.table, event) {
 			return nil
 		}
 		switch event.Rune() {

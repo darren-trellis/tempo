@@ -241,6 +241,9 @@ func (wl *WorkflowList) paneAt(x, y int) (workflowFocusPane, bool) {
 			if wl.eventDetailPanel != nil && wl.eventDetailPanel.InRect(x, y) {
 				return focusEventDetail, true
 			}
+			if wl.eventTableScroll != nil && wl.eventTableScroll.InRect(x, y) {
+				return focusEvents, true
+			}
 			if wl.eventTable != nil && wl.eventTable.InRect(x, y) {
 				return focusEvents, true
 			}
@@ -474,6 +477,8 @@ func (wl *WorkflowList) setupPreview() {
 	wl.eventTable.SetHeaders("ID", "TIME", "TYPE", "NAME")
 	wl.eventTable.SetBorder(false)
 	wl.eventTable.SetBackgroundColor(theme.Bg())
+	wl.eventTable.SetEvaluateAllRows(true)
+	wl.eventTableScroll = attachTableCharScroll(wl.eventTable, wl.app)
 
 	wl.eventDetail = tview.NewTextView().
 		SetDynamicColors(true).
@@ -484,7 +489,7 @@ func (wl *WorkflowList) setupPreview() {
 	wl.eventDetail.SetTextColor(theme.Fg())
 
 	wl.eventsPanel = components.NewPanel().SetTitle(fmt.Sprintf("%s Activities", theme.IconActivity))
-	wl.eventsPanel.SetContent(wl.eventTable)
+	wl.eventsPanel.SetContent(wl.eventTableScroll)
 
 	wl.eventDetailPanel = components.NewPanel().SetTitle(fmt.Sprintf("%s Activity Details", theme.IconActivity))
 	wl.eventDetailPanel.SetContent(wl.eventDetail)
@@ -532,8 +537,8 @@ func (wl *WorkflowList) setupPreview() {
 		SetShowIcons(true).
 		SetShowBadges(false).
 		AddTabWithIcon(previewDetails.title(), previewDetails.icon(), wl.workflowDetailScroll).
-		AddTabWithIcon(previewActivities.title(), previewActivities.icon(), wl.eventTable).
-		AddTabWithIcon(previewEvents.title(), previewEvents.icon(), wl.eventTable).
+		AddTabWithIcon(previewActivities.title(), previewActivities.icon(), wl.eventTableScroll).
+		AddTabWithIcon(previewEvents.title(), previewEvents.icon(), wl.eventTableScroll).
 		AddTabWithIcon(previewHierarchy.title(), previewHierarchy.icon(), wl.hierarchyView.tree).
 		SetOnChange(func(index int, name string) {
 			if index >= 0 && index < len(previewTabOrder) {
@@ -552,10 +557,12 @@ func (wl *WorkflowList) setupPreview() {
 		wl.updatePreviewSelection(row)
 	})
 
-	bindTableHorizontalScroll(wl.eventTable, func() int {
-		return mouseScrollStepFromApp(wl.app)
+	wl.eventTable.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		if handleTableCharScroll(wl.eventTableScroll, wl.eventTable, event) {
+			return nil
+		}
+		return wl.handlePreviewKeys(event)
 	})
-	wl.eventTable.SetInputCapture(wl.handlePreviewKeys)
 	wl.eventDetail.SetInputCapture(wl.capturePreviewTextView(wl.eventDetail))
 	wl.workflowDetail.SetInputCapture(wl.handlePreviewDetailKeys)
 	wl.previewTabs.SetInputCapture(wl.handlePreviewKeys)

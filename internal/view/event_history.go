@@ -35,7 +35,8 @@ type EventHistory struct {
 	viewMode EventViewMode
 
 	// List view components (original)
-	table *components.Table
+	table       *components.Table
+	tableScroll *charScrollView
 
 	// Tree view components
 	treeView  *EventTreeView
@@ -79,6 +80,8 @@ func (eh *EventHistory) setup() {
 	eh.table.SetHeaders("ID", "TIME", "TYPE", "NAME", "DETAILS")
 	eh.table.SetBorder(false)
 	eh.table.SetBackgroundColor(theme.Bg())
+	eh.table.SetEvaluateAllRows(true)
+	eh.tableScroll = attachTableCharScroll(eh.table, eh.app)
 
 	// Configure side panel
 	eh.sidePanel.SetDynamicColors(true)
@@ -156,7 +159,7 @@ func (eh *EventHistory) buildLayout() {
 	switch eh.viewMode {
 	case ViewModeList:
 		eh.SetMasterTitle(fmt.Sprintf("%s Events (List)", theme.IconEvent))
-		eh.SetMasterContent(eh.table)
+		eh.SetMasterContent(eh.tableScroll)
 	case ViewModeTree:
 		eh.SetMasterTitle(fmt.Sprintf("%s Events (Tree)", theme.IconEvent))
 		eh.SetMasterContent(eh.treeView)
@@ -612,6 +615,9 @@ func (eh *EventHistory) setupInputCapture() {
 
 	// Create input handlers
 	listHandler := func(event *tcell.EventKey) *tcell.EventKey {
+		if handleTableCharScroll(eh.tableScroll, eh.table, event) {
+			return nil
+		}
 		if listBindings.Handle(event) {
 			return nil
 		}

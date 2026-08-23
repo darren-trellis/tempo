@@ -174,6 +174,18 @@ func scrollOffsetByColumn(offset int, cols []workflowColumn, delta int) int {
 	return offs[idx]
 }
 
+// attachTableCharScroll wraps a table in a char scroll view and gives it
+// horizontal mouse scrolling.
+func attachTableCharScroll(table *components.Table, app *App) *charScrollView {
+	view := newCharScrollView(table, func() int {
+		return tableContentWidth(table)
+	})
+	bindTableCharScroll(table, view, func() int {
+		return mouseScrollStepFromApp(app)
+	})
+	return view
+}
+
 // handleCharScrollKeys scrolls a view horizontally: one char for left/right and
 // h/l, one column for Home/End.
 func handleCharScrollKeys(view *charScrollView, event *tcell.EventKey, cols func() []workflowColumn) bool {

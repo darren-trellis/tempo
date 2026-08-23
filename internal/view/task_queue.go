@@ -27,7 +27,9 @@ type TaskQueueView struct {
 	*tview.Flex
 	app            *App
 	queueTable     *components.Table
+	queueScroll    *charScrollView
 	pollerTable    *components.Table
+	pollerScroll   *charScrollView
 	queuePanel     *components.Panel
 	pollerPanel    *components.Panel
 	allQueues      []taskQueueEntry // Full unfiltered list
@@ -69,18 +71,22 @@ func (tq *TaskQueueView) setup() {
 	tq.queueTable.SetHeaders("NAME", "TYPE", "POLLERS", "BACKLOG")
 	tq.queueTable.SetBorder(false)
 	tq.queueTable.SetBackgroundColor(theme.Bg())
+	tq.queueTable.SetEvaluateAllRows(true)
+	tq.queueScroll = attachTableCharScroll(tq.queueTable, tq.app)
 
 	// Pollers table
 	tq.pollerTable.SetHeaders("IDENTITY", "TYPE", "LAST ACCESS")
 	tq.pollerTable.SetBorder(false)
 	tq.pollerTable.SetBackgroundColor(theme.Bg())
+	tq.pollerTable.SetEvaluateAllRows(true)
+	tq.pollerScroll = attachTableCharScroll(tq.pollerTable, tq.app)
 
 	// Create panels with icons (blubber pattern)
 	tq.baseTitle = fmt.Sprintf("%s Task Queues", theme.IconTaskQueue)
 	tq.queuePanel = components.NewPanel().SetTitle(tq.baseTitle)
 
 	tq.pollerPanel = components.NewPanel().SetTitle(fmt.Sprintf("%s Pollers", theme.IconActivity))
-	tq.pollerPanel.SetContent(tq.pollerTable)
+	tq.pollerPanel.SetContent(tq.pollerScroll)
 
 	// Update pollers when queue selection changes
 	tq.queueTable.SetSelectionChangedFunc(func(row, col int) {

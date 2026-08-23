@@ -22,6 +22,7 @@ type ScheduleList struct {
 	app          *App
 	namespace    string
 	table        *components.Table
+	tableScroll  *charScrollView
 	preview      *tview.TextView
 	previewPanel *components.Panel
 	allSchedules []temporal.Schedule // Full unfiltered list
@@ -50,6 +51,8 @@ func (sl *ScheduleList) setup() {
 	sl.table.SetHeaders("SCHEDULE ID", "WORKFLOW TYPE", "SPEC", "STATUS", "NEXT RUN")
 	sl.table.SetBorder(false)
 	sl.table.SetBackgroundColor(theme.Bg())
+	sl.table.SetEvaluateAllRows(true)
+	sl.tableScroll = attachTableCharScroll(sl.table, sl.app)
 
 	// Configure preview
 	sl.preview.SetDynamicColors(true)
@@ -63,7 +66,7 @@ func (sl *ScheduleList) setup() {
 	sl.MasterDetailView = components.NewMasterDetailView().
 		SetMasterTitle(fmt.Sprintf("%s Schedules", theme.IconSchedule)).
 		SetDetailTitle(fmt.Sprintf("%s Preview", theme.IconInfo)).
-		SetMasterContent(sl.table).
+		SetMasterContent(sl.tableScroll).
 		SetDetailContent(sl.preview).
 		SetRatio(0.6).
 		ConfigureEmpty(theme.IconInfo, "No Selection", "Select a schedule to view details").
@@ -806,6 +809,9 @@ func (sl *ScheduleList) Start() {
 		})
 
 	sl.table.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		if handleTableCharScroll(sl.tableScroll, sl.table, event) {
+			return nil
+		}
 		if bindings.Handle(event) {
 			return nil
 		}

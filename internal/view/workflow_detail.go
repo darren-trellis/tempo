@@ -32,6 +32,7 @@ type WorkflowDetail struct {
 	workflowView     *tview.TextView
 	eventDetailView  *tview.TextView
 	eventTable       *components.Table
+	eventTableScroll *charScrollView
 	focusPane        detailFocusPane
 	loading          bool
 	searchText       string // Current search filter text
@@ -77,6 +78,8 @@ func (wd *WorkflowDetail) setup() {
 	wd.eventTable.SetHeaders("ID", "TIME", "TYPE", "NAME")
 	wd.eventTable.SetBorder(false)
 	wd.eventTable.SetBackgroundColor(theme.Bg())
+	wd.eventTable.SetEvaluateAllRows(true)
+	wd.eventTableScroll = attachTableCharScroll(wd.eventTable, wd.app)
 
 	// Create panels with icons (blubber pattern)
 	wd.workflowPanel = components.NewPanel().SetTitle(fmt.Sprintf("%s Workflow", theme.IconWorkflow))
@@ -87,7 +90,7 @@ func (wd *WorkflowDetail) setup() {
 
 	wd.baseEventsTitle = fmt.Sprintf("%s Events", theme.IconEvent)
 	wd.eventsPanel = components.NewPanel().SetTitle(wd.baseEventsTitle)
-	wd.eventsPanel.SetContent(wd.eventTable)
+	wd.eventsPanel.SetContent(wd.eventTableScroll)
 
 	// Left side: workflow info + event detail stacked
 	wd.leftFlex = tview.NewFlex().SetDirection(tview.FlexRow)
@@ -755,6 +758,9 @@ func (wd *WorkflowDetail) Start() {
 		})
 
 	wd.eventTable.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		if handleTableCharScroll(wd.eventTableScroll, wd.eventTable, event) {
+			return nil
+		}
 		if bindings.Handle(event) {
 			return nil
 		}

@@ -74,3 +74,60 @@ func TestBindTableCharScroll(t *testing.T) {
 		t.Fatalf("configured step should scroll 3 characters, consumed=%v offset=%d", consumed, view.offset)
 	}
 }
+
+func TestTableColumnLayoutMeasuresCells(t *testing.T) {
+	table := components.NewTable()
+	table.SetHeaders("ID", "NAME")
+	table.AddRow("1", "a-long-workflow-name")
+
+	cols := tableColumnLayout(table)
+	if len(cols) != 2 {
+		t.Fatalf("columns: %d", len(cols))
+	}
+	if cols[0].width != 2 || cols[1].width != len("a-long-workflow-name") {
+		t.Fatalf("widths: %+v", cols)
+	}
+	// Columns render one space apart.
+	if got := tableContentWidth(table); got != 2+1+len("a-long-workflow-name") {
+		t.Fatalf("content width: %d", got)
+	}
+	if got := tableContentWidth(nil); got != 0 {
+		t.Fatalf("nil table: %d", got)
+	}
+}
+
+func TestHandleTableCharScrollKeys(t *testing.T) {
+	table := components.NewTable()
+	table.SetHeaders("ID", "NAME")
+	table.AddRow("1", "a-long-workflow-name")
+	view := attachTableCharScroll(table, nil)
+	view.SetRect(0, 0, 8, 5)
+
+	if !handleTableCharScroll(view, table, tcell.NewEventKey(tcell.KeyRune, 'l', 0)) || view.offset != 1 {
+		t.Fatalf("l should scroll one char, offset=%d", view.offset)
+	}
+	if !handleTableCharScroll(view, table, tcell.NewEventKey(tcell.KeyRight, 0, tcell.ModNone)) || view.offset != 2 {
+		t.Fatalf("right should scroll one char, offset=%d", view.offset)
+	}
+	if !handleTableCharScroll(view, table, tcell.NewEventKey(tcell.KeyRune, 'h', 0)) || view.offset != 1 {
+		t.Fatalf("h should scroll back one char, offset=%d", view.offset)
+	}
+	if !handleTableCharScroll(view, table, tcell.NewEventKey(tcell.KeyLeft, 0, tcell.ModNone)) || view.offset != 0 {
+		t.Fatalf("left should scroll back one char, offset=%d", view.offset)
+	}
+
+	// Home/End jump a whole column: the second column starts after "ID" plus a space.
+	if !handleTableCharScroll(view, table, tcell.NewEventKey(tcell.KeyEnd, 0, tcell.ModNone)) || view.offset != 3 {
+		t.Fatalf("end should jump to the next column, offset=%d", view.offset)
+	}
+	if !handleTableCharScroll(view, table, tcell.NewEventKey(tcell.KeyHome, 0, tcell.ModNone)) || view.offset != 0 {
+		t.Fatalf("home should jump back a column, offset=%d", view.offset)
+	}
+
+	if handleTableCharScroll(view, table, tcell.NewEventKey(tcell.KeyRune, 'j', 0)) {
+		t.Fatal("unrelated keys should fall through")
+	}
+	if handleTableCharScroll(nil, table, tcell.NewEventKey(tcell.KeyRune, 'l', 0)) {
+		t.Fatal("a view-less table should fall through")
+	}
+}

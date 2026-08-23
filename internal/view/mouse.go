@@ -146,39 +146,3 @@ func mouseScrollStepFromApp(app *App) int {
 	}
 	return app.Config().MouseScrollStepSize()
 }
-
-func scrollTableColumns(table *components.Table, delta int) {
-	if table == nil || delta == 0 {
-		return
-	}
-	row, col := table.GetOffset()
-	col += delta
-	if col < 0 {
-		col = 0
-	}
-	max := table.GetColumnCount() - 1
-	if max < 0 {
-		max = 0
-	}
-	if col > max {
-		col = max
-	}
-	table.SetOffset(row, col)
-}
-
-func bindTableHorizontalScroll(table *components.Table, step func() int) {
-	if table == nil {
-		return
-	}
-	prev := table.GetMouseCapture()
-	table.SetMouseCapture(func(action tview.MouseAction, event *tcell.EventMouse) (tview.MouseAction, *tcell.EventMouse) {
-		if delta := horizontalMouseDelta(action, event); delta != 0 {
-			scrollTableColumns(table, delta*resolveMouseScrollStep(step))
-			return tview.MouseConsumed, nil
-		}
-		if prev != nil {
-			return prev(action, event)
-		}
-		return action, event
-	})
-}
