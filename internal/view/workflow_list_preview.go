@@ -212,7 +212,7 @@ func (wl *WorkflowList) paneAt(x, y int) (workflowFocusPane, bool) {
 		if wl.schedulesActive() && wl.schedules != nil && wl.schedules.previewPanel != nil && wl.schedules.previewPanel.InRect(x, y) {
 			return focusScheduleDetail, true
 		}
-		if wl.workersActive() && wl.workers != nil && wl.workers.previewPanel != nil && wl.workers.previewPanel.InRect(x, y) {
+		if wl.workersActive() && wl.workerDetailVisible && wl.workers != nil && wl.workers.previewPanel != nil && wl.workers.previewPanel.InRect(x, y) {
 			return focusWorkerDetail, true
 		}
 		if wl.workflowsPanel != nil && wl.workflowsPanel.InRect(x, y) {
@@ -647,7 +647,10 @@ func (wl *WorkflowList) previewFocusOrder() []workflowFocusPane {
 		return []workflowFocusPane{focusWorkflows, focusScheduleDetail}
 	}
 	if wl.workersActive() {
-		return []workflowFocusPane{focusWorkflows, focusWorkerDetail}
+		if wl.workerDetailVisible {
+			return []workflowFocusPane{focusWorkflows, focusWorkerDetail}
+		}
+		return []workflowFocusPane{focusWorkflows}
 	}
 	order := []workflowFocusPane{focusWorkflows}
 	if wl.previewModeEnabled() {

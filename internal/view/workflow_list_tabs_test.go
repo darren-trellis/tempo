@@ -230,6 +230,36 @@ func TestTaskQueuesShowPollersAlongside(t *testing.T) {
 	}
 }
 
+func TestWorkerDetailPaneHidesOnEscape(t *testing.T) {
+	wl := NewWorkflowList(&App{}, "default")
+	wl.setListKind(listWorkers)
+	if !wl.workerDetailVisible || wl.mainFlex.GetItemCount() != 2 {
+		t.Fatalf("workers should open with a detail pane, visible=%v panes=%d", wl.workerDetailVisible, wl.mainFlex.GetItemCount())
+	}
+
+	wl.setFocusPane(focusWorkerDetail)
+	if !wl.HandleEscape() || wl.workerDetailVisible || wl.focusPane != focusWorkflows || !wl.workersActive() {
+		t.Fatal("escape from the worker detail should hide the pane and return to the worker list")
+	}
+	if wl.mainFlex.GetItemCount() != 1 {
+		t.Fatalf("hidden detail should leave the worker list full width, got %d panes", wl.mainFlex.GetItemCount())
+	}
+	if order := wl.previewFocusOrder(); len(order) != 1 || order[0] != focusWorkflows {
+		t.Fatalf("hidden detail should drop out of the focus cycle, got %v", order)
+	}
+
+	wl.setListKind(listWorkflows)
+	wl.setListKind(listWorkers)
+	if wl.workerDetailVisible || wl.mainFlex.GetItemCount() != 1 {
+		t.Fatalf("hidden detail should stay hidden after a tab switch, visible=%v panes=%d", wl.workerDetailVisible, wl.mainFlex.GetItemCount())
+	}
+
+	wl.setWorkerDetailVisible(true)
+	if wl.mainFlex.GetItemCount() != 2 {
+		t.Fatalf("detail should reopen beside the worker list, got %d panes", wl.mainFlex.GetItemCount())
+	}
+}
+
 func TestTaskQueueKeysSurviveModalRestart(t *testing.T) {
 	wl := NewWorkflowList(&App{}, "default")
 	wl.setListKind(listTaskQueues)

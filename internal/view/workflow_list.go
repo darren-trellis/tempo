@@ -38,6 +38,7 @@ type WorkflowList struct {
 	workers               *WorkerView
 	listKind              listKind
 	pollersVisible        bool
+	workerDetailVisible   bool
 	workflowsPanel        *components.Panel
 	previewPanel          *components.Panel
 	previewTabs           *components.Tabs
@@ -98,18 +99,19 @@ func (wl *WorkflowList) HoldStartData() {
 // NewWorkflowList creates a new workflow list view.
 func NewWorkflowList(app *App, namespace string) *WorkflowList {
 	wl := &WorkflowList{
-		Flex:           tview.NewFlex().SetDirection(tview.FlexRow),
-		app:            app,
-		namespace:      namespace,
-		table:          components.NewTable(),
-		workflows:      []temporal.Workflow{},
-		stopRefresh:    make(chan struct{}, 1), // Buffered to ensure stop signal isn't lost
-		searchHistory:  make([]string, 0, 50),
-		historyIndex:   -1,
-		maxHistorySize: 50,
-		previewKind:    previewActivities,
-		previewCache:   newPreviewCache(previewCacheLimit(app)),
-		pollersVisible: true,
+		Flex:                tview.NewFlex().SetDirection(tview.FlexRow),
+		app:                 app,
+		namespace:           namespace,
+		table:               components.NewTable(),
+		workflows:           []temporal.Workflow{},
+		stopRefresh:         make(chan struct{}, 1), // Buffered to ensure stop signal isn't lost
+		searchHistory:       make([]string, 0, 50),
+		historyIndex:        -1,
+		maxHistorySize:      50,
+		previewKind:         previewActivities,
+		previewCache:        newPreviewCache(previewCacheLimit(app)),
+		pollersVisible:      true,
+		workerDetailVisible: true,
 	}
 	wl.setup()
 
@@ -668,7 +670,7 @@ func (wl *WorkflowList) HandleEscape() bool {
 		return true
 	}
 	if wl.workersActive() && wl.focusPane == focusWorkerDetail {
-		wl.setFocusPane(focusWorkflows)
+		wl.setWorkerDetailVisible(false)
 		return true
 	}
 	if !wl.workflowsActive() {

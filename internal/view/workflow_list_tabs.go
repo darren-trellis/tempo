@@ -205,6 +205,7 @@ func (wl *WorkflowList) bindWorkerKeys() {
 				return nil
 			}
 			if ok {
+				wl.setWorkerDetailVisible(true)
 				wl.setFocusPane(focusWorkerDetail)
 			}
 			return nil
@@ -240,6 +241,22 @@ func (wl *WorkflowList) setPollersVisible(on bool) {
 	}
 	wl.pollersVisible = on
 	if !on && wl.focusPane == focusPollers {
+		wl.focusPane = focusWorkflows
+	}
+	wl.applyMainLayout()
+	if wl.app != nil && wl.app.JigApp() != nil {
+		wl.setFocusPane(wl.focusPane)
+		return
+	}
+	wl.applyFocusStyles()
+}
+
+func (wl *WorkflowList) setWorkerDetailVisible(on bool) {
+	if wl.workerDetailVisible == on {
+		return
+	}
+	wl.workerDetailVisible = on
+	if !on && wl.focusPane == focusWorkerDetail {
 		wl.focusPane = focusWorkflows
 	}
 	wl.applyMainLayout()
