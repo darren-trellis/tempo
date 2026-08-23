@@ -47,6 +47,9 @@ func TestPreviewKindCycle(t *testing.T) {
 	if wl.previewTabs.GetActive() != int(previewActivities) {
 		t.Fatalf("activities tab index: %d", wl.previewTabs.GetActive())
 	}
+	if wl.rightFlex.GetItemCount() != 2 {
+		t.Fatalf("activities should show a sibling detail pane, got %d items", wl.rightFlex.GetItemCount())
+	}
 	if desc := hintDescription(wl.Hints(), "enter"); desc != "Activities" {
 		t.Fatalf("enter hint: got %q", desc)
 	}
@@ -62,6 +65,9 @@ func TestPreviewKindCycle(t *testing.T) {
 	wl.cyclePreviewKind(1)
 	if wl.previewKind != previewDetails || wl.previewTabs.GetActive() != int(previewDetails) {
 		t.Fatalf("next kind: %d tab %d", wl.previewKind, wl.previewTabs.GetActive())
+	}
+	if wl.rightFlex.GetItemCount() != 1 {
+		t.Fatalf("details should hide the sibling pane, got %d items", wl.rightFlex.GetItemCount())
 	}
 
 	wl.cyclePreviewKind(1)
