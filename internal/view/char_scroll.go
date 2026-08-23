@@ -174,6 +174,89 @@ func scrollOffsetByColumn(offset int, cols []workflowColumn, delta int) int {
 	return offs[idx]
 }
 
+// handleCharScrollKeys scrolls a view horizontally: one char for left/right and
+// h/l, one column for Home/End.
+func handleCharScrollKeys(view *charScrollView, event *tcell.EventKey, cols func() []workflowColumn) bool {
+	if view == nil || event == nil {
+		return false
+	}
+	switch event.Key() {
+	case tcell.KeyLeft:
+		view.scrollChars(-1)
+		return true
+	case tcell.KeyRight:
+		view.scrollChars(1)
+		return true
+	case tcell.KeyHome:
+		if cols == nil {
+			return false
+		}
+		view.scrollTo(scrollOffsetByColumn(view.offset, cols(), -1))
+		return true
+	case tcell.KeyEnd:
+		if cols == nil {
+			return false
+		}
+		view.scrollTo(scrollOffsetByColumn(view.offset, cols(), 1))
+		return true
+	case tcell.KeyRune:
+		switch event.Rune() {
+		case 'h':
+			view.scrollChars(-1)
+			return true
+		case 'l':
+			view.scrollChars(1)
+			return true
+		}
+	}
+	return false
+}
+
+// handleTableCharScroll scrolls an auto-sized table, measuring its columns for
+// the Home/End jumps.
+func handleTableCharScroll(view *charScrollView, table *components.Table, event *tcell.EventKey) bool {
+	return handleCharScrollKeys(view, event, func() []workflowColumn {
+		return tableColumnLayout(table)
+	})
+}
+
+// tableColumnLayout measures a table's cells so char scrolling knows how wide
+// it renders. tview sizes each column to its widest cell.
+func tableColumnLayout(table *components.Table) []workflowColumn {
+	if table == nil {
+		return nil
+	}
+	rows := table.GetRowCount()
+	cols := table.GetColumnCount()
+	if rows == 0 || cols == 0 {
+		return nil
+	}
+	layout := make([]workflowColumn, cols)
+	for col := 0; col < cols; col++ {
+		width := 0
+		for row := 0; row < rows; row++ {
+			cell := table.GetCell(row, col)
+			if cell == nil {
+				continue
+			}
+			cellWidth := tview.TaggedStringWidth(cell.Text)
+			if cell.MaxWidth > 0 && cellWidth > cell.MaxWidth {
+				cellWidth = cell.MaxWidth
+			}
+			if cellWidth > width {
+				width = cellWidth
+			}
+		}
+		layout[col] = workflowColumn{width: width}
+	}
+	return layout
+}
+
+// tableContentWidth is the rendered width of an auto-sized table.
+func tableContentWidth(table *components.Table) int {
+	return workflowTableContentWidth(tableColumnLayout(table))
+}
+
 func bindTableCharScroll(table *components.Table, view *charScrollView, step func() int) {
 	if table == nil || view == nil {
 		return

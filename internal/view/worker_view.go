@@ -27,22 +27,21 @@ type workerRow struct {
 	Worker temporal.Worker
 }
 
-const (
-	// Bar widths for the CPU/memory meters in the table and the detail pane.
-	workerMeterCells       = 6
-	workerMeterDetailCells = 16
-	workerMeterFilled      = "\u2588"
-	workerMeterEmpty       = "\u2591"
-	// Utilization ratios where the meter turns amber, then red.
-	workerMeterWarn = 0.6
-	workerMeterHigh = 0.85
-)
+// workerUtilizationHeight fits two bars plus a spacer inside the panel border.
+const workerUtilizationHeight = 5
 
 type WorkerView struct {
 	app          *App
 	table        *components.Table
-	preview      *tview.TextView
+	tableScroll  *charScrollView
+	detail       *components.Table
+	detailScroll *charScrollView
+	detailRows   []workflowInfoRow
 	previewPanel *components.Panel
+	cpuBar       *utilizationBar
+	memBar       *utilizationBar
+	utilPanel    *components.Panel
+	detailFlex   *tview.Flex
 	allWorkers   []temporal.Worker
 	groups       []workerHostGroup
 	rows         []workerRow
@@ -55,7 +54,7 @@ func NewWorkerView(app *App) *WorkerView {
 	wv := &WorkerView{
 		app:       app,
 		table:     components.NewTable(),
-		preview:   tview.NewTextView(),
+		detail:    components.NewTable(),
 		collapsed: map[string]bool{},
 	}
 	wv.setup()
@@ -65,18 +64,46 @@ func NewWorkerView(app *App) *WorkerView {
 func (wv *WorkerView) setup() {
 	wv.table.SetHeaders(workerTableHeaders()...)
 	wv.table.SetBorder(false)
+	wv.table.SetEvaluateAllRows(true)
 	wv.table.SetBackgroundColor(theme.Bg())
 	wv.table.ConfigureEmpty(theme.IconUsers, "No Workers", "No worker instances found in this namespace")
 	wv.table.SetSelectionChangedFunc(func(row, col int) {
 		wv.updatePreview()
 	})
 
-	wv.preview.SetDynamicColors(true)
-	wv.preview.SetBackgroundColor(theme.Bg())
-	wv.preview.SetTextColor(theme.Fg())
-	wv.preview.SetWordWrap(true)
+	wv.tableScroll = newCharScrollView(wv.table, func() int {
+		return tableContentWidth(wv.table)
+	})
+	bindTableCharScroll(wv.table, wv.tableScroll, func() int {
+		return mouseScrollStepFromApp(wv.app)
+	})
+
+	wv.detail.SetBorder(false)
+	wv.detail.SetBackgroundColor(theme.Bg())
+	wv.detail.SetEvaluateAllRows(true)
+	wv.detailScroll = newCharScrollView(wv.detail, func() int {
+		return workflowInfoContentWidth(wv.detailRows)
+	})
+	bindTableCharScroll(wv.detail, wv.detailScroll, func() int {
+		return mouseScrollStepFromApp(wv.app)
+	})
 	wv.previewPanel = components.NewPanel().SetTitle(fmt.Sprintf("%s Worker", theme.IconUsers))
-	wv.previewPanel.SetContent(wv.preview)
+	wv.previewPanel.SetContent(wv.detailScroll)
+
+	wv.cpuBar = newUtilizationBar("CPU")
+	wv.memBar = newUtilizationBar("MEM")
+	utilFlex := tview.NewFlex().SetDirection(tview.FlexRow)
+	utilFlex.SetBackgroundColor(theme.Bg())
+	utilFlex.AddItem(wv.cpuBar, 1, 0, false)
+	utilFlex.AddItem(tview.NewBox().SetBackgroundColor(theme.Bg()), 1, 0, false)
+	utilFlex.AddItem(wv.memBar, 1, 0, false)
+	wv.utilPanel = components.NewPanel().SetTitle(fmt.Sprintf("%s Utilization", theme.IconBolt))
+	wv.utilPanel.SetContent(utilFlex)
+
+	wv.detailFlex = tview.NewFlex().SetDirection(tview.FlexRow)
+	wv.detailFlex.SetBackgroundColor(theme.Bg())
+	wv.detailFlex.AddItem(wv.previewPanel, 0, 1, false)
+	wv.detailFlex.AddItem(wv.utilPanel, workerUtilizationHeight, 0, false)
 }
 
 func workerTableHeaders() []string {
@@ -85,8 +112,7 @@ func workerTableHeaders() []string {
 
 func (wv *WorkerView) RefreshTheme() {
 	wv.table.SetBackgroundColor(theme.Bg())
-	wv.preview.SetBackgroundColor(theme.Bg())
-	wv.preview.SetTextColor(theme.Fg())
+	wv.detail.SetBackgroundColor(theme.Bg())
 	wv.populateTable()
 }
 
@@ -212,7 +238,7 @@ func (wv *WorkerView) showError(err error) {
 	wv.table.ClearRows()
 	wv.table.SetHeaders(workerTableHeaders()...)
 	wv.table.AddRowWithColor(theme.Error(), "Error loading workers", err.Error(), "", "", "", "", "", "", "")
-	wv.preview.SetText("")
+	wv.setDetailRows(nil)
 }
 
 func (wv *WorkerView) rebuildRows() {
@@ -232,7 +258,8 @@ func (wv *WorkerView) populateTable() {
 		wv.addInstanceRow(now, row.Worker)
 	}
 	if wv.table.RowCount() == 0 {
-		wv.preview.SetText("")
+		wv.setDetailRows(nil)
+		wv.setUtilization(0, 0, false)
 		return
 	}
 	if idx := wv.rowIndexByKey(current); idx >= 0 {
@@ -256,8 +283,8 @@ func (wv *WorkerView) addHostRow(host string) {
 	label := fmt.Sprintf("%s %s %s (%d)", chevron, theme.IconServer, host, count)
 	cpu, mem := "-", "-"
 	if group != nil && group.Resources {
-		cpu = formatWorkerMeter(group.CPU, workerMeterCells)
-		mem = formatWorkerMeter(group.Memory, workerMeterCells)
+		cpu = formatWorkerPercent(group.CPU)
+		mem = formatWorkerPercent(group.Memory)
 	}
 	wv.table.AddRow(label, "", "", "", "", "", "", cpu, mem)
 }
@@ -272,8 +299,8 @@ func (wv *WorkerView) addInstanceRow(now time.Time, w temporal.Worker) {
 		formatWorkerTime(now, w.StartTime),
 		w.BuildID,
 		w.ProcessID,
-		formatWorkerResource(w, workerMeterCells),
-		formatWorkerMemory(w, workerMeterCells),
+		formatWorkerResource(w),
+		formatWorkerMemory(w),
 	}
 	wv.table.AddRowWithStatus(status, 1, cells...)
 }
@@ -353,18 +380,80 @@ func (wv *WorkerView) setHostCollapsed(collapsed bool) bool {
 func (wv *WorkerView) updatePreview() {
 	row, ok := wv.selectedRow()
 	if !ok {
-		wv.preview.SetText("")
+		wv.setDetailRows(nil)
+		wv.setUtilization(0, 0, false)
 		return
 	}
+	now := time.Now()
 	if row.IsHost {
 		if group := wv.hostGroup(row.Host); group != nil {
-			wv.preview.SetText(formatWorkerHostPreview(*group))
-			wv.preview.ScrollToBeginning()
+			wv.setDetailRows(workerHostInfoRows(now, *group))
+			wv.setUtilization(group.CPU, group.Memory, group.Resources)
 			return
 		}
 	}
-	wv.preview.SetText(formatWorkerInstancePreview(row.Worker))
-	wv.preview.ScrollToBeginning()
+	wv.setDetailRows(workerInfoRows(now, row.Worker))
+	wv.setUtilization(row.Worker.CPU, row.Worker.Memory, row.Worker.HasHostInfo)
+}
+
+// setDetailRows renders the label/value rows for the selected host or instance.
+func (wv *WorkerView) setDetailRows(rows []workflowInfoRow) {
+	selectedKey := ""
+	if row, ok := wv.selectedDetailRow(); ok {
+		selectedKey = row.Key
+	}
+	wv.detailRows = rows
+	if wv.detail == nil {
+		return
+	}
+	wv.detail.ClearRows()
+	for _, row := range rows {
+		wv.detail.AddStyledRow([]components.TableCell{
+			{Text: row.Label, Color: theme.FgDim(), Selectable: true},
+			{Text: row.displayText(), Color: row.Color, Selectable: true},
+		})
+	}
+	if idx := workflowInfoRowIndex(rows, selectedKey); idx >= 0 {
+		wv.detail.SelectRow(idx)
+	} else if len(rows) > 0 {
+		wv.detail.SelectRow(0)
+	}
+	if wv.detailScroll != nil {
+		wv.detailScroll.clamp()
+	}
+}
+
+func (wv *WorkerView) selectedDetailRow() (workflowInfoRow, bool) {
+	if wv == nil || wv.detail == nil {
+		return workflowInfoRow{}, false
+	}
+	idx := wv.detail.SelectedRow()
+	if idx < 0 || idx >= len(wv.detailRows) {
+		return workflowInfoRow{}, false
+	}
+	return wv.detailRows[idx], true
+}
+
+// yankDetailRow copies the selected detail value to the clipboard.
+func (wv *WorkerView) yankDetailRow() {
+	row, ok := wv.selectedDetailRow()
+	if !ok || row.Value == "" || wv.app == nil {
+		return
+	}
+	if err := copyToClipboard(row.Value); err != nil {
+		wv.app.ToastError("Failed to copy: " + err.Error())
+		return
+	}
+	wv.app.ToastSuccess("Copied " + row.Label)
+}
+
+func (wv *WorkerView) setUtilization(cpu, mem float32, known bool) {
+	if wv.cpuBar != nil {
+		wv.cpuBar.setValue(cpu, known)
+	}
+	if wv.memBar != nil {
+		wv.memBar.setValue(mem, known)
+	}
 }
 
 func (wv *WorkerView) Start() {
@@ -377,8 +466,8 @@ func (wv *WorkerView) Start() {
 
 func (wv *WorkerView) Stop() {
 	wv.table.SetInputCapture(nil)
-	if wv.preview != nil {
-		wv.preview.SetInputCapture(nil)
+	if wv.detail != nil {
+		wv.detail.SetInputCapture(nil)
 	}
 }
 
@@ -502,188 +591,98 @@ func formatWorkerPercent(value float32) string {
 	return fmt.Sprintf("%.0f%%", value*100)
 }
 
-// formatWorkerMeter renders a utilization ratio as a colored bar plus its percentage.
-func formatWorkerMeter(value float32, cells int) string {
-	if cells <= 0 {
-		return formatWorkerPercent(value)
-	}
-	ratio := float64(value)
-	if ratio < 0 {
-		ratio = 0
-	}
-	if ratio > 1 {
-		ratio = 1
-	}
-	filled := int(ratio*float64(cells) + 0.5)
-	if filled == 0 && ratio > 0 {
-		filled = 1
-	}
-	return fmt.Sprintf("[%s]%s[%s]%s[-] %s",
-		workerMeterTag(ratio),
-		strings.Repeat(workerMeterFilled, filled),
-		theme.TagFgMuted(),
-		strings.Repeat(workerMeterEmpty, cells-filled),
-		fmt.Sprintf("%4s", formatWorkerPercent(float32(ratio))))
-}
-
-func workerMeterTag(ratio float64) string {
-	switch {
-	case ratio >= workerMeterHigh:
-		return theme.TagError()
-	case ratio >= workerMeterWarn:
-		return theme.TagWarning()
-	default:
-		return theme.TagSuccess()
-	}
-}
-
-func formatWorkerResource(w temporal.Worker, cells int) string {
+func formatWorkerResource(w temporal.Worker) string {
 	if !w.HasHostInfo {
 		return "-"
 	}
-	return formatWorkerMeter(w.CPU, cells)
+	return formatWorkerPercent(w.CPU)
 }
 
-func formatWorkerMemory(w temporal.Worker, cells int) string {
+func formatWorkerMemory(w temporal.Worker) string {
 	if !w.HasHostInfo {
 		return "-"
 	}
-	return formatWorkerMeter(w.Memory, cells)
+	return formatWorkerPercent(w.Memory)
 }
 
-func formatWorkerHostPreview(group workerHostGroup) string {
-	now := time.Now()
+// workerHostInfoRows describes a host group as label/value rows for the detail table.
+func workerHostInfoRows(now time.Time, group workerHostGroup) []workflowInfoRow {
 	cpu, mem := "-", "-"
 	if group.Resources {
-		cpu = formatWorkerMeter(group.CPU, workerMeterDetailCells)
-		mem = formatWorkerMeter(group.Memory, workerMeterDetailCells)
+		cpu = formatWorkerPercent(group.CPU)
+		mem = formatWorkerPercent(group.Memory)
 	}
-	lines := []string{
-		fmt.Sprintf("[%s::b]Host[-:-:-]", theme.TagAccent()),
-		fmt.Sprintf("[%s]%s[-]", theme.TagFg(), group.Host),
-		"",
-		fmt.Sprintf("[%s]Instances[-]", theme.TagFgDim()),
-		fmt.Sprintf("[%s]%d[-]", theme.TagFg(), len(group.Workers)),
-		"",
-		fmt.Sprintf("[%s]CPU[-]", theme.TagFgDim()),
-		cpu,
-		"",
-		fmt.Sprintf("[%s]Memory[-]", theme.TagFgDim()),
-		mem,
-		"",
-		fmt.Sprintf("[%s]Workers[-]", theme.TagFgDim()),
-	}
-	if len(group.Workers) == 0 {
-		lines = append(lines, fmt.Sprintf("[%s]No instances[-]", theme.TagFgDim()))
+	rows := []workflowInfoRow{
+		{Key: "host", Label: "Host", Value: dashIfEmpty(group.Host), Color: theme.Fg()},
+		{Key: "instances", Label: "Instances", Value: fmt.Sprintf("%d", len(group.Workers)), Color: theme.Fg()},
+		{Key: "cpu", Label: "CPU", Value: cpu, Color: theme.Fg()},
+		{Key: "memory", Label: "Memory", Value: mem, Color: theme.Fg()},
 	}
 	for _, w := range group.Workers {
-		status := w.Status
-		if status == "" {
-			status = "-"
-		}
-		lines = append(lines, fmt.Sprintf("[%s]%s[-]  [%s]%s[-]  [%s]%s[-]  [%s]%s[-]",
-			theme.TagFg(), instanceLabel(w),
-			temporal.GetWorkerStatus(w.Status).ColorTag(), status,
-			theme.TagFg(), dashIfEmpty(w.TaskQueue),
-			theme.TagFgDim(), formatWorkerTime(now, w.LastHeartbeat),
-		))
+		status := dashIfEmpty(w.Status)
+		rows = append(rows, workflowInfoRow{
+			Key:   "worker:" + workerRowKey(workerRow{Host: group.Host, Worker: w}),
+			Label: instanceLabel(w),
+			Value: fmt.Sprintf("%s  %s  %s", status, dashIfEmpty(w.TaskQueue), formatWorkerTime(now, w.LastHeartbeat)),
+			Color: temporal.GetWorkerStatus(w.Status).Color(),
+		})
 	}
-	return strings.Join(lines, "\n")
+	return rows
 }
 
-func formatWorkerInstancePreview(w temporal.Worker) string {
-	now := time.Now()
+// workerInfoRows describes one worker instance as label/value rows for the detail table.
+func workerInfoRows(now time.Time, w temporal.Worker) []workflowInfoRow {
 	status := w.Status
 	if status == "" {
 		status = "Unknown"
 	}
-	sdk := strings.TrimSpace(w.SDKName + " " + w.SDKVersion)
-	lines := []string{
-		fmt.Sprintf("[%s::b]Instance[-:-:-]", theme.TagAccent()),
-		fmt.Sprintf("[%s]%s[-]", theme.TagFg(), dashIfEmpty(firstNonEmpty(w.InstanceKey, w.Identity))),
-		"",
-		fmt.Sprintf("[%s]Status[-]", theme.TagFgDim()),
-		fmt.Sprintf("[%s]%s[-]", temporal.GetWorkerStatus(w.Status).ColorTag(), status),
-		"",
-		fmt.Sprintf("[%s]Identity[-]", theme.TagFgDim()),
-		fmt.Sprintf("[%s]%s[-]", theme.TagFg(), dashIfEmpty(w.Identity)),
-		"",
-		fmt.Sprintf("[%s]Task Queue[-]", theme.TagFgDim()),
-		fmt.Sprintf("[%s]%s[-]", theme.TagFg(), dashIfEmpty(w.TaskQueue)),
-		"",
-		fmt.Sprintf("[%s]Types[-]", theme.TagFgDim()),
-		fmt.Sprintf("[%s]%s[-]", theme.TagFg(), dashIfEmpty(strings.Join(w.Types, ", "))),
-		"",
-		fmt.Sprintf("[%s]Host[-]", theme.TagFgDim()),
-		fmt.Sprintf("[%s]%s[-]", theme.TagFg(), dashIfEmpty(w.Host)),
-		"",
-		fmt.Sprintf("[%s]Process ID[-]", theme.TagFgDim()),
-		fmt.Sprintf("[%s]%s[-]", theme.TagFg(), dashIfEmpty(w.ProcessID)),
-		"",
-		fmt.Sprintf("[%s]Build ID[-]", theme.TagFgDim()),
-		fmt.Sprintf("[%s]%s[-]", theme.TagFg(), dashIfEmpty(w.BuildID)),
-		"",
-		fmt.Sprintf("[%s]Deployment[-]", theme.TagFgDim()),
-		fmt.Sprintf("[%s]%s[-]", theme.TagFg(), dashIfEmpty(w.Deployment)),
-		"",
-		fmt.Sprintf("[%s]SDK[-]", theme.TagFgDim()),
-		fmt.Sprintf("[%s]%s[-]", theme.TagFg(), dashIfEmpty(sdk)),
-		"",
-		fmt.Sprintf("[%s]Started[-]", theme.TagFgDim()),
-		fmt.Sprintf("[%s]%s[-]", theme.TagFg(), formatWorkerTime(now, w.StartTime)),
-		"",
-		fmt.Sprintf("[%s]Last Heartbeat[-]", theme.TagFgDim()),
-		fmt.Sprintf("[%s]%s[-]", theme.TagFg(), formatWorkerTime(now, w.LastHeartbeat)),
-		"",
-		fmt.Sprintf("[%s]CPU[-]", theme.TagFgDim()),
-		formatWorkerResource(w, workerMeterDetailCells),
-		"",
-		fmt.Sprintf("[%s]Memory[-]", theme.TagFgDim()),
-		formatWorkerMemory(w, workerMeterDetailCells),
-		"",
-		fmt.Sprintf("[%s]Task Slots[-]", theme.TagFgDim()),
-		formatSlotLine("Workflow", w.WorkflowSlots),
-		formatSlotLine("Activity", w.ActivitySlots),
-		formatSlotLine("Local Activity", w.LocalSlots),
-		formatSlotLine("Nexus", w.NexusSlots),
-		"",
-		fmt.Sprintf("[%s]Pollers[-]", theme.TagFgDim()),
-		formatPollerLine("Workflow", w.WorkflowPollers),
-		formatPollerLine("Sticky", w.StickyPollers),
-		formatPollerLine("Activity", w.ActivityPollers),
-		formatPollerLine("Nexus", w.NexusPollers),
-		"",
-		fmt.Sprintf("[%s]Workflow Cache[-]", theme.TagFgDim()),
-		fmt.Sprintf("[%s]%s[-]", theme.TagFg(), formatStickyCache(w)),
+	return []workflowInfoRow{
+		{Key: "instance", Label: "Instance", Value: dashIfEmpty(firstNonEmpty(w.InstanceKey, w.Identity)), Color: theme.Fg()},
+		{Key: "status", Label: "Status", Value: status, Color: temporal.GetWorkerStatus(w.Status).Color()},
+		{Key: "identity", Label: "Identity", Value: dashIfEmpty(w.Identity), Color: theme.Fg()},
+		{Key: "taskqueue", Label: "Task Queue", Value: dashIfEmpty(w.TaskQueue), Color: theme.Fg()},
+		{Key: "types", Label: "Types", Value: dashIfEmpty(strings.Join(w.Types, ", ")), Color: theme.Fg()},
+		{Key: "host", Label: "Host", Value: dashIfEmpty(w.Host), Color: theme.Fg()},
+		{Key: "pid", Label: "Process ID", Value: dashIfEmpty(w.ProcessID), Color: theme.Fg()},
+		{Key: "buildid", Label: "Build ID", Value: dashIfEmpty(w.BuildID), Color: theme.Fg()},
+		{Key: "deployment", Label: "Deployment", Value: dashIfEmpty(w.Deployment), Color: theme.Fg()},
+		{Key: "sdk", Label: "SDK", Value: dashIfEmpty(strings.TrimSpace(w.SDKName + " " + w.SDKVersion)), Color: theme.Fg()},
+		{Key: "started", Label: "Started", Value: formatWorkerTime(now, w.StartTime), Color: theme.Fg()},
+		{Key: "heartbeat", Label: "Last Heartbeat", Value: formatWorkerTime(now, w.LastHeartbeat), Color: theme.Fg()},
+		{Key: "cpu", Label: "CPU", Value: formatWorkerResource(w), Color: theme.Fg()},
+		{Key: "memory", Label: "Memory", Value: formatWorkerMemory(w), Color: theme.Fg()},
+		{Key: "slots-workflow", Label: "Workflow Slots", Value: workerSlotsValue(w.WorkflowSlots), Color: theme.Fg()},
+		{Key: "slots-activity", Label: "Activity Slots", Value: workerSlotsValue(w.ActivitySlots), Color: theme.Fg()},
+		{Key: "slots-local", Label: "Local Slots", Value: workerSlotsValue(w.LocalSlots), Color: theme.Fg()},
+		{Key: "slots-nexus", Label: "Nexus Slots", Value: workerSlotsValue(w.NexusSlots), Color: theme.Fg()},
+		{Key: "pollers-workflow", Label: "Workflow Pollers", Value: workerPollersValue(w.WorkflowPollers), Color: theme.Fg()},
+		{Key: "pollers-sticky", Label: "Sticky Pollers", Value: workerPollersValue(w.StickyPollers), Color: theme.Fg()},
+		{Key: "pollers-activity", Label: "Activity Pollers", Value: workerPollersValue(w.ActivityPollers), Color: theme.Fg()},
+		{Key: "pollers-nexus", Label: "Nexus Pollers", Value: workerPollersValue(w.NexusPollers), Color: theme.Fg()},
+		{Key: "cache", Label: "Workflow Cache", Value: formatStickyCache(w), Color: theme.Fg()},
 	}
-	return strings.Join(lines, "\n")
 }
 
-func formatSlotLine(label string, slots temporal.WorkerSlots) string {
+func workerSlotsValue(slots temporal.WorkerSlots) string {
 	if slots == (temporal.WorkerSlots{}) {
-		return fmt.Sprintf("[%s]%s[-]  [%s]-[-]", theme.TagFg(), label, theme.TagFgDim())
+		return "-"
 	}
-	kind := ""
+	value := fmt.Sprintf("%d / %d  processed %d  failed %d", slots.Used, slots.Available, slots.Processed, slots.Failed)
 	if slots.Kind != "" {
-		kind = "  " + slots.Kind
+		value += "  " + slots.Kind
 	}
-	return fmt.Sprintf("[%s]%s[-]  [%s]%d / %d[-]  [%s]processed %d  failed %d%s[-]",
-		theme.TagFg(), label,
-		theme.TagFg(), slots.Used, slots.Available,
-		theme.TagFgDim(), slots.Processed, slots.Failed, kind,
-	)
+	return value
 }
 
-func formatPollerLine(label string, pollers temporal.WorkerPollers) string {
+func workerPollersValue(pollers temporal.WorkerPollers) string {
 	if pollers == (temporal.WorkerPollers{}) {
-		return fmt.Sprintf("[%s]%s[-]  [%s]-[-]", theme.TagFg(), label, theme.TagFgDim())
+		return "-"
 	}
 	mode := "manual"
 	if pollers.Autoscaling {
 		mode = "autoscaling"
 	}
-	return fmt.Sprintf("[%s]%s[-]  [%s]%d[-]  [%s]%s[-]",
-		theme.TagFg(), label, theme.TagFg(), pollers.Current, theme.TagFgDim(), mode)
+	return fmt.Sprintf("%d  %s", pollers.Current, mode)
 }
 
 func formatStickyCache(w temporal.Worker) string {

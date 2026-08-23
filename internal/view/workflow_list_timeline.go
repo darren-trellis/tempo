@@ -149,8 +149,8 @@ func (wl *WorkflowList) applyMainLayout() {
 			if wl.schedulesActive() && wl.schedules != nil && wl.schedules.previewPanel != nil {
 				wl.mainFlex.AddItem(wl.schedules.previewPanel, 0, 9, false)
 			}
-			if wl.workersActive() && wl.workerDetailVisible && wl.workers != nil && wl.workers.previewPanel != nil {
-				wl.mainFlex.AddItem(wl.workers.previewPanel, 0, 9, false)
+			if wl.workersActive() && wl.workerDetailVisible && wl.workers != nil && wl.workers.detailFlex != nil {
+				wl.mainFlex.AddItem(wl.workers.detailFlex, 0, 9, false)
 			}
 		}
 		wl.Clear()

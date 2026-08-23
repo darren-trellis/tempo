@@ -212,7 +212,7 @@ func (wl *WorkflowList) paneAt(x, y int) (workflowFocusPane, bool) {
 		if wl.schedulesActive() && wl.schedules != nil && wl.schedules.previewPanel != nil && wl.schedules.previewPanel.InRect(x, y) {
 			return focusScheduleDetail, true
 		}
-		if wl.workersActive() && wl.workerDetailVisible && wl.workers != nil && wl.workers.previewPanel != nil && wl.workers.previewPanel.InRect(x, y) {
+		if wl.workersActive() && wl.workerDetailVisible && wl.workers != nil && wl.workers.detailFlex != nil && wl.workers.detailFlex.InRect(x, y) {
 			return focusWorkerDetail, true
 		}
 		if wl.workflowsPanel != nil && wl.workflowsPanel.InRect(x, y) {
@@ -705,7 +705,7 @@ func (wl *WorkflowList) setFocusPane(pane workflowFocusPane) {
 		}
 	case focusWorkerDetail:
 		if wl.workers != nil {
-			wl.app.JigApp().SetFocus(wl.workers.preview)
+			wl.app.JigApp().SetFocus(wl.workers.detail)
 		}
 	case focusEvents:
 		if wl.previewKind == previewHierarchy && wl.hierarchyView != nil && wl.hierarchyView.tree != nil {
@@ -808,7 +808,7 @@ func (wl *WorkflowList) syncFocusFromPrimitives() {
 		pane = focusPollers
 	case wl.schedules != nil && wl.schedules.preview != nil && wl.schedules.preview.HasFocus():
 		pane = focusScheduleDetail
-	case wl.workers != nil && wl.workers.preview != nil && wl.workers.preview.HasFocus():
+	case wl.workers != nil && wl.workers.detail != nil && wl.workers.detail.HasFocus():
 		pane = focusWorkerDetail
 	case wl.taskQueues != nil && wl.taskQueues.queueTable != nil && wl.taskQueues.queueTable.HasFocus():
 		pane = focusWorkflows

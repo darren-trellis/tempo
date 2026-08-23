@@ -510,6 +510,12 @@ func (wl *WorkflowList) Hints() []KeyHint {
 		}
 	}
 	if wl.workersActive() {
+		if wl.focusPane == focusWorkerDetail {
+			return []KeyHint{
+				{Key: "y", Description: "Yank"},
+				{Key: "r", Description: "Refresh"},
+			}
+		}
 		return []KeyHint{
 			{Key: "space", Description: "Collapse/Expand"},
 			{Key: "/", Description: "Search"},
@@ -711,8 +717,8 @@ func (wl *WorkflowList) Focus(delegate func(p tview.Primitive)) {
 		return
 	}
 	if wl.workersActive() && wl.workers != nil {
-		if wl.focusPane == focusWorkerDetail && wl.workers.preview != nil {
-			delegate(wl.workers.preview)
+		if wl.focusPane == focusWorkerDetail && wl.workers.detail != nil {
+			delegate(wl.workers.detail)
 			return
 		}
 		delegate(wl.workers.table)

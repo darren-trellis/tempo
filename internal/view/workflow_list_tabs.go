@@ -36,7 +36,7 @@ func (wl *WorkflowList) setupListTabs() {
 		AddTabWithIcon("Workflows (List)", theme.IconWorkflow, wl.tableScroll).
 		AddTabWithIcon("Task Queues", theme.IconTaskQueue, wl.taskQueues.queueTable).
 		AddTabWithIcon("Schedules", theme.IconSchedule, wl.schedules.table).
-		AddTabWithIcon("Workers", theme.IconUsers, wl.workers.table).
+		AddTabWithIcon("Workers", theme.IconUsers, wl.workers.tableScroll).
 		SetOnChange(func(index int, name string) {
 			wl.setListKind(listKind(index))
 		})
@@ -198,6 +198,9 @@ func (wl *WorkflowList) bindWorkerKeys() {
 		if wl.handleFocusCycleKey(event) || wl.handleListTabKey(event) {
 			return nil
 		}
+		if handleTableCharScroll(wv.tableScroll, wv.table, event) {
+			return nil
+		}
 		if event.Key() == tcell.KeyEnter {
 			row, ok := wv.selectedRow()
 			if ok && row.IsHost {
@@ -223,12 +226,19 @@ func (wl *WorkflowList) bindWorkerKeys() {
 		}
 		return event
 	})
-	wv.preview.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+	wv.detail.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		if wl.handleFocusCycleKey(event) {
 			return nil
 		}
-		if event.Rune() == 'r' {
+		if handleTableCharScroll(wv.detailScroll, wv.detail, event) {
+			return nil
+		}
+		switch event.Rune() {
+		case 'r':
 			wv.loadData()
+			return nil
+		case 'y':
+			wv.yankDetailRow()
 			return nil
 		}
 		return event

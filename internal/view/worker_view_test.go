@@ -5,7 +5,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/atterpac/jig/theme"
 	"github.com/galaxy-io/tempo/internal/temporal"
 )
 
@@ -18,8 +17,12 @@ func TestWorkerViewMockTree(t *testing.T) {
 	if len(wv.rows) != 5 || !wv.rows[0].IsHost || wv.rows[1].IsHost {
 		t.Fatalf("tree: %+v", wv.rows)
 	}
-	if !strings.Contains(formatWorkerHostPreview(wv.groups[0]), "host-001") {
-		t.Fatal("host preview should include the hostname")
+	rows := workerHostInfoRows(time.Now(), wv.groups[0])
+	if infoRowValue(rows, "host") != "host-001" {
+		t.Fatalf("host detail should name the host: %+v", rows)
+	}
+	if infoRowValue(rows, "instances") != "2" {
+		t.Fatalf("host detail should count instances: %+v", rows)
 	}
 }
 
@@ -81,59 +84,54 @@ func TestWorkerMatches(t *testing.T) {
 	}
 }
 
-func TestFormatWorkerInstancePreview(t *testing.T) {
-	text := formatWorkerInstancePreview(temporal.Worker{
+// infoRowValue returns the value of a detail row by key.
+func infoRowValue(rows []workflowInfoRow, key string) string {
+	if idx := workflowInfoRowIndex(rows, key); idx >= 0 {
+		return rows[idx].displayText()
+	}
+	return ""
+}
+
+func TestWorkerInfoRows(t *testing.T) {
+	rows := workerInfoRows(time.Now(), temporal.Worker{
 		InstanceKey: "inst-1", Identity: "worker-1", Host: "host-a", ProcessID: "4122",
 		TaskQueue: "orders", Status: temporal.WorkerStatusRunning,
 		BuildID: "build-9", StartTime: time.Now().Add(-time.Hour), LastHeartbeat: time.Now(),
 		HasHostInfo: true, CPU: 0.2, Memory: 0.5,
 		WorkflowSlots: temporal.WorkerSlots{Used: 1, Available: 10, Processed: 4},
 	})
-	for _, want := range []string{"Instance", "worker-1", "host-a", "4122", "orders", "build-9", "Running", "20%", "50%"} {
-		if !strings.Contains(text, want) {
-			t.Fatalf("preview missing %q:\n%s", want, text)
+	want := map[string]string{
+		"instance":       "inst-1",
+		"identity":       "worker-1",
+		"host":           "host-a",
+		"pid":            "4122",
+		"taskqueue":      "orders",
+		"buildid":        "build-9",
+		"status":         "Running",
+		"cpu":            "20%",
+		"memory":         "50%",
+		"slots-workflow": "1 / 10  processed 4  failed 0",
+		"slots-activity": "-",
+	}
+	for key, value := range want {
+		if got := infoRowValue(rows, key); got != value {
+			t.Fatalf("row %q: got %q want %q", key, got, value)
 		}
+	}
+	if got := infoRowValue(rows, "cpu"); strings.ContainsAny(got, "\u2588\u2591") {
+		t.Fatalf("the columns and detail table should stay numeric: %q", got)
 	}
 }
 
-// meterCells strips the color tags and percentage from a meter, leaving the bar.
-func meterCells(meter string) string {
-	var b strings.Builder
-	for _, r := range meter {
-		if r == '█' || r == '░' {
-			b.WriteRune(r)
-		}
+func TestWorkerPollersValue(t *testing.T) {
+	if got := workerPollersValue(temporal.WorkerPollers{}); got != "-" {
+		t.Fatalf("empty: %q", got)
 	}
-	return b.String()
-}
-
-func TestFormatWorkerMeter(t *testing.T) {
-	if half := formatWorkerMeter(0.5, 4); meterCells(half) != "██░░" || !strings.Contains(half, "50%") {
-		t.Fatalf("half meter: %q", half)
+	if got := workerPollersValue(temporal.WorkerPollers{Current: 2, Autoscaling: true}); got != "2  autoscaling" {
+		t.Fatalf("autoscaling: %q", got)
 	}
-	if empty := formatWorkerMeter(0, 4); meterCells(empty) != "░░░░" {
-		t.Fatalf("empty meter: %q", empty)
-	}
-	if tiny := formatWorkerMeter(0.01, 4); meterCells(tiny) != "█░░░" {
-		t.Fatalf("a live worker should keep at least one filled cell: %q", tiny)
-	}
-	if full := formatWorkerMeter(1.5, 4); meterCells(full) != "████" || !strings.Contains(full, "100%") {
-		t.Fatalf("meter should clamp at full: %q", full)
-	}
-	if !strings.Contains(formatWorkerMeter(0.9, 4), theme.TagError()) {
-		t.Fatal("high utilization should use the error color")
-	}
-	if !strings.Contains(formatWorkerMeter(0.7, 4), theme.TagWarning()) {
-		t.Fatal("elevated utilization should use the warning color")
-	}
-	if !strings.Contains(formatWorkerMeter(0.2, 4), theme.TagSuccess()) {
-		t.Fatal("low utilization should use the success color")
-	}
-	if got := formatWorkerResource(temporal.Worker{}, 4); got != "-" {
-		t.Fatalf("no host info: %q", got)
-	}
-	if got := formatWorkerMemory(temporal.Worker{}, 4); got != "-" {
-		t.Fatalf("no host info: %q", got)
+	if got := workerPollersValue(temporal.WorkerPollers{Current: 3}); got != "3  manual" {
+		t.Fatalf("manual: %q", got)
 	}
 }
 
