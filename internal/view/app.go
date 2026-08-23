@@ -749,7 +749,7 @@ func (a *App) showHelp() {
 		a.closeHelp()
 	})
 
-	a.app.Pages().Push(helpModal)
+	a.PushModal(helpModal)
 	a.app.SetFocus(helpModal)
 }
 
@@ -790,7 +790,7 @@ func (a *App) showHintSheet() {
 	sheet := components.NewBottomSheet(components.BottomSheetConfig{
 		Title:    "Keybindings",
 		Height:   sheetHeight,
-		Backdrop: true,
+		Backdrop: false,
 	})
 
 	sheet.SetContent(grid)
@@ -811,7 +811,7 @@ func (a *App) showHintSheet() {
 		return event
 	})
 
-	a.app.Pages().Push(sheet)
+	a.PushModal(sheet)
 	a.app.SetFocus(sheet)
 }
 
@@ -1121,8 +1121,7 @@ func (a *App) showThemeSelector() {
 		return event
 	})
 
-	// Use AddPage with explicit name so global InputCapture knows to skip Escape handling
-	a.app.Pages().Push(modal)
+	a.PushModal(modal)
 	a.app.SetFocus(list)
 }
 
@@ -1169,7 +1168,7 @@ func (a *App) ShowProfileSelector() {
 		a.closeProfileSelector()
 	})
 
-	a.app.Pages().Push(modal)
+	a.PushModal(modal)
 	a.app.SetFocus(modal)
 }
 
@@ -1201,7 +1200,7 @@ func (a *App) showProfileForm(editName string) {
 		a.closeProfileForm()
 	})
 
-	a.app.Pages().Push(form)
+	a.PushModal(form)
 	a.app.SetFocus(form)
 }
 
@@ -1618,7 +1617,7 @@ func (a *App) showCommandConfirm(name string, cfg config.CommandConfig, expanded
 		{Key: "Esc", Description: "Cancel"},
 	})
 
-	a.app.Pages().Push(modal)
+	a.PushModal(modal)
 	a.app.SetFocus(form)
 }
 

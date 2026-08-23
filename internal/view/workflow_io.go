@@ -221,6 +221,6 @@ func showWorkflowIO(app *App, background tview.Primitive, workflowType, input, o
 
 	inputView.SetInputCapture(inputHandler)
 	outputView.SetInputCapture(inputHandler)
-	app.JigApp().Pages().Push(modal)
+	app.PushModal(modal)
 	app.JigApp().SetFocus(inputView)
 }

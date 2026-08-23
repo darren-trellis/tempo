@@ -19,8 +19,10 @@ func (m *resizableModal) toggleMaximize() {
 }
 
 func (m *resizableModal) Draw(screen tcell.Screen) {
+	m.drawBackground(screen)
 	if !m.maximized {
-		m.shadowedModal.Draw(screen)
+		m.Modal.Draw(screen)
+		drawModalShadow(screen, m.GetPanel())
 		return
 	}
 	x, y, w, h := m.GetRect()

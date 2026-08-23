@@ -8,6 +8,26 @@ import (
 	"github.com/rivo/tview"
 )
 
+func TestShadowedModalDrawsBackground(t *testing.T) {
+	bg := tview.NewTextView().SetText("KEEP")
+	modal := newModal(components.ModalConfig{Title: "Profile", Width: 20, Height: 8})
+	modal.setModalBackground(bg)
+	modal.SetContent(tview.NewBox())
+	modal.SetRect(0, 0, 80, 24)
+
+	screen := tcell.NewSimulationScreen("UTF-8")
+	if err := screen.Init(); err != nil {
+		t.Fatal(err)
+	}
+	screen.SetSize(80, 24)
+	modal.Draw(screen)
+
+	r, _, _, _ := screen.GetContent(0, 0)
+	if r != 'K' {
+		t.Fatalf("profile-style modal should keep the view behind it, got %q", string(r))
+	}
+}
+
 func TestOverlayModalDrawsBackground(t *testing.T) {
 	bg := tview.NewTextView().SetText("KEEP")
 	modal := newOverlayModal(components.ModalConfig{

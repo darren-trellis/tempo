@@ -517,7 +517,7 @@ func (nl *NamespaceList) showSignalWithStart(namespace string) {
 		{Key: "Esc", Description: "Cancel"},
 	})
 
-	nl.app.JigApp().Pages().Push(modal)
+	nl.app.PushModal(modal)
 	nl.app.JigApp().SetFocus(form)
 }
 
@@ -614,7 +614,7 @@ func (nl *NamespaceList) showCreateNamespaceForm() {
 		{Key: "Esc", Description: "Cancel"},
 	})
 
-	nl.app.JigApp().Pages().Push(modal)
+	nl.app.PushModal(modal)
 	nl.app.JigApp().SetFocus(form)
 }
 
@@ -730,7 +730,7 @@ func (nl *NamespaceList) showEditFormWithData(name, description, ownerEmail, ret
 		{Key: "Esc", Description: "Cancel"},
 	})
 
-	nl.app.JigApp().Pages().Push(modal)
+	nl.app.PushModal(modal)
 	nl.app.JigApp().SetFocus(form)
 }
 
@@ -831,7 +831,7 @@ func (nl *NamespaceList) showDeprecateConfirm() {
 		{Key: "Esc", Description: "Cancel"},
 	})
 
-	nl.app.JigApp().Pages().Push(modal)
+	nl.app.PushModal(modal)
 	nl.app.JigApp().SetFocus(form)
 }
 
@@ -936,7 +936,7 @@ Deleting a namespace will permanently remove:
 		{Key: "Esc", Description: "Cancel"},
 	})
 
-	nl.app.JigApp().Pages().Push(modal)
+	nl.app.PushModal(modal)
 	nl.app.JigApp().SetFocus(form)
 }
 

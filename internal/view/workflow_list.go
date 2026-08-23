@@ -84,6 +84,12 @@ type WorkflowList struct {
 	keepDataOnStart     bool
 }
 
+func (wl *WorkflowList) HoldStartData() {
+	if wl != nil {
+		wl.keepDataOnStart = true
+	}
+}
+
 // NewWorkflowList creates a new workflow list view.
 func NewWorkflowList(app *App, namespace string) *WorkflowList {
 	wl := &WorkflowList{

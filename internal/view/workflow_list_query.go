@@ -52,7 +52,7 @@ func (wl *WorkflowList) showVisibilityQuery() {
 		{Key: "Esc", Description: "Cancel"},
 	})
 
-	wl.app.JigApp().Pages().Push(modal)
+	wl.app.PushModal(modal)
 	wl.app.JigApp().SetFocus(form)
 }
 
@@ -134,7 +134,7 @@ func (wl *WorkflowList) showQueryTemplates() {
 		wl.closeModal()
 	})
 
-	wl.app.JigApp().Pages().Push(modal)
+	wl.app.PushModal(modal)
 	wl.app.JigApp().SetFocus(table)
 }
 
@@ -173,7 +173,7 @@ func (wl *WorkflowList) showDateRangePicker() {
 		{Key: "Esc", Description: "Cancel"},
 	})
 
-	wl.app.JigApp().Pages().Push(modal)
+	wl.app.PushModal(modal)
 	wl.app.JigApp().SetFocus(form)
 }
 
@@ -248,7 +248,7 @@ func (wl *WorkflowList) showSavedFilters() {
 		wl.closeModal()
 	})
 
-	wl.app.JigApp().Pages().Push(modal)
+	wl.app.PushModal(modal)
 	wl.app.JigApp().SetFocus(table)
 }
 
@@ -278,7 +278,7 @@ Your queries will be saved here.[-]`,
 		wl.closeModal()
 	})
 
-	wl.app.JigApp().Pages().Push(modal)
+	wl.app.PushModal(modal)
 	wl.app.JigApp().SetFocus(modal)
 }
 
@@ -323,7 +323,7 @@ func (wl *WorkflowList) showSaveFilter() {
 		{Key: "Esc", Description: "Cancel"},
 	})
 
-	wl.app.JigApp().Pages().Push(modal)
+	wl.app.PushModal(modal)
 	wl.app.JigApp().SetFocus(form)
 }
 

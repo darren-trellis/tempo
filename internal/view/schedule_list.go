@@ -524,7 +524,7 @@ func (sl *ScheduleList) showPauseConfirm() {
 		{Key: "Esc", Description: "Cancel"},
 	})
 
-	sl.app.JigApp().Pages().Push(modal)
+	sl.app.PushModal(modal)
 	sl.app.JigApp().SetFocus(form)
 }
 
@@ -571,7 +571,7 @@ func (sl *ScheduleList) showUnpauseConfirm(s *temporal.Schedule) {
 		{Key: "Esc", Description: "Cancel"},
 	})
 
-	sl.app.JigApp().Pages().Push(modal)
+	sl.app.PushModal(modal)
 	sl.app.JigApp().SetFocus(form)
 }
 
@@ -658,7 +658,7 @@ func (sl *ScheduleList) showTriggerConfirm() {
 		sl.closeModal()
 	})
 
-	sl.app.JigApp().Pages().Push(modal)
+	sl.app.PushModal(modal)
 }
 
 func (sl *ScheduleList) executeTriggerSchedule(scheduleID string) {
@@ -737,7 +737,7 @@ This action cannot be undone.[-]
 		{Key: "Esc", Description: "Cancel"},
 	})
 
-	sl.app.JigApp().Pages().Push(modal)
+	sl.app.PushModal(modal)
 	sl.app.JigApp().SetFocus(form)
 }
 

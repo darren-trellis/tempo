@@ -92,7 +92,7 @@ func (wl *WorkflowList) showBatchCancelConfirm() {
 		{Key: "Esc", Description: "Cancel"},
 	})
 
-	wl.app.JigApp().Pages().Push(modal)
+	wl.app.PushModal(modal)
 	wl.app.JigApp().SetFocus(form)
 }
 
@@ -196,7 +196,7 @@ func (wl *WorkflowList) showBatchTerminateConfirm() {
 		{Key: "Esc", Description: "Cancel"},
 	})
 
-	wl.app.JigApp().Pages().Push(modal)
+	wl.app.PushModal(modal)
 	wl.app.JigApp().SetFocus(form)
 }
 

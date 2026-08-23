@@ -267,7 +267,7 @@ func (wd *WorkflowDiff) promptWorkflowInput(isLeft bool) {
 		{Key: "Esc", Description: "Cancel"},
 	})
 
-	wd.app.JigApp().Pages().Push(modal)
+	wd.app.PushModal(modal)
 	wd.app.JigApp().SetFocus(form)
 }
 

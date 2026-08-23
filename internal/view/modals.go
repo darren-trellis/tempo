@@ -771,7 +771,7 @@ func ShowErrorModal(app *layout.App, title, message string) {
 	modal.SetOnClose(func() {
 		app.Pages().DismissModal()
 	})
-	app.Pages().Push(modal)
+	pushOverlayModal(app.Pages(), modal)
 	app.SetFocus(modal)
 }
 
@@ -781,7 +781,7 @@ func ShowInfoModal(app *layout.App, title, message string) {
 	modal.SetOnClose(func() {
 		app.Pages().DismissModal()
 	})
-	app.Pages().Push(modal)
+	pushOverlayModal(app.Pages(), modal)
 	app.SetFocus(modal)
 }
 

@@ -392,7 +392,7 @@ func (nd *NamespaceDetail) showEditForm() {
 		{Key: "Esc", Description: "Cancel"},
 	})
 
-	nd.app.JigApp().Pages().Push(modal)
+	nd.app.PushModal(modal)
 	nd.app.JigApp().SetFocus(form)
 }
 
@@ -437,7 +437,7 @@ func (nd *NamespaceDetail) showUpdateConfirm(req temporal.NamespaceUpdateRequest
 		nd.closeModal()
 	})
 
-	nd.app.JigApp().Pages().Push(modal)
+	nd.app.PushModal(modal)
 }
 
 func (nd *NamespaceDetail) executeUpdate(req temporal.NamespaceUpdateRequest) {
@@ -518,7 +518,7 @@ func (nd *NamespaceDetail) showDeprecateConfirm() {
 		{Key: "Esc", Description: "Cancel"},
 	})
 
-	nd.app.JigApp().Pages().Push(modal)
+	nd.app.PushModal(modal)
 	nd.app.JigApp().SetFocus(form)
 }
 

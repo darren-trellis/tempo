@@ -975,7 +975,7 @@ func (eh *EventHistory) showDetailModal() {
 		return event
 	})
 
-	eh.app.JigApp().Pages().Push(modal)
+	eh.app.PushModal(modal)
 	eh.app.JigApp().SetFocus(textView)
 }
 

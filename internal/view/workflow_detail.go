@@ -878,7 +878,7 @@ func (wd *WorkflowDetail) showCancelConfirm() {
 		{Key: "Esc", Description: "Cancel"},
 	})
 
-	wd.app.JigApp().Pages().Push(modal)
+	wd.app.PushModal(modal)
 	wd.app.JigApp().SetFocus(form)
 }
 
@@ -951,7 +951,7 @@ func (wd *WorkflowDetail) showTerminateConfirm() {
 		{Key: "Esc", Description: "Cancel"},
 	})
 
-	wd.app.JigApp().Pages().Push(modal)
+	wd.app.PushModal(modal)
 	wd.app.JigApp().SetFocus(form)
 }
 
@@ -1038,7 +1038,7 @@ This action cannot be undone.[-]
 		{Key: "Esc", Description: "Cancel"},
 	})
 
-	wd.app.JigApp().Pages().Push(modal)
+	wd.app.PushModal(modal)
 	wd.app.JigApp().SetFocus(form)
 }
 
@@ -1103,7 +1103,7 @@ func (wd *WorkflowDetail) showSignalInput() {
 		{Key: "Esc", Description: "Cancel"},
 	})
 
-	wd.app.JigApp().Pages().Push(modal)
+	wd.app.PushModal(modal)
 	wd.app.JigApp().SetFocus(form)
 }
 
@@ -1175,7 +1175,7 @@ func (wd *WorkflowDetail) showResetSelector() {
 	loadingText.SetBackgroundColor(theme.Bg())
 	loadingText.SetText(fmt.Sprintf("[%s]Fetching reset points...[-]", theme.TagFgDim()))
 	loadingModal.SetContent(loadingText)
-	wd.app.JigApp().Pages().Push(loadingModal)
+	wd.app.PushModal(loadingModal)
 
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -1249,7 +1249,7 @@ func (wd *WorkflowDetail) showQuickResetModal(failurePoint temporal.ResetPoint, 
 		{Key: "Esc", Description: "Cancel"},
 	})
 
-	wd.app.JigApp().Pages().Push(modal)
+	wd.app.PushModal(modal)
 	wd.app.JigApp().SetFocus(form)
 }
 
@@ -1306,7 +1306,7 @@ func (wd *WorkflowDetail) showResetPicker(resetPoints []temporal.ResetPoint) {
 		wd.closeModal()
 	})
 
-	wd.app.JigApp().Pages().Push(modal)
+	wd.app.PushModal(modal)
 	wd.app.JigApp().SetFocus(table)
 }
 
@@ -1359,7 +1359,7 @@ func (wd *WorkflowDetail) showResetConfirm(resetPoint temporal.ResetPoint) {
 		{Key: "Esc", Description: "Cancel"},
 	})
 
-	wd.app.JigApp().Pages().Push(modal)
+	wd.app.PushModal(modal)
 	wd.app.JigApp().SetFocus(form)
 }
 
@@ -1419,7 +1419,7 @@ func (wd *WorkflowDetail) showResetError(message string) {
 		wd.closeModal()
 	})
 
-	wd.app.JigApp().Pages().Push(modal)
+	wd.app.PushModal(modal)
 }
 
 func (wd *WorkflowDetail) closeModal() {
@@ -1466,7 +1466,7 @@ func (wd *WorkflowDetail) showQueryInput() {
 		{Key: "Esc", Description: "Cancel"},
 	})
 
-	wd.app.JigApp().Pages().Push(modal)
+	wd.app.PushModal(modal)
 	wd.app.JigApp().SetFocus(form)
 }
 
@@ -1572,7 +1572,7 @@ func (wd *WorkflowDetail) showQueryResult(queryType, result string) {
 		wd.closeModal()
 	})
 
-	wd.app.JigApp().Pages().Push(modal)
+	wd.app.PushModal(modal)
 	wd.app.JigApp().SetFocus(resultView)
 }
 
@@ -1602,7 +1602,7 @@ func (wd *WorkflowDetail) showQueryError(queryType, errMsg string) {
 		wd.closeModal()
 	})
 
-	wd.app.JigApp().Pages().Push(modal)
+	wd.app.PushModal(modal)
 }
 
 // getSelectedEventDetails returns the details for the currently selected event.
@@ -1777,7 +1777,7 @@ func (wd *WorkflowDetail) showEventDetailModal() {
 		return event
 	})
 
-	wd.app.JigApp().Pages().Push(modal)
+	wd.app.PushModal(modal)
 	wd.app.JigApp().SetFocus(detailView)
 }
 

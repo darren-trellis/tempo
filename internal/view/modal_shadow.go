@@ -4,6 +4,7 @@ import (
 	"github.com/atterpac/jig/components"
 	"github.com/atterpac/jig/theme"
 	"github.com/gdamore/tcell/v2"
+	"github.com/rivo/tview"
 )
 
 const (
@@ -13,13 +14,39 @@ const (
 
 type shadowedModal struct {
 	*components.Modal
+	background tview.Primitive
 }
 
 func newModal(cfg components.ModalConfig) *shadowedModal {
+	cfg.Backdrop = false
 	return &shadowedModal{Modal: components.NewModal(cfg)}
 }
 
+func (m *shadowedModal) setModalBackground(p tview.Primitive) {
+	if m == nil || p == nil || p == m {
+		return
+	}
+	m.background = p
+}
+
+func (m *shadowedModal) modalBackground() tview.Primitive {
+	if m == nil {
+		return nil
+	}
+	return m.background
+}
+
+func (m *shadowedModal) drawBackground(screen tcell.Screen) {
+	if m == nil || m.background == nil || screen == nil {
+		return
+	}
+	x, y, w, h := m.GetRect()
+	m.background.SetRect(x, y, w, h)
+	m.background.Draw(screen)
+}
+
 func (m *shadowedModal) Draw(screen tcell.Screen) {
+	m.drawBackground(screen)
 	m.Modal.Draw(screen)
 	drawModalShadow(screen, m.GetPanel())
 }

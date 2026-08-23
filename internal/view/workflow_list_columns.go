@@ -353,7 +353,7 @@ func (wl *WorkflowList) showColumnEditor() {
 		wl.closeModal()
 	})
 
-	wl.app.JigApp().Pages().Push(modal)
+	wl.app.PushModal(modal)
 	if wl.app.JigApp().Menu() != nil {
 		wl.app.JigApp().Menu().SetHints(hints)
 	}

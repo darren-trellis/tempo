@@ -592,7 +592,7 @@ func (da *DebugApp) showThemeSelector() {
 		da.app.Pages().DismissModal()
 	})
 
-	da.app.Pages().Push(modal)
+	pushOverlayModal(da.app.Pages(), modal)
 	da.app.SetFocus(list)
 
 	// Suppress unused variable warning

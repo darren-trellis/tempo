@@ -68,7 +68,7 @@ func showStartWorkflowModal(app *App, prefill startWorkflowPrefill) {
 		{Key: "Esc", Description: "Cancel"},
 	})
 
-	app.JigApp().Pages().Push(modal)
+	app.PushModal(modal)
 	app.JigApp().SetFocus(form)
 }
 
