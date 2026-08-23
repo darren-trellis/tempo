@@ -178,7 +178,7 @@ func (wl *WorkflowList) showColumnEditor() {
 			header, _ := workflowColumnHeader(item.id)
 			visible := "yes"
 			if item.hidden {
-				visible = "hidden"
+				visible = "no"
 			}
 			if item.hidden {
 				table.AddRowWithColor(theme.FgDim(), header, strconv.Itoa(item.width), visible)
@@ -272,23 +272,23 @@ func (wl *WorkflowList) showColumnEditor() {
 			return true
 		}).
 		OnRune('+', func(e *tcell.EventKey) bool {
-			resize(2)
+			resize(1)
 			return true
 		}).
 		OnRune('=', func(e *tcell.EventKey) bool {
-			resize(2)
+			resize(1)
 			return true
 		}).
 		OnRune('-', func(e *tcell.EventKey) bool {
-			resize(-2)
+			resize(-1)
 			return true
 		}).
 		OnRune('h', func(e *tcell.EventKey) bool {
-			resize(-2)
+			resize(-1)
 			return true
 		}).
 		OnRune('l', func(e *tcell.EventKey) bool {
-			resize(2)
+			resize(1)
 			return true
 		}).
 		OnRune(' ', func(e *tcell.EventKey) bool {
@@ -308,11 +308,11 @@ func (wl *WorkflowList) showColumnEditor() {
 			return nil
 		}
 		if event.Key() == tcell.KeyLeft {
-			resize(-2)
+			resize(-1)
 			return nil
 		}
 		if event.Key() == tcell.KeyRight {
-			resize(2)
+			resize(1)
 			return nil
 		}
 		if bindings.Handle(event) {
