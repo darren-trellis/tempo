@@ -1911,10 +1911,9 @@ func (wd *WorkflowDetail) showIOModal() {
 		return
 	}
 
-	// Create modal - use percentage-based sizing for larger display
-	modal := components.NewModal(components.ModalConfig{
+	modal := newResizableModal(components.ModalConfig{
 		Title:     fmt.Sprintf("%s Input/Output: %s", theme.IconWorkflow, truncateStr(wd.workflow.Type, 30)),
-		Width:     0, // 0 means use percentage
+		Width:     0,
 		Height:    0,
 		MinWidth:  120,
 		MinHeight: 35,
@@ -1957,12 +1956,20 @@ func (wd *WorkflowDetail) showIOModal() {
 	flex.SetBackgroundColor(theme.Bg())
 
 	modal.SetContent(flex)
-	modal.SetHints([]components.KeyHint{
-		{Key: "tab/h/l", Description: "Switch"},
-		{Key: "j/k", Description: "Scroll"},
-		{Key: "y", Description: "Copy"},
-		{Key: "esc", Description: "Close"},
-	})
+	applyIOHints := func() {
+		maxHint := "Maximize"
+		if modal.maximized {
+			maxHint = "Restore"
+		}
+		modal.SetHints([]components.KeyHint{
+			{Key: "tab/h/l", Description: "Switch"},
+			{Key: "j/k", Description: "Scroll"},
+			{Key: "m", Description: maxHint},
+			{Key: "y", Description: "Copy"},
+			{Key: "esc", Description: "Close"},
+		})
+	}
+	applyIOHints()
 	modal.SetOnCancel(func() {
 		wd.closeIOModal()
 	})
@@ -2057,6 +2064,10 @@ func (wd *WorkflowDetail) showIOModal() {
 				} else {
 					outputView.ScrollToEnd()
 				}
+				return nil
+			case 'm':
+				modal.toggleMaximize()
+				applyIOHints()
 				return nil
 			case 'y':
 				// Copy the content of the focused pane
