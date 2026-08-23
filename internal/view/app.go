@@ -446,10 +446,15 @@ func (a *App) NavigateToEvents(workflowID, runID string) {
 	a.app.Pages().Push(ev)
 }
 
-// NavigateToTaskQueues pushes the task queue view.
+// NavigateToTaskQueues opens the task queues tab on the workflows view.
 func (a *App) NavigateToTaskQueues() {
-	tq := NewTaskQueueView(a)
-	a.app.Pages().Push(tq)
+	if current, ok := a.app.Pages().Current().(*WorkflowList); ok {
+		current.setListKind(listTaskQueues)
+		return
+	}
+	wl := NewWorkflowList(a, a.CurrentNamespace())
+	a.app.Pages().Push(wl)
+	wl.setListKind(listTaskQueues)
 }
 
 // NavigateToSchedules pushes the schedule list view.

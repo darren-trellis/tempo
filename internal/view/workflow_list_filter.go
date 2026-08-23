@@ -175,7 +175,7 @@ func (wl *WorkflowList) searchServer(searchTerm string) {
 // updateFilterTitle updates the panel title with filter info and hint.
 func (wl *WorkflowList) updateFilterTitle(filter, hint string) {
 	if filter == "" {
-		wl.SetMasterTitle(fmt.Sprintf("%s Workflows", theme.IconWorkflow))
+		wl.updatePanelTitle()
 		wl.app.SetFilterSuggestion("")
 		return
 	}

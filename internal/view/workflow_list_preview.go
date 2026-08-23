@@ -190,6 +190,13 @@ func (wl *WorkflowList) MouseHandler() func(tview.MouseAction, *tcell.EventMouse
 			}
 		}
 
+		if kind, ok := wl.listTabAt(x, y); ok {
+			if action == tview.MouseLeftDown || action == tview.MouseLeftClick {
+				wl.setListKind(kind)
+				return true, nil
+			}
+		}
+
 		if kind, ok := wl.previewTabAt(x, y); ok {
 			if action == tview.MouseLeftDown || action == tview.MouseLeftClick {
 				wl.setPreviewKind(kind)
@@ -208,6 +215,9 @@ func (wl *WorkflowList) MouseHandler() func(tview.MouseAction, *tcell.EventMouse
 
 		consumed, capture := wl.Flex.MouseHandler()(action, event, setFocus)
 		if action == tview.MouseLeftDoubleClick && consumed {
+			if _, ok := wl.listTabAt(x, y); ok {
+				return consumed, capture
+			}
 			if pane, ok := wl.paneAt(x, y); ok && pane == focusWorkflows {
 				wl.activateSelectedWorkflow()
 			}
@@ -221,6 +231,16 @@ func (wl *WorkflowList) previewModeEnabled() bool {
 }
 
 func (wl *WorkflowList) applyPreviewLayout() {
+	if wl.taskQueuesActive() {
+		wl.applyMainLayout()
+		if wl.app != nil && wl.app.JigApp() != nil {
+			wl.setFocusPane(focusWorkflows)
+			return
+		}
+		wl.applyFocusStyles()
+		return
+	}
+
 	on := wl.previewModeEnabled()
 	if !on {
 		if wl.previewTimer != nil {
@@ -546,7 +566,11 @@ func (wl *WorkflowList) setFocusPane(pane workflowFocusPane) {
 	case focusTimeline:
 		wl.app.JigApp().SetFocus(wl.timelineView)
 	default:
-		wl.app.JigApp().SetFocus(wl.table)
+		if wl.taskQueuesActive() && wl.taskQueues != nil {
+			wl.app.JigApp().SetFocus(wl.taskQueues)
+		} else {
+			wl.app.JigApp().SetFocus(wl.table)
+		}
 	}
 	wl.applyFocusStyles()
 	wl.app.JigApp().Menu().SetHints(wl.Hints())
@@ -587,6 +611,8 @@ func (wl *WorkflowList) syncFocusFromPrimitives() {
 		pane = focusEvents
 	case wl.timelineView != nil && wl.timelineView.HasFocus():
 		pane = focusTimeline
+	case wl.taskQueues != nil && wl.taskQueues.HasFocus():
+		pane = focusWorkflows
 	case wl.table != nil && wl.table.HasFocus():
 		pane = focusWorkflows
 	default:

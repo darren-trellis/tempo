@@ -21,7 +21,7 @@ func (wl *WorkflowList) toggleSelectionMode() {
 	} else {
 		wl.table.SetMultiSelect(false)
 		wl.table.ClearSelection()
-		wl.SetMasterTitle(fmt.Sprintf("%s Workflows", theme.IconWorkflow))
+		wl.updatePanelTitle()
 	}
 	wl.app.JigApp().Menu().SetHints(wl.Hints())
 }

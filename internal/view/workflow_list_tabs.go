@@ -1,0 +1,146 @@
+package view
+
+import (
+	"strings"
+
+	"github.com/atterpac/jig/components"
+	"github.com/atterpac/jig/theme"
+	"github.com/gdamore/tcell/v2"
+)
+
+type listKind int
+
+const (
+	listWorkflows listKind = iota
+	listTaskQueues
+)
+
+func workflowTabName(title string) string {
+	title = strings.TrimSpace(title)
+	if icon := theme.IconWorkflow; icon != "" && strings.HasPrefix(title, icon) {
+		return strings.TrimSpace(strings.TrimPrefix(title, icon))
+	}
+	return title
+}
+
+func (wl *WorkflowList) setupListTabs() {
+	wl.ensureTaskQueues()
+	wl.listTabs = components.NewTabs().
+		SetShowIcons(true).
+		SetShowBadges(false).
+		AddTabWithIcon("Workflows (List)", theme.IconWorkflow, wl.tableScroll).
+		AddTabWithIcon("Task Queues", theme.IconTaskQueue, wl.taskQueues).
+		SetOnChange(func(index int, name string) {
+			if index == int(listTaskQueues) {
+				wl.setListKind(listTaskQueues)
+				return
+			}
+			wl.setListKind(listWorkflows)
+		})
+	wl.listTabs.SetActive(int(listWorkflows))
+	wl.workflowTab = wl.listTabs.GetActiveTab()
+	wl.workflowsPanel.SetContent(wl.listTabs)
+}
+
+func (wl *WorkflowList) ensureTaskQueues() {
+	if wl.taskQueues != nil {
+		if wl.taskQueuesActive() {
+			wl.taskQueues.Start()
+		}
+		return
+	}
+	wl.taskQueues = NewTaskQueueView(wl.app)
+	if wl.taskQueuesActive() {
+		wl.taskQueues.Start()
+	}
+}
+
+func (wl *WorkflowList) taskQueuesActive() bool {
+	return wl != nil && wl.listKind == listTaskQueues
+}
+
+func (wl *WorkflowList) setListKind(kind listKind) {
+	if kind != listWorkflows && kind != listTaskQueues {
+		return
+	}
+	changing := wl.listKind != kind
+	wl.listKind = kind
+	if wl.listTabs != nil && wl.listTabs.GetActive() != int(kind) {
+		wl.listTabs.SetActive(int(kind))
+	}
+	if !changing {
+		return
+	}
+	if kind == listTaskQueues {
+		wl.ensureTaskQueues()
+		wl.focusPane = focusWorkflows
+	}
+	if wl.app != nil && wl.app.JigApp() != nil {
+		wl.app.updateCrumbs()
+	}
+	wl.applyPreviewLayout()
+}
+
+func (wl *WorkflowList) cycleListKind(delta int) {
+	next := (int(wl.listKind) + delta) % 2
+	if next < 0 {
+		next += 2
+	}
+	wl.setListKind(listKind(next))
+}
+
+func (wl *WorkflowList) handleListTabKey(event *tcell.EventKey) bool {
+	if event == nil {
+		return false
+	}
+	if wl.previewModeEnabled() && !wl.taskQueuesActive() {
+		return false
+	}
+	switch event.Rune() {
+	case '[':
+		wl.cycleListKind(-1)
+		return true
+	case ']':
+		wl.cycleListKind(1)
+		return true
+	case '1':
+		wl.setListKind(listWorkflows)
+		return true
+	case '2':
+		wl.setListKind(listTaskQueues)
+		return true
+	}
+	return false
+}
+
+func listTabWidth(name, icon string) int {
+	width := 2 + len(name)
+	if icon != "" {
+		width += len(icon) + 1
+	}
+	return width
+}
+
+func (wl *WorkflowList) listTabAt(x, y int) (listKind, bool) {
+	if wl == nil || wl.listTabs == nil {
+		return 0, false
+	}
+	tx, ty, tw, _ := wl.listTabs.GetInnerRect()
+	if tw <= 0 || y != ty || x < tx || x >= tx+tw {
+		return 0, false
+	}
+	names := [2]string{"Workflows (List)", "Task Queues"}
+	if wl.workflowTab != nil && wl.workflowTab.Name != "" {
+		names[0] = wl.workflowTab.Name
+	}
+	icons := [2]string{theme.IconWorkflow, theme.IconTaskQueue}
+	col := tx
+	for i, name := range names {
+		width := listTabWidth(name, icons[i])
+		if x >= col && x < col+width {
+			return listKind(i), true
+		}
+		col += width + 1
+	}
+	return 0, false
+}

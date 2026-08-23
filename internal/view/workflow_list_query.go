@@ -335,13 +335,12 @@ func (wl *WorkflowList) clearVisibilityQuery() {
 }
 
 func (wl *WorkflowList) updatePanelTitle() {
-	title := fmt.Sprintf("%s Workflows", theme.IconWorkflow)
+	title := fmt.Sprintf("%s Workflows (List)", theme.IconWorkflow)
 	if wl.visibilityQuery != "" {
 		q := wl.visibilityQuery
 		if len(q) > 40 {
 			q = q[:37] + "..."
 		}
-		// Panel doesn't parse tview color codes, use plain text
 		title = fmt.Sprintf("%s Workflows (%s)", theme.IconWorkflow, q)
 	} else if wl.filterText != "" {
 		title = fmt.Sprintf("%s Workflows (/%s)", theme.IconWorkflow, wl.filterText)

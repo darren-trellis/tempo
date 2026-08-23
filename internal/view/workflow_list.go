@@ -1,7 +1,6 @@
 package view
 
 import (
-	"fmt"
 	"time"
 
 	"github.com/atterpac/jig/components"
@@ -29,6 +28,10 @@ type WorkflowList struct {
 	namespace             string
 	table                 *components.Table
 	tableScroll           *charScrollView
+	listTabs              *components.Tabs
+	workflowTab           *components.Tab
+	taskQueues            *TaskQueueView
+	listKind              listKind
 	workflowsPanel        *components.Panel
 	previewPanel          *components.Panel
 	previewTabs           *components.Tabs
@@ -148,13 +151,14 @@ func (wl *WorkflowList) setup() {
 	})
 	wl.setupPreview()
 
-	wl.workflowsPanel = components.NewPanel().SetTitle(fmt.Sprintf("%s Workflows", theme.IconWorkflow))
-	wl.workflowsPanel.SetContent(wl.tableScroll)
+	wl.workflowsPanel = components.NewPanel()
+	wl.setupListTabs()
+	wl.updatePanelTitle()
 
 	wl.applyPreviewLayout()
 
 	emptyInputCapture := func(event *tcell.EventKey) *tcell.EventKey {
-		if wl.handlePreviewTabKey(event) {
+		if wl.handleListTabKey(event) || wl.handlePreviewTabKey(event) {
 			return nil
 		}
 		switch event.Rune() {
@@ -163,9 +167,6 @@ func (wl *WorkflowList) setup() {
 			return nil
 		case 'r':
 			wl.loadData()
-			return nil
-		case 't':
-			wl.app.NavigateToTaskQueues()
 			return nil
 		case 's':
 			wl.app.NavigateToSchedules()
@@ -235,29 +236,41 @@ func (wl *WorkflowList) RefreshTheme() {
 	if wl.timelineView != nil {
 		wl.timelineView.SetBackgroundColor(bg)
 	}
+	if wl.taskQueues != nil {
+		wl.taskQueues.RefreshTheme()
+	}
 	wl.populateTable()
 	wl.applyFocusStyles()
 }
 
 func (wl *WorkflowList) SetMasterTitle(title string) {
-	if wl.workflowsPanel != nil {
+	name := workflowTabName(title)
+	if wl.workflowTab != nil {
+		wl.workflowTab.Name = name
+	}
+	if wl.workflowsPanel != nil && wl.listTabs == nil {
 		wl.workflowsPanel.SetTitle(title)
 	}
 }
 
 func (wl *WorkflowList) SetMasterContent(content tview.Primitive) {
-	if wl.workflowsPanel == nil {
-		return
-	}
 	if content == wl.table && wl.tableScroll != nil {
-		wl.workflowsPanel.SetContent(wl.tableScroll)
+		content = wl.tableScroll
+	}
+	if wl.workflowTab != nil {
+		wl.workflowTab.Content = content
 		return
 	}
-	wl.workflowsPanel.SetContent(content)
+	if wl.workflowsPanel != nil {
+		wl.workflowsPanel.SetContent(content)
+	}
 }
 
 // Name returns the view name.
 func (wl *WorkflowList) Name() string {
+	if wl.taskQueuesActive() {
+		return "task-queues"
+	}
 	return "workflows"
 }
 
@@ -286,10 +299,6 @@ func (wl *WorkflowList) Start() {
 		}).
 		OnRune('D', func(e *tcell.EventKey) bool {
 			wl.showDateRangePicker()
-			return true
-		}).
-		OnRune('t', func(e *tcell.EventKey) bool {
-			wl.app.NavigateToTaskQueues()
 			return true
 		}).
 		OnRune('s', func(e *tcell.EventKey) bool {
@@ -412,7 +421,7 @@ func (wl *WorkflowList) Start() {
 		})
 
 	wl.table.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
-		if wl.handlePreviewTabKey(event) {
+		if wl.handleListTabKey(event) || wl.handlePreviewTabKey(event) {
 			return nil
 		}
 		if wl.handleWorkflowScroll(event) {
@@ -424,6 +433,9 @@ func (wl *WorkflowList) Start() {
 		return event
 	})
 
+	if wl.taskQueuesActive() {
+		wl.ensureTaskQueues()
+	}
 	if wl.keepDataOnStart {
 		wl.keepDataOnStart = false
 		return
@@ -467,11 +479,26 @@ func (wl *WorkflowList) Stop() {
 		wl.previewTimer.Stop()
 	}
 	wl.stopAutoRefresh()
+	if wl.taskQueues != nil {
+		wl.taskQueues.Stop()
+	}
 	wl.app.ClearWorkflowStats()
 }
 
 // Hints returns keybinding hints for this view.
 func (wl *WorkflowList) Hints() []KeyHint {
+	if wl.taskQueuesActive() {
+		return []KeyHint{
+			{Key: "[/]/1-2", Description: "View"},
+			{Key: "/", Description: "Search"},
+			{Key: "r", Description: "Refresh"},
+			{Key: "tab", Description: "Switch Panel"},
+			{Key: "j/k", Description: "Navigate"},
+			{Key: "T", Description: "Theme"},
+			{Key: "esc", Description: "Workflows"},
+		}
+	}
+
 	if wl.selectionMode {
 		hints := []KeyHint{
 			{Key: "space", Description: "Select"},
@@ -530,6 +557,7 @@ func (wl *WorkflowList) Hints() []KeyHint {
 	hints := []KeyHint{
 		{Key: "enter", Description: "Detail"},
 		{Key: "p", Description: "Preview"},
+		{Key: "[/]/1-2", Description: "View"},
 	}
 	if wl.previewModeEnabled() {
 		hints = []KeyHint{
@@ -574,7 +602,6 @@ func (wl *WorkflowList) Hints() []KeyHint {
 		KeyHint{Key: "y", Description: "Copy ID"},
 		KeyHint{Key: "r", Description: "Refresh"},
 		KeyHint{Key: "a", Description: "Auto-refresh"},
-		KeyHint{Key: "t", Description: "Task Queues"},
 		KeyHint{Key: "s", Description: "Schedules"},
 		KeyHint{Key: "T", Description: "Theme"},
 		KeyHint{Key: "?", Description: "Help"},
@@ -585,6 +612,10 @@ func (wl *WorkflowList) Hints() []KeyHint {
 
 // HandleEscape implements EscapeHandler to clear filter state before navigation.
 func (wl *WorkflowList) HandleEscape() bool {
+	if wl.taskQueuesActive() {
+		wl.setListKind(listWorkflows)
+		return true
+	}
 	if wl.focusPane != focusWorkflows {
 		wl.setFocusPane(focusWorkflows)
 		return true
@@ -598,6 +629,10 @@ func (wl *WorkflowList) HandleEscape() bool {
 
 // Focus sets focus to the table.
 func (wl *WorkflowList) Focus(delegate func(p tview.Primitive)) {
+	if wl.taskQueuesActive() && wl.taskQueues != nil {
+		delegate(wl.taskQueues)
+		return
+	}
 	if len(wl.workflows) == 0 && len(wl.allWorkflows) == 0 {
 		delegate(wl.workflowsPanel)
 		return

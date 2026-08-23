@@ -140,6 +140,20 @@ func (wl *WorkflowList) timelineDocked() bool {
 }
 
 func (wl *WorkflowList) applyMainLayout() {
+	if wl.taskQueuesActive() {
+		if wl.mainFlex != nil {
+			wl.mainFlex.Clear()
+			if wl.workflowsPanel != nil {
+				wl.mainFlex.AddItem(wl.workflowsPanel, 0, 1, true)
+			}
+		}
+		wl.Clear()
+		if wl.mainFlex != nil {
+			wl.AddItem(wl.mainFlex, 0, 1, true)
+		}
+		return
+	}
+
 	on := wl.previewModeEnabled()
 	showTimeline := wl.timelineVisible && wl.timelinePanel != nil
 	docked := showTimeline && wl.timelineDocked()
