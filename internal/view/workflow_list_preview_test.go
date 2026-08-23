@@ -1,10 +1,6 @@
 package view
 
-import (
-	"testing"
-
-	"github.com/galaxy-io/tempo/internal/config"
-)
+import "testing"
 
 func TestNewWorkflowListDoesNotPanic(t *testing.T) {
 	defer func() {
@@ -16,27 +12,25 @@ func TestNewWorkflowListDoesNotPanic(t *testing.T) {
 }
 
 func TestPreviewModeLayout(t *testing.T) {
-	off := NewWorkflowList(&App{}, "default")
-	if off.GetItemCount() != 1 {
-		t.Fatalf("default layout should be workflows only, got %d items", off.GetItemCount())
+	wl := NewWorkflowList(&App{}, "default")
+	if wl.GetItemCount() != 1 {
+		t.Fatalf("default layout should be workflows only, got %d items", wl.GetItemCount())
 	}
-	if desc := hintDescription(off.Hints(), "enter"); desc != "Detail" {
+	if desc := hintDescription(wl.Hints(), "enter"); desc != "Detail" {
 		t.Fatalf("default enter hint: got %q", desc)
 	}
 
-	on := true
-	wl := NewWorkflowList(&App{config: &config.Config{PreviewMode: &on}}, "default")
+	wl.togglePreviewMode()
 	if wl.GetItemCount() != 2 {
-		t.Fatalf("preview mode should show events pane, got %d items", wl.GetItemCount())
+		t.Fatalf("preview should show events pane, got %d items", wl.GetItemCount())
 	}
 	if desc := hintDescription(wl.Hints(), "enter"); desc != "Events" {
 		t.Fatalf("preview enter hint: got %q", desc)
 	}
 
-	wl.app.config.SetPreviewMode(false)
-	wl.applyPreviewLayout()
+	wl.togglePreviewMode()
 	if wl.GetItemCount() != 1 {
-		t.Fatalf("disabling preview should hide events pane, got %d items", wl.GetItemCount())
+		t.Fatalf("hiding preview should show workflows only, got %d items", wl.GetItemCount())
 	}
 }
 

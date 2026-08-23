@@ -118,7 +118,6 @@ type Config struct {
 	HelpStyle        string                      `yaml:"help_style,omitempty"` // "modal" (default) or "sheet"
 	Commands         map[string]CommandConfig    `yaml:"commands,omitempty"`
 	WorkflowColumns  []WorkflowColumnConfig      `yaml:"workflow_columns,omitempty"`
-	PreviewMode      *bool                       `yaml:"preview_mode,omitempty"`
 }
 
 // IsExternalProfile returns true if the given profile name is an external
@@ -156,28 +155,6 @@ func (c *Config) ShouldAutoreload() bool {
 		return true
 	}
 	return *c.Autoreload
-}
-
-// ShouldPreviewMode returns whether the workflows list shows the events preview.
-// Defaults to false (Enter opens the details view).
-func (c *Config) ShouldPreviewMode() bool {
-	if c == nil || c.PreviewMode == nil {
-		return false
-	}
-	return *c.PreviewMode
-}
-
-// SetPreviewMode stores the workflows preview mode. The default (off) is omitted from yaml.
-func (c *Config) SetPreviewMode(on bool) {
-	if c == nil {
-		return
-	}
-	if !on {
-		c.PreviewMode = nil
-		return
-	}
-	enabled := true
-	c.PreviewMode = &enabled
 }
 
 // DefaultConfig returns a config with default values.

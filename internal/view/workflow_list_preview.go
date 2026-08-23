@@ -118,10 +118,7 @@ func (wl *WorkflowList) MouseHandler() func(tview.MouseAction, *tcell.EventMouse
 }
 
 func (wl *WorkflowList) previewModeEnabled() bool {
-	if wl.app == nil {
-		return false
-	}
-	return wl.app.Config().ShouldPreviewMode()
+	return wl != nil && wl.previewMode
 }
 
 func (wl *WorkflowList) applyPreviewLayout() {
@@ -160,25 +157,8 @@ func (wl *WorkflowList) applyPreviewLayout() {
 }
 
 func (wl *WorkflowList) togglePreviewMode() {
-	if wl.app == nil {
-		return
-	}
-	cfg := wl.app.Config()
-	if cfg == nil {
-		return
-	}
-	on := !cfg.ShouldPreviewMode()
-	cfg.SetPreviewMode(on)
-	if err := cfg.Save(); err != nil {
-		wl.app.ToastError("Failed to save preview mode: " + err.Error())
-		return
-	}
+	wl.previewMode = !wl.previewMode
 	wl.applyPreviewLayout()
-	if on {
-		wl.app.ToastSuccess("Preview mode on")
-		return
-	}
-	wl.app.ToastSuccess("Preview mode off")
 }
 
 func (wl *WorkflowList) setupPreview() {

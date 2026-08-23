@@ -38,6 +38,7 @@ type WorkflowList struct {
 	previewRunID      string
 	previewGen        uint64
 	previewTimer      *time.Timer
+	previewMode       bool
 	emptyState        *components.EmptyState
 	noResultsState    *components.EmptyState
 	allWorkflows      []temporal.Workflow // Full unfiltered list
