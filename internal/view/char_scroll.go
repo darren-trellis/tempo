@@ -39,7 +39,13 @@ func (v *charScrollView) Draw(screen tcell.Screen) {
 	if v.content == nil || w <= 0 || h <= 0 {
 		return
 	}
-	v.content.SetRect(x-v.offset, y, w+v.offset, h)
+	width := w
+	if v.contentWidth != nil {
+		if cw := v.contentWidth(); cw > width {
+			width = cw
+		}
+	}
+	v.content.SetRect(x-v.offset, y, width, h)
 	v.content.Draw(&clipScreen{Screen: screen, x: x, y: y, w: w, h: h})
 }
 

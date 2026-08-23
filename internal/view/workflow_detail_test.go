@@ -22,6 +22,32 @@ func TestFormatWorkflowInfoIncludesParent(t *testing.T) {
 	if !strings.Contains(got, "Parent") || !strings.Contains(got, parent) {
 		t.Fatalf("expected parent workflow id in details, got %q", got)
 	}
+	if !strings.Contains(got, "run-abcdefghijklmnopqrstuvwx") {
+		t.Fatalf("run id should not be truncated, got %q", got)
+	}
+}
+
+func TestWorkflowInfoRowsIncludeFullValues(t *testing.T) {
+	parent := "parent-workflow"
+	runID := "run-abcdefghijklmnopqrstuvwxyz-full"
+	rows := workflowInfoRows(time.Now(), temporal.Workflow{
+		ID:        "child-workflow",
+		RunID:     runID,
+		Type:      "ChildType",
+		Status:    "Running",
+		TaskQueue: "very-long-task-queue-name",
+		StartTime: time.Now(),
+		ParentID:  &parent,
+	})
+	if idx := workflowInfoRowIndex(rows, workflowInfoParent); idx < 0 || rows[idx].Value != parent {
+		t.Fatalf("parent row: %+v", rows)
+	}
+	if idx := workflowInfoRowIndex(rows, workflowInfoRunID); idx < 0 || rows[idx].Value != runID {
+		t.Fatalf("run id row: %+v", rows)
+	}
+	if got := workflowInfoContentWidth(rows); got < len("Task Queue")+1+len("very-long-task-queue-name") {
+		t.Fatalf("content width too small: %d", got)
+	}
 }
 
 func TestFormatWorkflowInfoOmitsMissingParent(t *testing.T) {

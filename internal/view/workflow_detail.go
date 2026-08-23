@@ -310,27 +310,104 @@ func (wd *WorkflowDetail) render() {
 	wd.workflowView.SetText(formatWorkflowInfo(*wd.workflow))
 }
 
-func formatWorkflowInfo(w temporal.Workflow) string {
-	now := time.Now()
+const (
+	workflowInfoID        = "ID"
+	workflowInfoParent    = "Parent"
+	workflowInfoType      = "Type"
+	workflowInfoStatus    = "Status"
+	workflowInfoStarted   = "Started"
+	workflowInfoDuration  = "Duration"
+	workflowInfoTaskQueue = "Task Queue"
+	workflowInfoRunID     = "Run ID"
+	workflowInfoLabelPad  = 13
+)
+
+type workflowInfoRow struct {
+	Key      string
+	Label    string
+	Value    string
+	Display  string
+	Color    tcell.Color
+	ColorTag string
+}
+
+func workflowInfoRows(now time.Time, w temporal.Workflow) []workflowInfoRow {
 	statusHandle := temporal.GetWorkflowStatus(w.Status)
 	durationStr := "In progress"
 	if w.EndTime != nil {
 		durationStr = w.EndTime.Sub(w.StartTime).Round(time.Second).String()
 	} else if w.Status == "Running" {
-		durationStr = time.Since(w.StartTime).Round(time.Second).String()
+		durationStr = now.Sub(w.StartTime).Round(time.Second).String()
 	}
 
-	var b strings.Builder
-	fmt.Fprintf(&b, "\n[%s::b]ID[-:-:-]           [%s]%s[-]\n", theme.TagFgDim(), theme.TagFg(), w.ID)
-	if w.ParentID != nil && *w.ParentID != "" {
-		fmt.Fprintf(&b, "[%s::b]Parent[-:-:-]       [%s]%s[-]\n", theme.TagFgDim(), theme.TagFg(), *w.ParentID)
+	rows := []workflowInfoRow{
+		{Key: workflowInfoID, Label: "ID", Value: w.ID, Color: theme.Fg(), ColorTag: theme.TagFg()},
 	}
-	fmt.Fprintf(&b, "[%s::b]Type[-:-:-]         [%s]%s[-]\n", theme.TagFgDim(), theme.TagFg(), w.Type)
-	fmt.Fprintf(&b, "[%s::b]Status[-:-:-]       [%s]%s %s[-]\n", theme.TagFgDim(), statusHandle.ColorTag(), statusHandle.Icon(), w.Status)
-	fmt.Fprintf(&b, "[%s::b]Started[-:-:-]      [%s]%s[-]\n", theme.TagFgDim(), theme.TagFg(), formatRelativeTime(now, w.StartTime))
-	fmt.Fprintf(&b, "[%s::b]Duration[-:-:-]     [%s]%s[-]\n", theme.TagFgDim(), theme.TagFg(), durationStr)
-	fmt.Fprintf(&b, "[%s::b]Task Queue[-:-:-]   [%s]%s[-]\n", theme.TagFgDim(), theme.TagFg(), w.TaskQueue)
-	fmt.Fprintf(&b, "[%s::b]Run ID[-:-:-]       [%s]%s[-]", theme.TagFgDim(), theme.TagFgDim(), truncateStr(w.RunID, 25))
+	if w.ParentID != nil && *w.ParentID != "" {
+		rows = append(rows, workflowInfoRow{
+			Key:      workflowInfoParent,
+			Label:    "Parent",
+			Value:    *w.ParentID,
+			Color:    theme.Fg(),
+			ColorTag: theme.TagFg(),
+		})
+	}
+	rows = append(rows,
+		workflowInfoRow{Key: workflowInfoType, Label: "Type", Value: w.Type, Color: theme.Fg(), ColorTag: theme.TagFg()},
+		workflowInfoRow{
+			Key:      workflowInfoStatus,
+			Label:    "Status",
+			Value:    w.Status,
+			Display:  statusHandle.Icon() + " " + w.Status,
+			Color:    statusHandle.Color(),
+			ColorTag: statusHandle.ColorTag(),
+		},
+		workflowInfoRow{Key: workflowInfoStarted, Label: "Started", Value: formatRelativeTime(now, w.StartTime), Color: theme.Fg(), ColorTag: theme.TagFg()},
+		workflowInfoRow{Key: workflowInfoDuration, Label: "Duration", Value: durationStr, Color: theme.Fg(), ColorTag: theme.TagFg()},
+		workflowInfoRow{Key: workflowInfoTaskQueue, Label: "Task Queue", Value: w.TaskQueue, Color: theme.Fg(), ColorTag: theme.TagFg()},
+		workflowInfoRow{Key: workflowInfoRunID, Label: "Run ID", Value: w.RunID, Color: theme.FgDim(), ColorTag: theme.TagFgDim()},
+	)
+	return rows
+}
+
+func (r workflowInfoRow) displayText() string {
+	if r.Display != "" {
+		return r.Display
+	}
+	return r.Value
+}
+
+func workflowInfoContentWidth(rows []workflowInfoRow) int {
+	labelWidth := 0
+	valueWidth := 0
+	for _, row := range rows {
+		if n := len(row.Label); n > labelWidth {
+			labelWidth = n
+		}
+		if n := len(row.displayText()); n > valueWidth {
+			valueWidth = n
+		}
+	}
+	if labelWidth == 0 && valueWidth == 0 {
+		return 0
+	}
+	return labelWidth + 1 + valueWidth
+}
+
+func formatWorkflowInfo(w temporal.Workflow) string {
+	rows := workflowInfoRows(time.Now(), w)
+	var b strings.Builder
+	b.WriteByte('\n')
+	for i, row := range rows {
+		label := row.Label
+		if len(label) < workflowInfoLabelPad {
+			label += strings.Repeat(" ", workflowInfoLabelPad-len(label))
+		}
+		fmt.Fprintf(&b, "[%s::b]%s[-:-:-] [%s]%s[-]", theme.TagFgDim(), label, row.ColorTag, row.displayText())
+		if i < len(rows)-1 {
+			b.WriteByte('\n')
+		}
+	}
 	return b.String()
 }
 

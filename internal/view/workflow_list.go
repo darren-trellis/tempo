@@ -40,7 +40,9 @@ type WorkflowList struct {
 	eventDetail           *tview.TextView
 	eventDetailPanel      *components.Panel
 	eventsPanel           *components.Panel
-	workflowDetail        *tview.TextView
+	workflowDetail        *components.Table
+	workflowDetailScroll  *charScrollView
+	previewDetailRows     []workflowInfoRow
 	timelineView          *TimelineView
 	timelinePanel         *timelineFrame
 	timelineVisible       bool
@@ -228,7 +230,6 @@ func (wl *WorkflowList) RefreshTheme() {
 	}
 	if wl.workflowDetail != nil {
 		wl.workflowDetail.SetBackgroundColor(bg)
-		wl.workflowDetail.SetTextColor(theme.Fg())
 	}
 	if wl.previewPanel != nil {
 		wl.previewPanel.SetBackgroundColor(bg)
@@ -530,6 +531,26 @@ func (wl *WorkflowList) Hints() []KeyHint {
 				{Key: "esc", Description: "Workflows"},
 			}
 		case focusEventDetail:
+			if wl.previewKind == previewDetails {
+				hints := []KeyHint{
+					{Key: "j/k", Description: "Select"},
+					{Key: "h/l", Description: "Scroll"},
+					{Key: "y", Description: "Yank"},
+				}
+				if wl.selectedPreviewDetailRowIs(workflowInfoParent) {
+					hints = append(hints, KeyHint{Key: "enter", Description: "Parent"})
+				}
+				hints = append(hints,
+					KeyHint{Key: "tab", Description: "Workflows"},
+					KeyHint{Key: "[/]/1-3", Description: "View"},
+					KeyHint{Key: "i", Description: "Input/Output"},
+					KeyHint{Key: "z", Description: "Timeline"},
+					KeyHint{Key: "b", Description: treeModeHint(wl.workflowTreeMode)},
+					KeyHint{Key: "p", Description: "Preview"},
+					KeyHint{Key: "esc", Description: "Workflows"},
+				)
+				return hints
+			}
 			return []KeyHint{
 				{Key: "j/k", Description: "Scroll"},
 				{Key: "tab", Description: "Workflows"},

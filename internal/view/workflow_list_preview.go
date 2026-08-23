@@ -158,6 +158,9 @@ func (wl *WorkflowList) paneAt(x, y int) (workflowFocusPane, bool) {
 			return focusWorkflows, false
 		}
 		if wl.previewKind == previewDetails {
+			if wl.workflowDetailScroll != nil && wl.workflowDetailScroll.InRect(x, y) {
+				return focusEventDetail, true
+			}
 			if wl.workflowDetail != nil && wl.workflowDetail.InRect(x, y) {
 				return focusEventDetail, true
 			}
@@ -399,18 +402,26 @@ func (wl *WorkflowList) setupPreview() {
 	wl.eventDetailPanel = components.NewPanel().SetTitle(fmt.Sprintf("%s Activity Details", theme.IconActivity))
 	wl.eventDetailPanel.SetContent(wl.eventDetail)
 
-	wl.workflowDetail = tview.NewTextView().
-		SetDynamicColors(true).
-		SetTextAlign(tview.AlignLeft).
-		SetWordWrap(true).
-		SetScrollable(true)
+	wl.workflowDetail = components.NewTable()
+	wl.workflowDetail.SetBorder(false)
 	wl.workflowDetail.SetBackgroundColor(theme.Bg())
-	wl.workflowDetail.SetTextColor(theme.Fg())
+	wl.workflowDetail.SetEvaluateAllRows(true)
+	wl.workflowDetailScroll = newCharScrollView(wl.workflowDetail, func() int {
+		return workflowInfoContentWidth(wl.previewDetailRows)
+	})
+	bindTableCharScroll(wl.workflowDetail, wl.workflowDetailScroll, func() int {
+		return mouseScrollStepFromApp(wl.app)
+	})
+	wl.workflowDetail.SetSelectionChangedFunc(func(row, col int) {
+		if wl.app != nil && wl.app.JigApp() != nil && wl.app.JigApp().Menu() != nil {
+			wl.app.JigApp().Menu().SetHints(wl.Hints())
+		}
+	})
 
 	wl.previewTabs = components.NewTabs().
 		SetShowIcons(true).
 		SetShowBadges(false).
-		AddTabWithIcon(previewDetails.title(), previewDetails.icon(), wl.workflowDetail).
+		AddTabWithIcon(previewDetails.title(), previewDetails.icon(), wl.workflowDetailScroll).
 		AddTabWithIcon(previewActivities.title(), previewActivities.icon(), wl.eventTable).
 		AddTabWithIcon(previewEvents.title(), previewEvents.icon(), wl.eventTable).
 		SetOnChange(func(index int, name string) {
@@ -435,7 +446,7 @@ func (wl *WorkflowList) setupPreview() {
 	})
 	wl.eventTable.SetInputCapture(wl.handlePreviewKeys)
 	wl.eventDetail.SetInputCapture(wl.capturePreviewTextView(wl.eventDetail))
-	wl.workflowDetail.SetInputCapture(wl.capturePreviewTextView(wl.workflowDetail))
+	wl.workflowDetail.SetInputCapture(wl.handlePreviewDetailKeys)
 	wl.previewTabs.SetInputCapture(wl.handlePreviewKeys)
 	wl.setupTimeline()
 }
@@ -598,6 +609,9 @@ func (wl *WorkflowList) applyFocusStyles() {
 	if wl.eventTable != nil {
 		wl.eventTable.SetSelectable(wl.focusPane == focusEvents, false)
 	}
+	if wl.workflowDetail != nil {
+		wl.workflowDetail.SetSelectable(wl.previewKind == previewDetails && wl.focusPane == focusEventDetail, false)
+	}
 }
 
 func (wl *WorkflowList) syncFocusFromPrimitives() {
@@ -686,18 +700,14 @@ func (wl *WorkflowList) clearPreview() {
 	if wl.eventDetail != nil {
 		wl.eventDetail.SetText(fmt.Sprintf("[%s]Select a workflow to load preview[-]", theme.TagFgDim()))
 	}
-	if wl.workflowDetail != nil {
-		wl.workflowDetail.SetText(fmt.Sprintf("[%s]Select a workflow to load preview[-]", theme.TagFgDim()))
-	}
+	wl.setPreviewDetailStatus("Select a workflow to load preview")
 	wl.syncPreviewChrome()
 }
 
 func (wl *WorkflowList) setPreviewStatus(message string) {
 	wl.syncPreviewChrome()
 	if wl.previewKind == previewDetails {
-		if wl.workflowDetail != nil {
-			wl.workflowDetail.SetText(fmt.Sprintf("[%s]%s[-]", theme.TagFgDim(), message))
-		}
+		wl.setPreviewDetailStatus(message)
 		return
 	}
 	wl.eventTable.ClearRows()
@@ -822,8 +832,26 @@ func (wl *WorkflowList) renderPreviewDetails(w temporal.Workflow) {
 	if wl.workflowDetail == nil {
 		return
 	}
-	wl.workflowDetail.SetText(formatWorkflowInfo(w))
-	wl.workflowDetail.ScrollToBeginning()
+	selectedKey := ""
+	if row, ok := wl.selectedPreviewDetailRow(); ok {
+		selectedKey = row.Key
+	}
+	wl.previewDetailRows = workflowInfoRows(time.Now(), w)
+	wl.workflowDetail.ClearRows()
+	for _, row := range wl.previewDetailRows {
+		wl.workflowDetail.AddStyledRow([]components.TableCell{
+			{Text: row.Label, Color: theme.FgDim(), Selectable: true},
+			{Text: row.displayText(), Color: row.Color, Selectable: true},
+		})
+	}
+	if idx := workflowInfoRowIndex(wl.previewDetailRows, selectedKey); idx >= 0 {
+		wl.workflowDetail.SelectRow(idx)
+	} else if len(wl.previewDetailRows) > 0 {
+		wl.workflowDetail.SelectRow(0)
+	}
+	if wl.workflowDetailScroll != nil {
+		wl.workflowDetailScroll.clamp()
+	}
 }
 
 func (wl *WorkflowList) renderPreviewEvents(w temporal.Workflow) {
