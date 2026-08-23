@@ -62,6 +62,8 @@ func (wl *WorkflowList) loadData() {
 			sort.Slice(workflows, func(i, j int) bool {
 				return workflows[i].StartTime.After(workflows[j].StartTime)
 			})
+			wl.previewWorkflowID = ""
+			wl.previewRunID = ""
 			wl.allWorkflows = workflows
 			wl.applyFilter()
 			// Set focus to table after data loads
@@ -117,6 +119,7 @@ func (wl *WorkflowList) populateTable() {
 		} else {
 			wl.SetMasterContent(wl.noResultsState)
 		}
+		wl.clearPreview()
 		return
 	}
 
@@ -134,8 +137,10 @@ func (wl *WorkflowList) populateTable() {
 	if wl.table.RowCount() > 0 {
 		if currentRow >= 0 && currentRow < len(wl.workflows) {
 			wl.table.SelectRow(currentRow)
+			wl.schedulePreview(wl.workflows[currentRow], false)
 		} else {
 			wl.table.SelectRow(0)
+			wl.schedulePreview(wl.workflows[0], false)
 		}
 	}
 }

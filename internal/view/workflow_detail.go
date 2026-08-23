@@ -355,32 +355,7 @@ func (wd *WorkflowDetail) render() {
 }
 
 func (wd *WorkflowDetail) updateEventDetail(ev temporal.EnhancedHistoryEvent) {
-	icon := eventIcon(ev.Type)
-	colorTag := eventColorTag(ev.Type)
-
-	// Parse and format the details string
-	formattedDetails := formatEventDetails(ev.Details)
-
-	// Build name line if applicable
-	var nameLine string
-	name := getEventNameDetail(&ev)
-	if name != "" {
-		nameLine = fmt.Sprintf("\n[%s::b]Name[-:-:-]         [%s]%s[-]", theme.TagFgDim(), theme.TagFg(), name)
-	}
-
-	detailText := fmt.Sprintf(`
-[%s::b]Event ID[-:-:-]     [%s]%d[-]
-[%s::b]Type[-:-:-]         [%s]%s %s[-]%s
-[%s::b]Time[-:-:-]         [%s]%s[-]
-
-%s%s`,
-		theme.TagFgDim(), theme.TagFg(), ev.ID,
-		theme.TagFgDim(), colorTag, icon, ev.Type, nameLine,
-		theme.TagFgDim(), theme.TagFg(), ev.Time.Format("2006-01-02 15:04:05.000"),
-		formattedDetails,
-		formatFailureSidePanel(&ev),
-	)
-	wd.eventDetailView.SetText(detailText)
+	wd.eventDetailView.SetText(formatSelectedEventDetail(ev))
 }
 
 // formatEventDetails parses event details and formats them with pretty JSON.

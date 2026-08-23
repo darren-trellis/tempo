@@ -15,23 +15,33 @@ import (
 // WorkflowList displays a list of workflows.
 type WorkflowList struct {
 	*components.MasterDetailView
-	app             *App
-	namespace       string
-	table           *components.Table
-	emptyState      *components.EmptyState
-	noResultsState  *components.EmptyState
-	allWorkflows    []temporal.Workflow // Full unfiltered list
-	workflows       []temporal.Workflow // Filtered list for display
-	filterText      string
-	visibilityQuery string // Temporal visibility query
-	loading         bool
-	autoRefresh     bool
-	refreshTicker   *time.Ticker
-	stopRefresh     chan struct{}
-	selectionMode   bool     // Multi-select mode active
-	searchHistory   []string // History of visibility queries
-	historyIndex    int      // Current position in history (-1 = not browsing)
-	maxHistorySize  int      // Maximum number of history entries
+	app               *App
+	namespace         string
+	table             *components.Table
+	preview           *tview.Flex
+	eventTable        *components.Table
+	eventDetail       *tview.TextView
+	eventsPanel       *components.Panel
+	eventDetailPanel  *components.Panel
+	previewEvents     []temporal.EnhancedHistoryEvent
+	previewWorkflowID string
+	previewRunID      string
+	previewGen        uint64
+	previewTimer      *time.Timer
+	emptyState        *components.EmptyState
+	noResultsState    *components.EmptyState
+	allWorkflows      []temporal.Workflow // Full unfiltered list
+	workflows         []temporal.Workflow // Filtered list for display
+	filterText        string
+	visibilityQuery   string // Temporal visibility query
+	loading           bool
+	autoRefresh       bool
+	refreshTicker     *time.Ticker
+	stopRefresh       chan struct{}
+	selectionMode     bool     // Multi-select mode active
+	searchHistory     []string // History of visibility queries
+	historyIndex      int      // Current position in history (-1 = not browsing)
+	maxHistorySize    int      // Maximum number of history entries
 	// Server-side completion support
 	serverCompletions   []string            // Cached completions from server query
 	lastCompletionQuery string              // Last query sent to server (to avoid duplicates)
@@ -93,6 +103,7 @@ func (wl *WorkflowList) setup() {
 	wl.table.SetBorder(false)
 	wl.table.SetBackgroundColor(theme.Bg())
 	applyWorkflowColumnHeaders(wl.table, wl.columnLayout())
+	wl.setupPreview()
 
 	emptyInputCapture := func(event *tcell.EventKey) *tcell.EventKey {
 		switch event.Rune() {
@@ -132,21 +143,33 @@ func (wl *WorkflowList) setup() {
 
 	wl.MasterDetailView = components.NewMasterDetailView().
 		SetMasterTitle(fmt.Sprintf("%s Workflows", theme.IconWorkflow)).
+		SetDetailTitle(fmt.Sprintf("%s Events", theme.IconEvent)).
 		SetMasterContent(wl.table).
-		HideDetail()
+		SetDetailContent(wl.preview).
+		SetRatio(0.55)
 
-	// Selection handler for drill-down
+	wl.table.SetSelectionChangedFunc(func(row, col int) {
+		if row > 0 && row-1 < len(wl.workflows) {
+			wl.schedulePreview(wl.workflows[row-1], false)
+		}
+	})
+
 	wl.table.SetOnSelect(func(row int) {
 		if row >= 0 && row < len(wl.workflows) {
-			wf := wl.workflows[row]
-			wl.app.NavigateToWorkflowDetail(wf.ID, wf.RunID)
+			wl.schedulePreview(wl.workflows[row], false)
+			wl.focusPreview()
 		}
 	})
 }
 
 // RefreshTheme updates all component colors after a theme change.
 func (wl *WorkflowList) RefreshTheme() {
-	wl.table.SetBackgroundColor(theme.Bg())
+	bg := theme.Bg()
+	wl.table.SetBackgroundColor(bg)
+	wl.eventTable.SetBackgroundColor(bg)
+	wl.eventDetail.SetBackgroundColor(bg)
+	wl.eventDetail.SetTextColor(theme.Fg())
+	wl.preview.SetBackgroundColor(bg)
 	wl.populateTable()
 }
 
@@ -265,6 +288,19 @@ func (wl *WorkflowList) Start() {
 		OnRune('|', func(e *tcell.EventKey) bool {
 			wl.showColumnEditor()
 			return true
+		}).
+		OnRune('e', func(e *tcell.EventKey) bool {
+			row := wl.table.SelectedRow()
+			if row >= 0 && row < len(wl.workflows) {
+				wf := wl.workflows[row]
+				wl.app.NavigateToEvents(wf.ID, wf.RunID)
+				return true
+			}
+			return false
+		}).
+		On(tcell.KeyTab, func(e *tcell.EventKey) bool {
+			wl.focusPreview()
+			return true
 		})
 
 	wl.table.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
@@ -280,6 +316,9 @@ func (wl *WorkflowList) Start() {
 // Stop is called when the view is deactivated.
 func (wl *WorkflowList) Stop() {
 	wl.table.SetInputCapture(nil)
+	if wl.previewTimer != nil {
+		wl.previewTimer.Stop()
+	}
 	wl.stopAutoRefresh()
 	wl.app.ClearWorkflowStats()
 }
@@ -302,8 +341,19 @@ func (wl *WorkflowList) Hints() []KeyHint {
 		return hints
 	}
 
+	if !wl.IsMasterFocused() {
+		return []KeyHint{
+			{Key: "j/k", Description: "Events"},
+			{Key: "tab", Description: "Workflows"},
+			{Key: "e", Description: "Event Graph"},
+			{Key: "esc", Description: "Workflows"},
+		}
+	}
+
 	hints := []KeyHint{
-		{Key: "enter", Description: "Detail"},
+		{Key: "enter", Description: "Events"},
+		{Key: "tab", Description: "Events"},
+		{Key: "e", Description: "Event Graph"},
 		{Key: "h/l", Description: "Scroll"},
 		{Key: "|", Description: "Columns"},
 		{Key: "/", Description: "Filter"},
@@ -338,6 +388,10 @@ func (wl *WorkflowList) Hints() []KeyHint {
 
 // HandleEscape implements EscapeHandler to clear filter state before navigation.
 func (wl *WorkflowList) HandleEscape() bool {
+	if !wl.IsMasterFocused() {
+		wl.focusWorkflowTable()
+		return true
+	}
 	if wl.filterText != "" || wl.visibilityQuery != "" || wl.originalWorkflows != nil {
 		wl.clearAllFilters()
 		return true
@@ -356,5 +410,10 @@ func (wl *WorkflowList) Focus(delegate func(p tview.Primitive)) {
 
 // Draw draws the workflow list.
 func (wl *WorkflowList) Draw(screen tcell.Screen) {
+	bg := theme.Bg()
+	wl.preview.SetBackgroundColor(bg)
+	wl.eventTable.SetBackgroundColor(bg)
+	wl.eventDetail.SetBackgroundColor(bg)
+	wl.eventDetail.SetTextColor(theme.Fg())
 	wl.MasterDetailView.Draw(screen)
 }
