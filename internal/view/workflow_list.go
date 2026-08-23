@@ -176,16 +176,7 @@ func (wl *WorkflowList) setup() {
 	})
 
 	wl.table.SetOnSelect(func(row int) {
-		if row < 0 || row >= len(wl.workflows) {
-			return
-		}
-		wf := wl.workflows[row]
-		if wl.previewModeEnabled() {
-			wl.schedulePreview(wf, false)
-			wl.setFocusPane(focusEvents)
-			return
-		}
-		wl.app.NavigateToWorkflowDetail(wf.ID, wf.RunID)
+		wl.activateSelectedWorkflow()
 	})
 }
 

@@ -38,6 +38,63 @@ func formatSelectedEventDetail(ev temporal.EnhancedHistoryEvent) string {
 	)
 }
 
+func (wl *WorkflowList) activateSelectedWorkflow() {
+	row := wl.table.SelectedRow()
+	if row < 0 || row >= len(wl.workflows) {
+		return
+	}
+	wf := wl.workflows[row]
+	if wl.previewModeEnabled() {
+		wl.schedulePreview(wf, false)
+		wl.setFocusPane(focusEvents)
+		return
+	}
+	if wl.app != nil {
+		wl.app.NavigateToWorkflowDetail(wf.ID, wf.RunID)
+	}
+}
+
+func (wl *WorkflowList) paneAt(x, y int) (workflowFocusPane, bool) {
+	if wl.previewModeEnabled() {
+		if wl.eventDetailPanel != nil && wl.eventDetailPanel.InRect(x, y) {
+			return focusEventDetail, true
+		}
+		if wl.eventsPanel != nil && wl.eventsPanel.InRect(x, y) {
+			return focusEvents, true
+		}
+	}
+	if wl.workflowsPanel != nil && wl.workflowsPanel.InRect(x, y) {
+		return focusWorkflows, true
+	}
+	return focusWorkflows, false
+}
+
+func (wl *WorkflowList) MouseHandler() func(tview.MouseAction, *tcell.EventMouse, func(tview.Primitive)) (bool, tview.Primitive) {
+	return wl.WrapMouseHandler(func(action tview.MouseAction, event *tcell.EventMouse, setFocus func(tview.Primitive)) (bool, tview.Primitive) {
+		x, y := event.Position()
+		if !wl.InRect(x, y) {
+			return false, nil
+		}
+
+		if pane, ok := wl.paneAt(x, y); ok {
+			switch action {
+			case tview.MouseLeftDown, tview.MouseLeftClick:
+				if pane != wl.focusPane {
+					wl.setFocusPane(pane)
+				}
+			}
+		}
+
+		consumed, capture := wl.Flex.MouseHandler()(action, event, setFocus)
+		if action == tview.MouseLeftDoubleClick && consumed {
+			if pane, ok := wl.paneAt(x, y); ok && pane == focusWorkflows {
+				wl.activateSelectedWorkflow()
+			}
+		}
+		return consumed, capture
+	})
+}
+
 func (wl *WorkflowList) previewModeEnabled() bool {
 	if wl.app == nil {
 		return false

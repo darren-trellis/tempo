@@ -101,6 +101,7 @@ func (nl *NamespaceList) setup() {
 			nl.app.NavigateToWorkflows(nl.namespaces[row].Name)
 		}
 	})
+	bindTableDoubleClick(nl.table)
 }
 
 func (nl *NamespaceList) togglePreview() {

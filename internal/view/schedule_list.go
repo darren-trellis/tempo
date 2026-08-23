@@ -87,6 +87,7 @@ func (sl *ScheduleList) setup() {
 			sl.viewRecentRuns()
 		}
 	})
+	bindTableDoubleClick(sl.table)
 }
 
 func (sl *ScheduleList) togglePreview() {

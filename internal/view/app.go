@@ -110,8 +110,11 @@ func (a *App) buildApp() {
 		},
 	})
 
+	tviewApp := a.app.GetApplication()
+	enableAppMouse(tviewApp, a.menu, a.statusBar, a.app.Crumbs())
+
 	// Create toast manager for notifications
-	a.toasts = components.NewToastManager(a.app.GetApplication())
+	a.toasts = components.NewToastManager(tviewApp)
 	a.toasts.SetPosition(components.ToastBottomRight)
 
 	// Wire up toast rendering as an overlay
