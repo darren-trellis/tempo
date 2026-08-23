@@ -34,6 +34,20 @@ func TestSelectByScheduledID(t *testing.T) {
 	}
 }
 
+func TestTimelineFailedUsesStatusColor(t *testing.T) {
+	tv := NewTimelineView()
+	_, color := tv.barStyle("Failed")
+	if color != temporal.StatusFailed.Color() {
+		t.Fatalf("failed bar %v, status %v", color, temporal.StatusFailed.Color())
+	}
+	if timelineStatusColor("Failed") != temporal.StatusFailed.Color() {
+		t.Fatal("failed should use the same red as the rest of the app")
+	}
+	if timelineStatusColor("TimedOut") != temporal.StatusTimedOut.Color() {
+		t.Fatal("timed out should use the status color")
+	}
+}
+
 func TestTimelineBarName(t *testing.T) {
 	if got := timelineBarName(TimelineLane{Name: "Activity: ValidateOrder"}); got != "ValidateOrder" {
 		t.Fatalf("activity: %q", got)

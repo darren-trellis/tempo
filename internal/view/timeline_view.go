@@ -267,7 +267,7 @@ func (tv *TimelineView) drawLaneBar(screen tcell.Screen, x, y, width int, lane T
 	}
 
 	barChar, barColor := tv.barStyle(lane.Status)
-	barStyle := tcell.StyleDefault.Foreground(theme.Bg()).Background(barColor)
+	barStyle := tcell.StyleDefault.Foreground(barColor).Background(theme.Bg())
 	nameStyle := barStyle
 	if selected {
 		barStyle = tcell.StyleDefault.Foreground(theme.SelectionFg()).Background(theme.SelectionBg()).Bold(true)
@@ -289,17 +289,11 @@ func (tv *TimelineView) drawLaneBar(screen tcell.Screen, x, y, width int, lane T
 
 	for i := barStart; i < barEnd && i < width; i++ {
 		rel := i - barStart
-		ch := ' '
+		ch := barChar
 		style := barStyle
 		if len(name) > 0 && rel >= nameStart && rel-nameStart < len(name) {
 			ch = name[rel-nameStart]
 			style = nameStyle
-		} else if barWidth < 3 {
-			ch = barChar
-			style = tcell.StyleDefault.Foreground(barColor).Background(theme.Bg())
-			if selected {
-				style = style.Bold(true)
-			}
 		}
 		screen.SetContent(x+i, y, ch, nil, style)
 	}
@@ -463,9 +457,9 @@ func (tv *TimelineView) drawLegend(screen tcell.Screen, x, y, width int) {
 		status string
 		color  tcell.Color
 	}{
-		{'█', "Completed", theme.Success()},
-		{'▓', "Running", theme.Warning()},
-		{'░', "Failed", theme.Error()},
+		{'█', "Completed", temporal.StatusCompleted.Color()},
+		{'▓', "Running", temporal.StatusRunning.Color()},
+		{'█', "Failed", temporal.StatusFailed.Color()},
 		{'▒', "Pending", theme.FgDim()},
 	}
 
@@ -563,19 +557,25 @@ func (tv *TimelineView) drawLegend(screen tcell.Screen, x, y, width int) {
 
 // barStyle returns the bar character and color for a status.
 func (tv *TimelineView) barStyle(status string) (rune, tcell.Color) {
+	color := timelineStatusColor(status)
 	switch status {
 	case "Running":
-		return '▓', theme.Warning()
-	case "Completed", "Fired":
-		return '█', theme.Success()
-	case "Failed", "TimedOut":
-		return '░', theme.Error()
-	case "Canceled", "Terminated":
-		return '▒', theme.Warning()
-	case "Scheduled", "Initiated", "Pending":
-		return '▒', theme.FgDim()
+		return '▓', color
+	case "Completed", "Fired", "Failed", "TimedOut":
+		return '█', color
 	default:
-		return '▒', theme.Fg()
+		return '▒', color
+	}
+}
+
+func timelineStatusColor(status string) tcell.Color {
+	switch status {
+	case "Fired":
+		return temporal.StatusCompleted.Color()
+	case "Scheduled", "Initiated", "Pending":
+		return theme.FgDim()
+	default:
+		return temporal.GetWorkflowStatus(status).Color()
 	}
 }
 
