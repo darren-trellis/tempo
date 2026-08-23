@@ -43,6 +43,9 @@ func (wl *WorkflowList) selectedPreviewActivity() (previewActivity, bool) {
 		return previewActivity{}, false
 	}
 	row := wl.eventTable.SelectedRow()
+	if row < 0 && len(wl.previewActivities) > 0 {
+		row = 0
+	}
 	if row < 0 || row >= len(wl.previewActivities) {
 		return previewActivity{}, false
 	}
@@ -115,8 +118,13 @@ func (wl *WorkflowList) showPreviewIO() bool {
 		}
 		return true
 	}
+	restore := wl.focusPane
+	if wl.previewKind == previewActivities && restore == focusWorkflows {
+		restore = focusEvents
+	}
+	wl.keepDataOnStart = true
 	showWorkflowIO(wl.app, title, input, output, func() {
-		wl.setFocusPane(wl.focusPane)
+		wl.setFocusPane(restore)
 	})
 	return true
 }
@@ -506,7 +514,7 @@ func (wl *WorkflowList) applyFocusStyles() {
 }
 
 func (wl *WorkflowList) syncFocusFromPrimitives() {
-	pane := focusWorkflows
+	var pane workflowFocusPane
 	switch {
 	case wl.workflowDetail != nil && wl.workflowDetail.HasFocus():
 		pane = focusEventDetail
@@ -514,6 +522,11 @@ func (wl *WorkflowList) syncFocusFromPrimitives() {
 		pane = focusEventDetail
 	case wl.eventTable != nil && wl.eventTable.HasFocus():
 		pane = focusEvents
+	case wl.table != nil && wl.table.HasFocus():
+		pane = focusWorkflows
+	default:
+		wl.applyFocusStyles()
+		return
 	}
 	if pane != wl.focusPane {
 		wl.focusPane = pane

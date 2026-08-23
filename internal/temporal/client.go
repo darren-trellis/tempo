@@ -789,6 +789,9 @@ func extractEnhancedEvent(event *historypb.HistoryEvent) EnhancedHistoryEvent {
 			if attrs.GetTaskQueue() != nil {
 				he.TaskQueue = attrs.GetTaskQueue().GetName()
 			}
+			if attrs.GetInput() != nil {
+				he.Input = formatPayloads(attrs.GetInput())
+			}
 		}
 
 	case enums.EVENT_TYPE_ACTIVITY_TASK_STARTED:

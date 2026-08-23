@@ -73,6 +73,9 @@ func previewActivitiesFromEvents(events []temporal.EnhancedHistoryEvent) []previ
 				TaskQueue:   ev.TaskQueue,
 				Input:       ev.Input,
 			}
+			if a.Input == "" {
+				a.Input = detailField(ev.Details, "Input")
+			}
 			if a.Type == "" {
 				a.Type = getEventNameDetail(&ev)
 			}
@@ -93,6 +96,8 @@ func previewActivitiesFromEvents(events []temporal.EnhancedHistoryEvent) []previ
 				a.Status = "Completed"
 				if ev.Result != "" {
 					a.Result = ev.Result
+				} else if result := detailField(ev.Details, "Result"); result != "" {
+					a.Result = result
 				}
 				end := ev.Time
 				a.EndTime = &end
@@ -129,6 +134,20 @@ func previewActivitiesFromEvents(events []temporal.EnhancedHistoryEvent) []previ
 		out = append(out, *bySched[id])
 	}
 	return out
+}
+
+func detailField(details, key string) string {
+	prefix := key + ":"
+	for _, part := range splitPreservingJSONWorkflow(details) {
+		part = strings.TrimSpace(part)
+		if len(part) < len(prefix) {
+			continue
+		}
+		if strings.EqualFold(part[:len(prefix)], prefix) {
+			return strings.TrimSpace(part[len(prefix):])
+		}
+	}
+	return ""
 }
 
 func (a previewActivity) duration() string {

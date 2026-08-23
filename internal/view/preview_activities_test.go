@@ -12,7 +12,7 @@ func TestPreviewActivitiesFromEvents(t *testing.T) {
 	end := start.Add(2 * time.Second)
 	events := []temporal.EnhancedHistoryEvent{
 		{ID: 1, Type: "WorkflowExecutionStarted", Time: start},
-		{ID: 5, Type: "ActivityTaskScheduled", Time: start, ActivityType: "ValidateOrder", ActivityID: "1", TaskQueue: "orders", Input: `{"id":1}`},
+		{ID: 5, Type: "ActivityTaskScheduled", Time: start, ActivityType: "ValidateOrder", ActivityID: "1", TaskQueue: "orders", Details: `ActivityType: ValidateOrder, Input: {"id":1}`},
 		{ID: 6, Type: "ActivityTaskStarted", Time: start.Add(time.Second), ScheduledEventID: 5, Attempt: 1, Identity: "worker-1"},
 		{ID: 7, Type: "ActivityTaskCompleted", Time: end, ScheduledEventID: 5, Result: `{"ok":true}`},
 		{ID: 8, Type: "ActivityTaskScheduled", Time: start.Add(3 * time.Second), ActivityType: "Charge", ActivityID: "2"},
@@ -24,7 +24,7 @@ func TestPreviewActivitiesFromEvents(t *testing.T) {
 	if len(got) != 2 {
 		t.Fatalf("got %d activities", len(got))
 	}
-	if got[0].Type != "ValidateOrder" || got[0].Status != "Completed" || got[0].Result != `{"ok":true}` {
+	if got[0].Type != "ValidateOrder" || got[0].Status != "Completed" || got[0].Input != `{"id":1}` || got[0].Result != `{"ok":true}` {
 		t.Fatalf("first activity: %+v", got[0])
 	}
 	if got[0].Attempt != 1 || got[0].Identity != "worker-1" {
@@ -86,5 +86,15 @@ func TestPreviewTabHit(t *testing.T) {
 	eventsX := previewTabWidth(previewDetails) + 1 + previewTabWidth(previewActivities) + 2
 	if kind, ok := previewTabAtX(0, eventsX); !ok || kind != previewEvents {
 		t.Fatalf("events tab: kind=%d ok=%v", kind, ok)
+	}
+}
+
+func TestSyncFocusKeepsActivitiesPane(t *testing.T) {
+	wl := NewWorkflowList(&App{}, "default")
+	wl.previewMode = true
+	wl.focusPane = focusEvents
+	wl.syncFocusFromPrimitives()
+	if wl.focusPane != focusEvents {
+		t.Fatalf("focus should stay on activities, got %d", wl.focusPane)
 	}
 }

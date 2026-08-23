@@ -64,6 +64,7 @@ type WorkflowList struct {
 	lastCompletionQuery string              // Last query sent to server (to avoid duplicates)
 	originalWorkflows   []temporal.Workflow // Original workflows before server search
 	preloaded           bool                // True if workflows were provided at construction time
+	keepDataOnStart     bool
 }
 
 // NewWorkflowList creates a new workflow list view.
@@ -435,6 +436,10 @@ func (wl *WorkflowList) Start() {
 		return event
 	})
 
+	if wl.keepDataOnStart {
+		wl.keepDataOnStart = false
+		return
+	}
 	wl.loadData()
 }
 
