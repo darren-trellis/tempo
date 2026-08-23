@@ -23,6 +23,7 @@ type ScheduleList struct {
 	namespace    string
 	table        *components.Table
 	preview      *tview.TextView
+	previewPanel *components.Panel
 	allSchedules []temporal.Schedule // Full unfiltered list
 	schedules    []temporal.Schedule // Filtered list for display
 	loading      bool
@@ -55,6 +56,8 @@ func (sl *ScheduleList) setup() {
 	sl.preview.SetBackgroundColor(theme.Bg())
 	sl.preview.SetTextColor(theme.Fg())
 	sl.preview.SetWordWrap(true)
+	sl.previewPanel = components.NewPanel().SetTitle(fmt.Sprintf("%s Preview", theme.IconInfo))
+	sl.previewPanel.SetContent(sl.preview)
 
 	// Create MasterDetailView
 	sl.MasterDetailView = components.NewMasterDetailView().

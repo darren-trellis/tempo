@@ -205,9 +205,12 @@ func (wl *WorkflowList) paneAt(x, y int) (workflowFocusPane, bool) {
 	if wl.timelineVisible && wl.timelinePanel != nil && wl.timelinePanel.InRect(x, y) {
 		return focusTimeline, true
 	}
-	if wl.taskQueuesActive() {
-		if wl.pollersVisible && wl.taskQueues != nil && wl.taskQueues.pollerPanel != nil && wl.taskQueues.pollerPanel.InRect(x, y) {
+	if !wl.workflowsActive() {
+		if wl.taskQueuesActive() && wl.pollersVisible && wl.taskQueues != nil && wl.taskQueues.pollerPanel != nil && wl.taskQueues.pollerPanel.InRect(x, y) {
 			return focusPollers, true
+		}
+		if wl.schedulesActive() && wl.schedules != nil && wl.schedules.previewPanel != nil && wl.schedules.previewPanel.InRect(x, y) {
+			return focusScheduleDetail, true
 		}
 		if wl.workflowsPanel != nil && wl.workflowsPanel.InRect(x, y) {
 			return focusWorkflows, true
@@ -301,7 +304,7 @@ func (wl *WorkflowList) previewModeEnabled() bool {
 }
 
 func (wl *WorkflowList) applyPreviewLayout() {
-	if wl.taskQueuesActive() {
+	if !wl.workflowsActive() {
 		wl.applyMainLayout()
 		if wl.app != nil && wl.app.JigApp() != nil {
 			wl.setFocusPane(focusWorkflows)
@@ -360,7 +363,7 @@ func (wl *WorkflowList) cyclePreviewKind(delta int) {
 }
 
 func (wl *WorkflowList) handlePreviewTabKey(event *tcell.EventKey) bool {
-	if event == nil || !wl.previewModeEnabled() || wl.taskQueuesActive() {
+	if event == nil || !wl.previewModeEnabled() || !wl.workflowsActive() {
 		return false
 	}
 	if wl.focusPane == focusWorkflows || wl.focusPane == focusPollers {
@@ -637,6 +640,12 @@ func (wl *WorkflowList) previewFocusOrder() []workflowFocusPane {
 		}
 		return []workflowFocusPane{focusWorkflows}
 	}
+	if wl.schedulesActive() {
+		return []workflowFocusPane{focusWorkflows, focusScheduleDetail}
+	}
+	if wl.workersActive() {
+		return []workflowFocusPane{focusWorkflows}
+	}
 	order := []workflowFocusPane{focusWorkflows}
 	if wl.previewModeEnabled() {
 		if wl.previewShowsSidePane() || wl.previewKind == previewHierarchy {
@@ -684,6 +693,10 @@ func (wl *WorkflowList) setFocusPane(pane workflowFocusPane) {
 		if wl.taskQueues != nil {
 			wl.app.JigApp().SetFocus(wl.taskQueues.pollerTable)
 		}
+	case focusScheduleDetail:
+		if wl.schedules != nil {
+			wl.app.JigApp().SetFocus(wl.schedules.preview)
+		}
 	case focusEvents:
 		if wl.previewKind == previewHierarchy && wl.hierarchyView != nil && wl.hierarchyView.tree != nil {
 			wl.app.JigApp().SetFocus(wl.hierarchyView.tree)
@@ -703,6 +716,10 @@ func (wl *WorkflowList) setFocusPane(pane workflowFocusPane) {
 	default:
 		if wl.taskQueuesActive() && wl.taskQueues != nil {
 			wl.app.JigApp().SetFocus(wl.taskQueues.queueTable)
+		} else if wl.schedulesActive() && wl.schedules != nil {
+			wl.app.JigApp().SetFocus(wl.schedules.table)
+		} else if wl.workersActive() && wl.workers != nil {
+			wl.app.JigApp().SetFocus(wl.workers.table)
 		} else {
 			wl.app.JigApp().SetFocus(wl.table)
 		}
@@ -733,11 +750,20 @@ func (wl *WorkflowList) applyFocusStyles() {
 	if wl.taskQueues != nil && wl.taskQueues.pollerPanel != nil {
 		wl.taskQueues.pollerPanel.SetFocused(wl.focusPane == focusPollers)
 	}
+	if wl.schedules != nil && wl.schedules.previewPanel != nil {
+		wl.schedules.previewPanel.SetFocused(wl.focusPane == focusScheduleDetail)
+	}
 	if wl.taskQueues != nil && wl.taskQueues.queueTable != nil {
 		wl.taskQueues.queueTable.SetSelectable(wl.taskQueuesActive() && wl.focusPane == focusWorkflows, false)
 	}
 	if wl.taskQueues != nil && wl.taskQueues.pollerTable != nil {
 		wl.taskQueues.pollerTable.SetSelectable(wl.taskQueuesActive() && wl.focusPane == focusPollers, false)
+	}
+	if wl.schedules != nil && wl.schedules.table != nil {
+		wl.schedules.table.SetSelectable(wl.schedulesActive() && wl.focusPane == focusWorkflows, false)
+	}
+	if wl.workers != nil && wl.workers.table != nil {
+		wl.workers.table.SetSelectable(wl.workersActive() && wl.focusPane == focusWorkflows, false)
 	}
 	if wl.table != nil {
 		wl.table.SetSelectable(wl.focusPane == focusWorkflows, false)
@@ -767,9 +793,15 @@ func (wl *WorkflowList) syncFocusFromPrimitives() {
 		pane = focusTimeline
 	case wl.taskQueues != nil && wl.taskQueues.pollerTable != nil && wl.taskQueues.pollerTable.HasFocus():
 		pane = focusPollers
+	case wl.schedules != nil && wl.schedules.preview != nil && wl.schedules.preview.HasFocus():
+		pane = focusScheduleDetail
 	case wl.taskQueues != nil && wl.taskQueues.queueTable != nil && wl.taskQueues.queueTable.HasFocus():
 		pane = focusWorkflows
 	case wl.taskQueues != nil && wl.taskQueues.HasFocus():
+		pane = focusWorkflows
+	case wl.schedules != nil && wl.schedules.table != nil && wl.schedules.table.HasFocus():
+		pane = focusWorkflows
+	case wl.workers != nil && wl.workers.table != nil && wl.workers.table.HasFocus():
 		pane = focusWorkflows
 	case wl.table != nil && wl.table.HasFocus():
 		pane = focusWorkflows

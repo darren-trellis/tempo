@@ -19,6 +19,7 @@ const (
 	focusEventDetail
 	focusTimeline
 	focusPollers
+	focusScheduleDetail
 )
 
 // WorkflowList displays a list of workflows.
@@ -32,6 +33,8 @@ type WorkflowList struct {
 	listTabs              *components.Tabs
 	workflowTab           *components.Tab
 	taskQueues            *TaskQueueView
+	schedules             *ScheduleList
+	workers               *WorkerView
 	listKind              listKind
 	pollersVisible        bool
 	workflowsPanel        *components.Panel
@@ -206,6 +209,12 @@ func (wl *WorkflowList) RefreshTheme() {
 	if wl.taskQueues != nil {
 		wl.taskQueues.RefreshTheme()
 	}
+	if wl.schedules != nil {
+		wl.schedules.RefreshTheme()
+	}
+	if wl.workers != nil {
+		wl.workers.RefreshTheme()
+	}
 	if wl.hierarchyView != nil {
 		wl.hierarchyView.RefreshTheme()
 	}
@@ -238,10 +247,16 @@ func (wl *WorkflowList) SetMasterContent(content tview.Primitive) {
 
 // Name returns the view name.
 func (wl *WorkflowList) Name() string {
-	if wl.taskQueuesActive() {
+	switch {
+	case wl.taskQueuesActive():
 		return "task-queues"
+	case wl.schedulesActive():
+		return "schedules"
+	case wl.workersActive():
+		return "workers"
+	default:
+		return "workflows"
 	}
-	return "workflows"
 }
 
 // Start is called when the view becomes active.
@@ -275,7 +290,7 @@ func (wl *WorkflowList) Start() {
 			return true
 		}).
 		OnRune('s', func(e *tcell.EventKey) bool {
-			wl.app.NavigateToSchedules()
+			wl.setListKind(listSchedules)
 			return true
 		}).
 		OnRune('a', func(e *tcell.EventKey) bool {
@@ -403,8 +418,15 @@ func (wl *WorkflowList) Start() {
 		return event
 	})
 
-	if wl.taskQueuesActive() {
-		wl.ensureTaskQueues()
+	if !wl.workflowsActive() {
+		switch {
+		case wl.taskQueuesActive():
+			wl.ensureTaskQueues()
+		case wl.schedulesActive():
+			wl.ensureSchedules()
+		case wl.workersActive():
+			wl.ensureWorkers()
+		}
 		wl.restoreFocus()
 		return
 	}
@@ -425,7 +447,7 @@ func (wl *WorkflowList) restoreFocus() {
 }
 
 func (wl *WorkflowList) shouldFocusWorkflowTable() bool {
-	return !wl.taskQueuesActive() && wl.focusPane == focusWorkflows
+	return wl.workflowsActive() && wl.focusPane == focusWorkflows
 }
 
 func (wl *WorkflowList) handleWorkflowScroll(event *tcell.EventKey) bool {
@@ -467,15 +489,31 @@ func (wl *WorkflowList) Stop() {
 	if wl.taskQueues != nil {
 		wl.taskQueues.Stop()
 	}
+	if wl.schedules != nil {
+		wl.schedules.Stop()
+	}
+	if wl.workers != nil {
+		wl.workers.Stop()
+	}
 	wl.app.ClearWorkflowStats()
 }
 
 // Hints returns keybinding hints for this view.
 func (wl *WorkflowList) Hints() []KeyHint {
-	if wl.taskQueuesActive() {
+	if wl.taskQueuesActive() || wl.workersActive() {
 		return []KeyHint{
 			{Key: "/", Description: "Search"},
 			{Key: "r", Description: "Refresh"},
+		}
+	}
+	if wl.schedulesActive() {
+		return []KeyHint{
+			{Key: "/", Description: "Search"},
+			{Key: "r", Description: "Refresh"},
+			{Key: "P", Description: "Pause/Unpause"},
+			{Key: "t", Description: "Trigger"},
+			{Key: "v", Description: "View runs"},
+			{Key: "D", Description: "Delete"},
 		}
 	}
 
@@ -606,7 +644,6 @@ func (wl *WorkflowList) workflowPaneHints() []KeyHint {
 		KeyHint{Key: "y", Description: "Copy ID"},
 		KeyHint{Key: "r", Description: "Refresh"},
 		KeyHint{Key: "a", Description: "Auto-refresh"},
-		KeyHint{Key: "s", Description: "Schedules"},
 		KeyHint{Key: "T", Description: "Theme"},
 		KeyHint{Key: "?", Description: "Help"},
 	)
@@ -618,7 +655,11 @@ func (wl *WorkflowList) HandleEscape() bool {
 		wl.setPollersVisible(false)
 		return true
 	}
-	if wl.taskQueuesActive() {
+	if wl.schedulesActive() && wl.focusPane == focusScheduleDetail {
+		wl.setFocusPane(focusWorkflows)
+		return true
+	}
+	if !wl.workflowsActive() {
 		wl.setListKind(listWorkflows)
 		return true
 	}
@@ -645,6 +686,18 @@ func (wl *WorkflowList) Focus(delegate func(p tview.Primitive)) {
 			return
 		}
 		delegate(wl.taskQueues.queueTable)
+		return
+	}
+	if wl.schedulesActive() && wl.schedules != nil {
+		if wl.focusPane == focusScheduleDetail {
+			delegate(wl.schedules.preview)
+			return
+		}
+		delegate(wl.schedules.table)
+		return
+	}
+	if wl.workersActive() && wl.workers != nil {
+		delegate(wl.workers.table)
 		return
 	}
 	switch wl.focusPane {

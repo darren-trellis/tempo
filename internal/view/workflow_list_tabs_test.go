@@ -84,6 +84,56 @@ func TestEmptyWorkflowsStillSwitchListTabs(t *testing.T) {
 	}
 }
 
+func TestWorkflowListSchedulesAndWorkersTabs(t *testing.T) {
+	wl := NewWorkflowList(&App{}, "default")
+	if hintDescription(wl.Hints(), "s") != "" {
+		t.Fatal("schedules should not have a dedicated footer key")
+	}
+
+	if !wl.handleListTabKey(tcell.NewEventKey(tcell.KeyRune, '3', 0)) {
+		t.Fatal("3 should switch to schedules")
+	}
+	if !wl.schedulesActive() {
+		t.Fatal("schedules tab should be active")
+	}
+	if wl.Name() != "schedules" {
+		t.Fatalf("schedules name: %q", wl.Name())
+	}
+	if wl.mainFlex.GetItemCount() != 2 {
+		t.Fatalf("schedules should show a preview pane, got %d", wl.mainFlex.GetItemCount())
+	}
+	if hintDescription(wl.Hints(), "P") != "Pause/Unpause" {
+		t.Fatalf("schedules hints: %q", hintDescription(wl.Hints(), "P"))
+	}
+	if hintDescription(wl.Hints(), "esc") != "" || hintDescription(wl.Hints(), "enter") != "" {
+		t.Fatal("enter/esc should stay off the footer")
+	}
+
+	if !wl.HandleEscape() || !wl.workflowsActive() {
+		t.Fatal("escape should return to workflows")
+	}
+
+	if !wl.handleListTabKey(tcell.NewEventKey(tcell.KeyRune, '4', 0)) {
+		t.Fatal("4 should switch to workers")
+	}
+	if !wl.workersActive() {
+		t.Fatal("workers tab should be active")
+	}
+	if wl.Name() != "workers" {
+		t.Fatalf("workers name: %q", wl.Name())
+	}
+	if hintDescription(wl.Hints(), "/") != "Search" {
+		t.Fatalf("workers hints: %q", hintDescription(wl.Hints(), "/"))
+	}
+
+	if !wl.handleListTabKey(tcell.NewEventKey(tcell.KeyRune, ']', 0)) {
+		t.Fatal("] should wrap from workers to workflows")
+	}
+	if !wl.workflowsActive() {
+		t.Fatal("] from workers should return to workflows")
+	}
+}
+
 func TestWorkflowsTabDoesNotStealFocusCycle(t *testing.T) {
 	wl := NewWorkflowList(&App{}, "default")
 	capture := wl.listTabs.GetInputCapture()

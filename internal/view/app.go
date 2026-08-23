@@ -265,6 +265,8 @@ func (a *App) updateCrumbs() {
 			path = []string{"Namespaces", a.currentNS, "Task Queues"}
 		case "schedules":
 			path = []string{"Namespaces", a.currentNS, "Schedules"}
+		case "workers":
+			path = []string{"Namespaces", a.currentNS, "Workers"}
 		case "workflow-diff":
 			path = []string{"Namespaces", a.currentNS, "Workflows", "Diff"}
 		}
@@ -457,10 +459,26 @@ func (a *App) NavigateToTaskQueues() {
 	wl.setListKind(listTaskQueues)
 }
 
-// NavigateToSchedules pushes the schedule list view.
+// NavigateToSchedules opens the schedules tab on the workflows view.
 func (a *App) NavigateToSchedules() {
-	sl := NewScheduleList(a, a.CurrentNamespace())
-	a.app.Pages().Push(sl)
+	if current, ok := a.app.Pages().Current().(*WorkflowList); ok {
+		current.setListKind(listSchedules)
+		return
+	}
+	wl := NewWorkflowList(a, a.CurrentNamespace())
+	a.app.Pages().Push(wl)
+	wl.setListKind(listSchedules)
+}
+
+// NavigateToWorkers opens the workers tab on the workflows view.
+func (a *App) NavigateToWorkers() {
+	if current, ok := a.app.Pages().Current().(*WorkflowList); ok {
+		current.setListKind(listWorkers)
+		return
+	}
+	wl := NewWorkflowList(a, a.CurrentNamespace())
+	a.app.Pages().Push(wl)
+	wl.setListKind(listWorkers)
 }
 
 // NavigateToNamespaceDetail pushes the namespace detail view.

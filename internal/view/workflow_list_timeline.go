@@ -137,14 +137,17 @@ func (wl *WorkflowList) timelineDocked() bool {
 }
 
 func (wl *WorkflowList) applyMainLayout() {
-	if wl.taskQueuesActive() {
+	if !wl.workflowsActive() {
 		if wl.mainFlex != nil {
 			wl.mainFlex.Clear()
 			if wl.workflowsPanel != nil {
 				wl.mainFlex.AddItem(wl.workflowsPanel, 0, 11, true)
 			}
-			if wl.pollersVisible && wl.taskQueues != nil && wl.taskQueues.pollerPanel != nil {
+			if wl.taskQueuesActive() && wl.pollersVisible && wl.taskQueues != nil && wl.taskQueues.pollerPanel != nil {
 				wl.mainFlex.AddItem(wl.taskQueues.pollerPanel, 0, 9, false)
+			}
+			if wl.schedulesActive() && wl.schedules != nil && wl.schedules.previewPanel != nil {
+				wl.mainFlex.AddItem(wl.schedules.previewPanel, 0, 9, false)
 			}
 		}
 		wl.Clear()

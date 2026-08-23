@@ -13,6 +13,9 @@ type listKind int
 const (
 	listWorkflows listKind = iota
 	listTaskQueues
+	listSchedules
+	listWorkers
+	listKindCount
 )
 
 func workflowTabName(title string) string {
@@ -25,17 +28,17 @@ func workflowTabName(title string) string {
 
 func (wl *WorkflowList) setupListTabs() {
 	wl.ensureTaskQueues()
+	wl.ensureSchedules()
+	wl.ensureWorkers()
 	wl.listTabs = components.NewTabs().
 		SetShowIcons(true).
 		SetShowBadges(false).
 		AddTabWithIcon("Workflows (List)", theme.IconWorkflow, wl.tableScroll).
 		AddTabWithIcon("Task Queues", theme.IconTaskQueue, wl.taskQueues.queueTable).
+		AddTabWithIcon("Schedules", theme.IconSchedule, wl.schedules.table).
+		AddTabWithIcon("Workers", theme.IconUsers, wl.workers.table).
 		SetOnChange(func(index int, name string) {
-			if index == int(listTaskQueues) {
-				wl.setListKind(listTaskQueues)
-				return
-			}
-			wl.setListKind(listWorkflows)
+			wl.setListKind(listKind(index))
 		})
 	wl.listTabs.SetActive(int(listWorkflows))
 	wl.workflowTab = wl.listTabs.GetActiveTab()
@@ -95,6 +98,28 @@ func (wl *WorkflowList) ensureTaskQueues() {
 	}
 }
 
+func (wl *WorkflowList) ensureSchedules() {
+	if wl.schedules == nil {
+		wl.schedules = NewScheduleList(wl.app, wl.namespace)
+	}
+	if wl.schedulesActive() {
+		if len(wl.schedules.allSchedules) == 0 {
+			wl.schedules.loadData()
+		}
+		wl.bindScheduleKeys()
+	}
+}
+
+func (wl *WorkflowList) ensureWorkers() {
+	if wl.workers == nil {
+		wl.workers = NewWorkerView(wl.app)
+	}
+	if wl.workersActive() {
+		wl.workers.Start()
+		wl.bindWorkerKeys()
+	}
+}
+
 func (wl *WorkflowList) bindTaskQueueKeys() {
 	if wl.taskQueues == nil {
 		return
@@ -131,6 +156,60 @@ func (wl *WorkflowList) bindTaskQueueKeys() {
 	})
 }
 
+func (wl *WorkflowList) bindScheduleKeys() {
+	if wl.schedules == nil {
+		return
+	}
+	sl := wl.schedules
+	sl.table.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		if wl.handleFocusCycleKey(event) || wl.handleListTabKey(event) {
+			return nil
+		}
+		switch event.Rune() {
+		case '/':
+			sl.MasterDetailView.ShowSearch()
+			return nil
+		case 'r':
+			sl.loadData()
+			return nil
+		case 'P':
+			sl.showPauseConfirm()
+			return nil
+		case 't':
+			sl.showTriggerConfirm()
+			return nil
+		case 'v':
+			sl.viewRecentRuns()
+			return nil
+		case 'D':
+			sl.showDeleteConfirm()
+			return nil
+		}
+		return event
+	})
+}
+
+func (wl *WorkflowList) bindWorkerKeys() {
+	if wl.workers == nil {
+		return
+	}
+	wv := wl.workers
+	wv.table.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		if wl.handleFocusCycleKey(event) || wl.handleListTabKey(event) {
+			return nil
+		}
+		switch event.Rune() {
+		case '/':
+			wv.showSearch()
+			return nil
+		case 'r':
+			wv.loadData()
+			return nil
+		}
+		return event
+	})
+}
+
 func (wl *WorkflowList) setPollersVisible(on bool) {
 	if wl.pollersVisible == on {
 		return
@@ -147,12 +226,24 @@ func (wl *WorkflowList) setPollersVisible(on bool) {
 	wl.applyFocusStyles()
 }
 
+func (wl *WorkflowList) workflowsActive() bool {
+	return wl != nil && wl.listKind == listWorkflows
+}
+
 func (wl *WorkflowList) taskQueuesActive() bool {
 	return wl != nil && wl.listKind == listTaskQueues
 }
 
+func (wl *WorkflowList) schedulesActive() bool {
+	return wl != nil && wl.listKind == listSchedules
+}
+
+func (wl *WorkflowList) workersActive() bool {
+	return wl != nil && wl.listKind == listWorkers
+}
+
 func (wl *WorkflowList) setListKind(kind listKind) {
-	if kind != listWorkflows && kind != listTaskQueues {
+	if kind < listWorkflows || kind >= listKindCount {
 		return
 	}
 	changing := wl.listKind != kind
@@ -163,11 +254,20 @@ func (wl *WorkflowList) setListKind(kind listKind) {
 	if !changing {
 		return
 	}
-	if kind == listTaskQueues {
+	switch kind {
+	case listTaskQueues:
 		wl.ensureTaskQueues()
 		wl.focusPane = focusWorkflows
-	} else if wl.focusPane == focusPollers {
+	case listSchedules:
+		wl.ensureSchedules()
 		wl.focusPane = focusWorkflows
+	case listWorkers:
+		wl.ensureWorkers()
+		wl.focusPane = focusWorkflows
+	default:
+		if wl.focusPane == focusPollers || wl.focusPane == focusScheduleDetail {
+			wl.focusPane = focusWorkflows
+		}
 	}
 	if wl.app != nil && wl.app.JigApp() != nil {
 		wl.app.updateCrumbs()
@@ -176,9 +276,9 @@ func (wl *WorkflowList) setListKind(kind listKind) {
 }
 
 func (wl *WorkflowList) cycleListKind(delta int) {
-	next := (int(wl.listKind) + delta) % 2
+	next := (int(wl.listKind) + delta) % int(listKindCount)
 	if next < 0 {
-		next += 2
+		next += int(listKindCount)
 	}
 	wl.setListKind(listKind(next))
 }
@@ -203,6 +303,12 @@ func (wl *WorkflowList) handleListTabKey(event *tcell.EventKey) bool {
 	case '2':
 		wl.setListKind(listTaskQueues)
 		return true
+	case '3':
+		wl.setListKind(listSchedules)
+		return true
+	case '4':
+		wl.setListKind(listWorkers)
+		return true
 	}
 	return false
 }
@@ -223,11 +329,11 @@ func (wl *WorkflowList) listTabAt(x, y int) (listKind, bool) {
 	if tw <= 0 || y != ty || x < tx || x >= tx+tw {
 		return 0, false
 	}
-	names := [2]string{"Workflows (List)", "Task Queues"}
+	names := [listKindCount]string{"Workflows (List)", "Task Queues", "Schedules", "Workers"}
 	if wl.workflowTab != nil && wl.workflowTab.Name != "" {
 		names[0] = wl.workflowTab.Name
 	}
-	icons := [2]string{theme.IconWorkflow, theme.IconTaskQueue}
+	icons := [listKindCount]string{theme.IconWorkflow, theme.IconTaskQueue, theme.IconSchedule, theme.IconUsers}
 	col := tx
 	for i, name := range names {
 		width := listTabWidth(name, icons[i])
