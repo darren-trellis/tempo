@@ -36,7 +36,7 @@ func TestSelectByScheduledID(t *testing.T) {
 
 func TestTimelineFailedUsesStatusColor(t *testing.T) {
 	tv := NewTimelineView()
-	_, color := tv.barStyle("Failed")
+	_, color := tv.barStyle(TimelineLane{Type: temporal.GroupActivity, Status: "Failed"})
 	if color != temporal.StatusFailed.Color() {
 		t.Fatalf("failed bar %v, status %v", color, temporal.StatusFailed.Color())
 	}
@@ -45,6 +45,28 @@ func TestTimelineFailedUsesStatusColor(t *testing.T) {
 	}
 	if timelineStatusColor("TimedOut") != temporal.StatusTimedOut.Color() {
 		t.Fatal("timed out should use the status color")
+	}
+}
+
+func TestTimelineTypeGlyphsAreUnique(t *testing.T) {
+	types := []temporal.EventGroupType{
+		temporal.GroupActivity,
+		temporal.GroupTimer,
+		temporal.GroupChildWorkflow,
+		temporal.GroupSignal,
+		temporal.GroupMarker,
+		temporal.GroupOther,
+	}
+	seen := map[rune]temporal.EventGroupType{}
+	for _, typ := range types {
+		g := timelineTypeGlyph(typ)
+		if g == 0 || g == ' ' {
+			t.Fatalf("empty glyph for %s", typ)
+		}
+		if prev, ok := seen[g]; ok {
+			t.Fatalf("%s and %s share %q", prev, typ, string(g))
+		}
+		seen[g] = typ
 	}
 }
 

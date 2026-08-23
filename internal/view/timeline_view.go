@@ -266,12 +266,10 @@ func (tv *TimelineView) drawLaneBar(screen tcell.Screen, x, y, width int, lane T
 		barEnd = width
 	}
 
-	barChar, barColor := tv.barStyle(lane.Status)
-	barStyle := tcell.StyleDefault.Foreground(barColor).Background(theme.Bg())
-	nameStyle := barStyle
+	barChar, barColor := tv.barStyle(lane)
+	barStyle := tcell.StyleDefault.Foreground(theme.Bg()).Background(barColor)
 	if selected {
 		barStyle = tcell.StyleDefault.Foreground(theme.SelectionFg()).Background(theme.SelectionBg()).Bold(true)
-		nameStyle = barStyle
 	}
 
 	emptyStyle := tcell.StyleDefault.Foreground(theme.BgLight()).Background(theme.Bg())
@@ -290,20 +288,15 @@ func (tv *TimelineView) drawLaneBar(screen tcell.Screen, x, y, width int, lane T
 	for i := barStart; i < barEnd && i < width; i++ {
 		rel := i - barStart
 		ch := barChar
-		style := barStyle
 		if len(name) > 0 && rel >= nameStart && rel-nameStart < len(name) {
 			ch = name[rel-nameStart]
-			style = nameStyle
 		}
-		screen.SetContent(x+i, y, ch, nil, style)
+		screen.SetContent(x+i, y, ch, nil, barStyle)
 	}
 
 	if len(name) == 0 && label != "" {
 		outside := []rune(fitTimelineName(label, width-barEnd-1))
-		labelStyle := tcell.StyleDefault.Foreground(barColor).Background(theme.Bg())
-		if selected {
-			labelStyle = labelStyle.Bold(true)
-		}
+		labelStyle := barStyle
 		pos := barEnd + 1
 		for _, r := range outside {
 			if pos >= width {
@@ -453,14 +446,14 @@ func (tv *TimelineView) drawCursor(screen tcell.Screen, x, y, width, height int,
 // drawLegend draws the status legend and selected lane stats at the bottom.
 func (tv *TimelineView) drawLegend(screen tcell.Screen, x, y, width int) {
 	legend := []struct {
-		char   rune
-		status string
-		color  tcell.Color
+		char  rune
+		label string
 	}{
-		{'█', "Completed", temporal.StatusCompleted.Color()},
-		{'▓', "Running", temporal.StatusRunning.Color()},
-		{'█', "Failed", temporal.StatusFailed.Color()},
-		{'▒', "Pending", theme.FgDim()},
+		{timelineTypeGlyph(temporal.GroupActivity), "Activity"},
+		{timelineTypeGlyph(temporal.GroupTimer), "Timer"},
+		{timelineTypeGlyph(temporal.GroupChildWorkflow), "Child"},
+		{timelineTypeGlyph(temporal.GroupSignal), "Signal"},
+		{timelineTypeGlyph(temporal.GroupMarker), "Marker"},
 	}
 
 	pos := x
@@ -469,12 +462,12 @@ func (tv *TimelineView) drawLegend(screen tcell.Screen, x, y, width int) {
 			break
 		}
 
-		style := tcell.StyleDefault.Foreground(item.color).Background(theme.Bg())
+		style := tcell.StyleDefault.Foreground(theme.Fg()).Background(theme.Bg())
 		screen.SetContent(pos, y, item.char, nil, style)
 		pos++
 
 		labelStyle := tcell.StyleDefault.Foreground(theme.FgDim()).Background(theme.Bg())
-		for _, r := range item.status {
+		for _, r := range item.label {
 			screen.SetContent(pos, y, r, nil, labelStyle)
 			pos++
 		}
@@ -556,16 +549,32 @@ func (tv *TimelineView) drawLegend(screen tcell.Screen, x, y, width int) {
 }
 
 // barStyle returns the bar character and color for a status.
-func (tv *TimelineView) barStyle(status string) (rune, tcell.Color) {
-	color := timelineStatusColor(status)
-	switch status {
-	case "Running":
-		return '▓', color
-	case "Completed", "Fired", "Failed", "TimedOut":
-		return '█', color
+func (tv *TimelineView) barStyle(lane TimelineLane) (rune, tcell.Color) {
+	return timelineTypeGlyph(lane.Type), timelineStatusColor(lane.Status)
+}
+
+func timelineTypeGlyph(typ temporal.EventGroupType) rune {
+	switch typ {
+	case temporal.GroupActivity:
+		return firstRune(theme.IconActivity)
+	case temporal.GroupTimer:
+		return firstRune(theme.IconClock)
+	case temporal.GroupChildWorkflow:
+		return firstRune(theme.IconWorkflow)
+	case temporal.GroupSignal:
+		return firstRune(theme.IconSignal)
+	case temporal.GroupMarker:
+		return firstRune(theme.IconTag)
 	default:
-		return '▒', color
+		return firstRune(theme.IconEvent)
 	}
+}
+
+func firstRune(s string) rune {
+	for _, r := range s {
+		return r
+	}
+	return '▪'
 }
 
 func timelineStatusColor(status string) tcell.Color {
