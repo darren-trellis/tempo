@@ -8,6 +8,26 @@ import (
 	"github.com/rivo/tview"
 )
 
+func TestIgnoreMouseFocusOnlyConsumesInside(t *testing.T) {
+	box := tview.NewBox()
+	box.SetRect(0, 0, 10, 2)
+	ignoreMouseFocus(box)
+	capture := box.GetMouseCapture()
+	if capture == nil {
+		t.Fatal("expected mouse capture")
+	}
+
+	action, event := capture(tview.MouseLeftClick, tcell.NewEventMouse(5, 1, tcell.Button1, tcell.ModNone))
+	if action != tview.MouseConsumed || event != nil {
+		t.Fatal("click on chrome should be consumed")
+	}
+
+	action, event = capture(tview.MouseLeftClick, tcell.NewEventMouse(50, 50, tcell.Button1, tcell.ModNone))
+	if event == nil || action != tview.MouseLeftClick {
+		t.Fatal("click outside chrome should reach the table")
+	}
+}
+
 func TestEnableAppMouse(t *testing.T) {
 	app := tview.NewApplication()
 	box := tview.NewBox()

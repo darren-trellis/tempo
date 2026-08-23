@@ -7,6 +7,7 @@ import (
 )
 
 type mouseCapturer interface {
+	InRect(x, y int) bool
 	SetMouseCapture(func(action tview.MouseAction, event *tcell.EventMouse) (tview.MouseAction, *tcell.EventMouse)) *tview.Box
 }
 
@@ -26,7 +27,9 @@ func ignoreMouseFocus(box mouseCapturer) {
 	box.SetMouseCapture(func(action tview.MouseAction, event *tcell.EventMouse) (tview.MouseAction, *tcell.EventMouse) {
 		switch action {
 		case tview.MouseLeftDown, tview.MouseLeftClick, tview.MouseLeftDoubleClick:
-			return tview.MouseConsumed, nil
+			if event != nil && box.InRect(event.Position()) {
+				return tview.MouseConsumed, nil
+			}
 		}
 		return action, event
 	})
