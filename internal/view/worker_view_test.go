@@ -8,6 +8,27 @@ import (
 	"github.com/galaxy-io/tempo/internal/temporal"
 )
 
+func TestMergeListedWorker(t *testing.T) {
+	now := time.Now()
+	byIdentity := map[string]*workerEntry{}
+	mergeListedWorker(byIdentity, temporal.Worker{
+		Identity: "worker-1", TaskQueue: "orders", Types: []string{"Workflow"}, LastAccess: now.Add(-time.Second),
+	})
+	mergeListedWorker(byIdentity, temporal.Worker{
+		Identity: "worker-1", TaskQueue: "payments", Types: []string{"Activity"}, LastAccess: now,
+	})
+	workers := workerEntriesFromMap(byIdentity)
+	if len(workers) != 1 {
+		t.Fatalf("workers: %d", len(workers))
+	}
+	if got := strings.Join(workers[0].Queues, ", "); got != "orders, payments" {
+		t.Fatalf("queues: %q", got)
+	}
+	if got := strings.Join(workers[0].Types, ", "); got != "Activity, Workflow" {
+		t.Fatalf("types: %q", got)
+	}
+}
+
 func TestMergeWorkerPollers(t *testing.T) {
 	now := time.Now()
 	byIdentity := map[string]*workerEntry{}

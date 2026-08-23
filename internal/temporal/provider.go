@@ -45,6 +45,12 @@ type Provider interface {
 	// DescribeTaskQueue returns task queue info and active pollers.
 	DescribeTaskQueue(ctx context.Context, namespace, taskQueue string) (*TaskQueueInfo, []Poller, error)
 
+	// ListWorkers returns workers that have recently heartbeated in a namespace.
+	ListWorkers(ctx context.Context, namespace string) ([]Worker, error)
+
+	// ListTaskQueueNames returns task queue names from workers, workflows, and schedules.
+	ListTaskQueueNames(ctx context.Context, namespace string) ([]string, error)
+
 	// Close releases any resources held by the provider.
 	Close() error
 
@@ -261,6 +267,14 @@ type Poller struct {
 	LastAccessTime time.Time
 	TaskQueueType  string // "Workflow" or "Activity"
 	RatePerSecond  float64
+}
+
+// Worker represents a worker reported by Temporal worker visibility.
+type Worker struct {
+	Identity   string
+	TaskQueue  string
+	Types      []string
+	LastAccess time.Time
 }
 
 // Schedule represents a Temporal schedule.

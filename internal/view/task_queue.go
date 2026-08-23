@@ -162,14 +162,12 @@ func (tq *TaskQueueView) loadData() {
 		return
 	}
 
-	// Get task queues by listing workflows and extracting unique queue names
 	tq.setLoading(true)
 	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 		defer cancel()
 
-		// List workflows to discover task queues
-		workflows, _, err := provider.ListWorkflows(ctx, tq.app.CurrentNamespace(), temporal.ListOptions{PageSize: 100})
+		names, err := provider.ListTaskQueueNames(ctx, tq.app.CurrentNamespace())
 
 		tq.app.JigApp().QueueUpdateDraw(func() {
 			tq.setLoading(false)
@@ -178,17 +176,8 @@ func (tq *TaskQueueView) loadData() {
 				return
 			}
 
-			// Extract unique task queue names
-			queueSet := make(map[string]bool)
-			for _, wf := range workflows {
-				if wf.TaskQueue != "" {
-					queueSet[wf.TaskQueue] = true
-				}
-			}
-
-			// Build queue entries
 			tq.allQueues = []taskQueueEntry{}
-			for name := range queueSet {
+			for _, name := range names {
 				tq.allQueues = append(tq.allQueues, taskQueueEntry{
 					Name:        name,
 					Type:        "Combined",

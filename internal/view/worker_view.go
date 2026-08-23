@@ -98,7 +98,7 @@ func (wv *WorkerView) loadData() {
 		if wv.app != nil {
 			namespace = wv.app.CurrentNamespace()
 		}
-		workflows, _, err := provider.ListWorkflows(ctx, namespace, temporal.ListOptions{PageSize: 100})
+		workers, err := loadWorkers(ctx, provider, namespace)
 		if err != nil {
 			if wv.app != nil && wv.app.JigApp() != nil {
 				wv.app.JigApp().QueueUpdateDraw(func() {
@@ -108,24 +108,6 @@ func (wv *WorkerView) loadData() {
 			}
 			return
 		}
-
-		queueSet := make(map[string]struct{})
-		for _, wf := range workflows {
-			if wf.TaskQueue != "" {
-				queueSet[wf.TaskQueue] = struct{}{}
-			}
-		}
-
-		byIdentity := map[string]*workerEntry{}
-		for name := range queueSet {
-			_, pollers, descErr := provider.DescribeTaskQueue(ctx, namespace, name)
-			if descErr != nil {
-				continue
-			}
-			mergeWorkerPollers(byIdentity, name, pollers)
-		}
-
-		workers := workerEntriesFromMap(byIdentity)
 		if wv.app != nil && wv.app.JigApp() != nil {
 			wv.app.JigApp().QueueUpdateDraw(func() {
 				wv.loading = false
@@ -138,6 +120,51 @@ func (wv *WorkerView) loadData() {
 		wv.allWorkers = workers
 		wv.applyFilter(wv.searchText)
 	}()
+}
+
+func loadWorkers(ctx context.Context, provider temporal.Provider, namespace string) ([]workerEntry, error) {
+	byIdentity := map[string]*workerEntry{}
+	listed, listErr := provider.ListWorkers(ctx, namespace)
+	if listErr == nil && len(listed) > 0 {
+		for _, w := range listed {
+			mergeListedWorker(byIdentity, w)
+		}
+		return workerEntriesFromMap(byIdentity), nil
+	}
+
+	names, err := provider.ListTaskQueueNames(ctx, namespace)
+	if err != nil {
+		if listErr != nil {
+			return nil, listErr
+		}
+		return nil, err
+	}
+	for _, name := range names {
+		_, pollers, descErr := provider.DescribeTaskQueue(ctx, namespace, name)
+		if descErr != nil {
+			continue
+		}
+		mergeWorkerPollers(byIdentity, name, pollers)
+	}
+	return workerEntriesFromMap(byIdentity), nil
+}
+
+func mergeListedWorker(byIdentity map[string]*workerEntry, w temporal.Worker) {
+	if w.Identity == "" {
+		return
+	}
+	entry := byIdentity[w.Identity]
+	if entry == nil {
+		entry = &workerEntry{Identity: w.Identity}
+		byIdentity[w.Identity] = entry
+	}
+	entry.Queues = appendUnique(entry.Queues, w.TaskQueue)
+	for _, typ := range w.Types {
+		entry.Types = appendUnique(entry.Types, typ)
+	}
+	if w.LastAccess.After(entry.LastAccess) {
+		entry.LastAccess = w.LastAccess
+	}
 }
 
 func (wv *WorkerView) loadMockData() {

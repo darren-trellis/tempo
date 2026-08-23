@@ -1522,6 +1522,83 @@ func (c *Client) DescribeTaskQueue(ctx context.Context, namespace, taskQueue str
 	return info, pollers, nil
 }
 
+func (c *Client) ListWorkers(ctx context.Context, namespace string) ([]Worker, error) {
+	var workers []Worker
+	var token []byte
+	for {
+		resp, err := c.client.WorkflowService().ListWorkers(ctx, &workflowservice.ListWorkersRequest{
+			Namespace:     namespace,
+			PageSize:      100,
+			NextPageToken: token,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("failed to list workers: %w", err)
+		}
+		for _, info := range resp.GetWorkersInfo() {
+			hb := info.GetWorkerHeartbeat()
+			if hb == nil {
+				continue
+			}
+			lastAccess := hb.GetHeartbeatTime().AsTime()
+			if lastAccess.IsZero() && hb.GetStartTime() != nil {
+				lastAccess = hb.GetStartTime().AsTime()
+			}
+			identity := hb.GetWorkerIdentity()
+			if identity == "" {
+				identity = hb.GetWorkerInstanceKey()
+			}
+			workers = append(workers, Worker{
+				Identity:   identity,
+				TaskQueue:  hb.GetTaskQueue(),
+				Types:      workerTypesFromHeartbeat(hb),
+				LastAccess: lastAccess,
+			})
+		}
+		token = resp.GetNextPageToken()
+		if len(token) == 0 {
+			break
+		}
+	}
+	return workers, nil
+}
+
+func (c *Client) ListTaskQueueNames(ctx context.Context, namespace string) ([]string, error) {
+	names := map[string]struct{}{}
+	ok := false
+	var firstErr error
+
+	if workers, err := c.ListWorkers(ctx, namespace); err == nil {
+		ok = true
+		addTaskQueueNames(names, workerTaskQueues(workers)...)
+	} else {
+		firstErr = err
+	}
+
+	if workflows, _, err := c.ListWorkflows(ctx, namespace, ListOptions{PageSize: 100}); err == nil {
+		ok = true
+		for _, wf := range workflows {
+			addTaskQueueNames(names, wf.TaskQueue)
+		}
+	} else if firstErr == nil {
+		firstErr = err
+	}
+
+	if schedules, _, err := c.ListSchedules(ctx, namespace, ListOptions{PageSize: 100}); err == nil {
+		ok = true
+		for _, s := range schedules {
+			addTaskQueueNames(names, s.TaskQueue)
+		}
+	} else if firstErr == nil {
+		firstErr = err
+	}
+
+	out := sortedTaskQueueNames(names)
+	if !ok && firstErr != nil {
+		return nil, firstErr
+	}
+	return out, nil
+}
+
 // formatDuration formats a protobuf duration as a human-readable string.
 func formatDuration(d *durationpb.Duration) string {
 	if d == nil {
