@@ -32,6 +32,7 @@ type WorkflowDetail struct {
 	workflowView     *tview.TextView
 	eventDetailView  *tview.TextView
 	eventTable       *components.Table
+	focusPane        detailFocusPane
 	loading          bool
 	searchText       string // Current search filter text
 	baseEventsTitle  string // Base title without search suffix
@@ -60,13 +61,16 @@ func (wd *WorkflowDetail) setup() {
 	// Combined workflow info view
 	wd.workflowView = tview.NewTextView().
 		SetDynamicColors(true).
-		SetTextAlign(tview.AlignLeft)
+		SetTextAlign(tview.AlignLeft).
+		SetScrollable(true)
 	wd.workflowView.SetBackgroundColor(theme.Bg())
 
 	// Event detail view
 	wd.eventDetailView = tview.NewTextView().
 		SetDynamicColors(true).
-		SetTextAlign(tview.AlignLeft)
+		SetTextAlign(tview.AlignLeft).
+		SetScrollable(true).
+		SetWordWrap(true)
 	wd.eventDetailView.SetBackgroundColor(theme.Bg())
 
 	// Event table
@@ -104,6 +108,9 @@ func (wd *WorkflowDetail) setup() {
 
 	// Show loading state initially
 	wd.workflowView.SetText(fmt.Sprintf("\n [%s]Loading...[-]", theme.TagFgDim()))
+	wd.setupPaneInput(wd.workflowView)
+	wd.setupPaneInput(wd.eventDetailView)
+	wd.applyFocusStyles()
 }
 
 func (wd *WorkflowDetail) setLoading(loading bool) {
@@ -178,6 +185,7 @@ func (wd *WorkflowDetail) RefreshTheme() {
 	// Re-render content with new theme colors
 	wd.render()
 	wd.populateEventTable()
+	wd.applyFocusStyles()
 }
 
 func (wd *WorkflowDetail) loadData() {
@@ -687,6 +695,14 @@ func (wd *WorkflowDetail) Start() {
 		OnRune('o', func(e *tcell.EventKey) bool {
 			wd.showWorkflowGraph()
 			return true
+		}).
+		On(tcell.KeyTab, func(e *tcell.EventKey) bool {
+			wd.cycleFocus(1)
+			return true
+		}).
+		On(tcell.KeyBacktab, func(e *tcell.EventKey) bool {
+			wd.cycleFocus(-1)
+			return true
 		})
 
 	wd.eventTable.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
@@ -701,11 +717,33 @@ func (wd *WorkflowDetail) Start() {
 // Stop is called when the view is deactivated.
 func (wd *WorkflowDetail) Stop() {
 	wd.eventTable.SetInputCapture(nil)
+	if wd.workflowView != nil {
+		wd.workflowView.SetInputCapture(nil)
+	}
+	if wd.eventDetailView != nil {
+		wd.eventDetailView.SetInputCapture(nil)
+	}
 }
 
 // Hints returns keybinding hints for this view.
 func (wd *WorkflowDetail) Hints() []KeyHint {
+	switch wd.focusPane {
+	case detailFocusEventDetail:
+		return []KeyHint{
+			{Key: "j/k", Description: "Scroll"},
+			{Key: "tab", Description: "Workflow"},
+			{Key: "esc", Description: "Events"},
+		}
+	case detailFocusWorkflow:
+		return []KeyHint{
+			{Key: "j/k", Description: "Scroll"},
+			{Key: "tab", Description: "Events"},
+			{Key: "esc", Description: "Events"},
+		}
+	}
+
 	hints := []KeyHint{
+		{Key: "tab", Description: "Detail"},
 		{Key: "/", Description: "Search"},
 		{Key: "i", Description: "Input/Output"},
 		{Key: "e", Description: "Event Graph"},
@@ -742,9 +780,16 @@ func (wd *WorkflowDetail) Hints() []KeyHint {
 	return hints
 }
 
-// Focus sets focus to the event table.
+// Focus sets focus to the active pane.
 func (wd *WorkflowDetail) Focus(delegate func(p tview.Primitive)) {
-	delegate(wd.eventTable)
+	switch wd.focusPane {
+	case detailFocusEventDetail:
+		delegate(wd.eventDetailView)
+	case detailFocusWorkflow:
+		delegate(wd.workflowView)
+	default:
+		delegate(wd.eventTable)
+	}
 }
 
 // Draw applies theme colors dynamically and draws the view.
@@ -754,6 +799,7 @@ func (wd *WorkflowDetail) Draw(screen tcell.Screen) {
 	wd.leftFlex.SetBackgroundColor(bg)
 	wd.workflowView.SetBackgroundColor(bg)
 	wd.eventDetailView.SetBackgroundColor(bg)
+	wd.syncFocusFromPrimitives()
 	wd.Flex.Draw(screen)
 }
 
@@ -1921,29 +1967,20 @@ func (wd *WorkflowDetail) showIOModal() {
 		wd.closeIOModal()
 	})
 
-	// Track which pane is focused and store references for the handler
 	focusedInput := true
-
-	// Update panel titles and colors to show focus
-	updatePanelTitles := func() {
-		if focusedInput {
-			inputPanel.SetTitle(fmt.Sprintf("%s Input (active)", theme.IconArrowRight))
-			inputPanel.SetTitleColor(theme.Accent())
-			outputPanel.SetTitle(fmt.Sprintf("%s Output", theme.IconArrowLeft))
-			outputPanel.SetTitleColor(0) // Use default (PanelTitle color)
-		} else {
-			inputPanel.SetTitle(fmt.Sprintf("%s Input", theme.IconArrowRight))
-			inputPanel.SetTitleColor(0) // Use default
-			outputPanel.SetTitle(fmt.Sprintf("%s Output (active)", theme.IconArrowLeft))
-			outputPanel.SetTitleColor(theme.Accent())
-		}
+	applyIOFocus := func() {
+		inputPanel.SetTitle(fmt.Sprintf("%s Input", theme.IconArrowRight))
+		outputPanel.SetTitle(fmt.Sprintf("%s Output", theme.IconArrowLeft))
+		inputPanel.SetTitleColor(0)
+		outputPanel.SetTitleColor(0)
+		inputPanel.SetFocused(focusedInput)
+		outputPanel.SetFocused(!focusedInput)
 	}
-	updatePanelTitles()
+	applyIOFocus()
 
-	// Switch focus helper
 	switchFocus := func() {
 		focusedInput = !focusedInput
-		updatePanelTitles()
+		applyIOFocus()
 		if focusedInput {
 			wd.app.JigApp().SetFocus(inputView)
 		} else {
@@ -1951,24 +1988,23 @@ func (wd *WorkflowDetail) showIOModal() {
 		}
 	}
 
-	// Scroll helper
 	scrollView := func(delta int) {
-		var view *tview.TextView
+		view := outputView
 		if focusedInput {
 			view = inputView
-		} else {
-			view = outputView
 		}
-		row, col := view.GetScrollOffset()
-		newRow := row + delta
-		if newRow < 0 {
-			newRow = 0
-		}
-		view.ScrollTo(newRow, col)
+		scrollTextView(view, delta)
 	}
 
 	// Handle input - shared handler for both views
 	inputHandler := func(event *tcell.EventKey) *tcell.EventKey {
+		if outputView.HasFocus() {
+			focusedInput = false
+		} else if inputView.HasFocus() {
+			focusedInput = true
+		}
+		applyIOFocus()
+
 		switch event.Key() {
 		case tcell.KeyEscape:
 			wd.closeIOModal()
@@ -2037,11 +2073,10 @@ func (wd *WorkflowDetail) showIOModal() {
 					copyToClipboard(content)
 					// Show "Copied!" feedback
 					panel.SetTitle(fmt.Sprintf("%s Copied!", theme.IconCompleted))
-					panel.SetTitleColor(temporal.StatusCompleted.Color())
 					go func() {
 						time.Sleep(1 * time.Second)
 						wd.app.JigApp().QueueUpdateDraw(func() {
-							updatePanelTitles()
+							applyIOFocus()
 						})
 					}()
 				}
