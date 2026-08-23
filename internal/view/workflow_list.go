@@ -327,6 +327,9 @@ func (wl *WorkflowList) Start() {
 			wl.togglePreviewMode()
 			return true
 		}).
+		OnRune('i', func(e *tcell.EventKey) bool {
+			return wl.showPreviewIO()
+		}).
 		OnRune('e', func(e *tcell.EventKey) bool {
 			row := wl.table.SelectedRow()
 			if row >= 0 && row < len(wl.workflows) {
@@ -395,6 +398,7 @@ func (wl *WorkflowList) Hints() []KeyHint {
 			return []KeyHint{
 				{Key: "j/k", Description: "Events"},
 				{Key: "tab", Description: "Details"},
+				{Key: "i", Description: "Input/Output"},
 				{Key: "p", Description: "Preview"},
 				{Key: "e", Description: "Event Graph"},
 				{Key: "esc", Description: "Workflows"},
@@ -403,6 +407,7 @@ func (wl *WorkflowList) Hints() []KeyHint {
 			return []KeyHint{
 				{Key: "j/k", Description: "Scroll"},
 				{Key: "tab", Description: "Workflows"},
+				{Key: "i", Description: "Input/Output"},
 				{Key: "p", Description: "Preview"},
 				{Key: "esc", Description: "Workflows"},
 			}
@@ -417,6 +422,7 @@ func (wl *WorkflowList) Hints() []KeyHint {
 		hints = []KeyHint{
 			{Key: "enter", Description: "Events"},
 			{Key: "tab", Description: "Events"},
+			{Key: "i", Description: "Input/Output"},
 			{Key: "p", Description: "Preview"},
 		}
 	}

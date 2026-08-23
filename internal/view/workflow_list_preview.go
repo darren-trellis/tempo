@@ -38,6 +38,28 @@ func formatSelectedEventDetail(ev temporal.EnhancedHistoryEvent) string {
 	)
 }
 
+func (wl *WorkflowList) showPreviewIO() bool {
+	if !wl.previewModeEnabled() {
+		return false
+	}
+	row := wl.table.SelectedRow()
+	if row < 0 || row >= len(wl.workflows) {
+		return false
+	}
+	wf := wl.workflows[row]
+	if wl.previewWorkflowID != wf.ID || wl.previewRunID != wf.RunID {
+		if wl.app != nil {
+			wl.app.ToastError("Events still loading")
+		}
+		return true
+	}
+	input, output := workflowIOFromEvents(wl.previewEvents)
+	showWorkflowIO(wl.app, wf.Type, input, output, func() {
+		wl.setFocusPane(wl.focusPane)
+	})
+	return true
+}
+
 func (wl *WorkflowList) activateSelectedWorkflow() {
 	row := wl.table.SelectedRow()
 	if row < 0 || row >= len(wl.workflows) {
@@ -202,6 +224,9 @@ func (wl *WorkflowList) setupPreview() {
 			wl.togglePreviewMode()
 			return nil
 		}
+		if event.Rune() == 'i' && wl.showPreviewIO() {
+			return nil
+		}
 		if event.Rune() == 'e' && wl.previewWorkflowID != "" {
 			wl.app.NavigateToEvents(wl.previewWorkflowID, wl.previewRunID)
 			return nil
@@ -223,6 +248,9 @@ func (wl *WorkflowList) setupPreview() {
 		}
 		if event.Rune() == 'p' {
 			wl.togglePreviewMode()
+			return nil
+		}
+		if event.Rune() == 'i' && wl.showPreviewIO() {
 			return nil
 		}
 		return event
