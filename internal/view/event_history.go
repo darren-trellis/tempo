@@ -132,6 +132,10 @@ func (eh *EventHistory) setup() {
 		// Optionally toggle side panel on enter
 	})
 
+	eh.timelineView.SetMouseScrollStep(func() int {
+		return mouseScrollStepFromApp(eh.app)
+	})
+
 	// Timeline view selection handler (Enter key)
 	eh.timelineView.SetOnSelect(func(lane *TimelineLane) {
 		if lane != nil && lane.Node != nil {

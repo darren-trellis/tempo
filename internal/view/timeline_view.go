@@ -37,6 +37,7 @@ type TimelineView struct {
 	selectedLane      int
 	onSelect          func(lane *TimelineLane)
 	onSelectionChange func(lane *TimelineLane)
+	mouseScrollStep   func() int
 }
 
 // NewTimelineView creates a new timeline/Gantt chart view.
@@ -56,6 +57,11 @@ func NewTimelineView() *TimelineView {
 
 // Destroy is a no-op kept for backward compatibility.
 func (tv *TimelineView) Destroy() {}
+
+func (tv *TimelineView) SetMouseScrollStep(fn func() int) *TimelineView {
+	tv.mouseScrollStep = fn
+	return tv
+}
 
 // SetNodes populates the timeline from event tree nodes.
 func (tv *TimelineView) SetNodes(nodes []*temporal.EventTreeNode) {
@@ -647,7 +653,7 @@ func (tv *TimelineView) MouseHandler() func(tview.MouseAction, *tcell.EventMouse
 			return false, nil
 		}
 		if delta := horizontalMouseDelta(action, event); delta != 0 {
-			tv.scroll(delta * 5)
+			tv.scroll(delta * resolveMouseScrollStep(tv.mouseScrollStep))
 			return true, nil
 		}
 		switch action {

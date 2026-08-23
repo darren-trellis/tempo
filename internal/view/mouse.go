@@ -2,6 +2,7 @@ package view
 
 import (
 	"github.com/atterpac/jig/components"
+	"github.com/galaxy-io/tempo/internal/config"
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 )
@@ -130,6 +131,22 @@ func horizontalMouseDelta(action tview.MouseAction, event *tcell.EventMouse) int
 	return 0
 }
 
+func resolveMouseScrollStep(step func() int) int {
+	if step != nil {
+		if n := step(); n > 0 {
+			return n
+		}
+	}
+	return config.DefaultMouseScrollStep
+}
+
+func mouseScrollStepFromApp(app *App) int {
+	if app == nil {
+		return config.DefaultMouseScrollStep
+	}
+	return app.Config().MouseScrollStepSize()
+}
+
 func scrollTableColumns(table *components.Table, delta int) {
 	if table == nil || delta == 0 {
 		return
@@ -149,14 +166,14 @@ func scrollTableColumns(table *components.Table, delta int) {
 	table.SetOffset(row, col)
 }
 
-func bindTableHorizontalScroll(table *components.Table) {
+func bindTableHorizontalScroll(table *components.Table, step func() int) {
 	if table == nil {
 		return
 	}
 	prev := table.GetMouseCapture()
 	table.SetMouseCapture(func(action tview.MouseAction, event *tcell.EventMouse) (tview.MouseAction, *tcell.EventMouse) {
 		if delta := horizontalMouseDelta(action, event); delta != 0 {
-			scrollTableColumns(table, delta)
+			scrollTableColumns(table, delta*resolveMouseScrollStep(step))
 			return tview.MouseConsumed, nil
 		}
 		if prev != nil {

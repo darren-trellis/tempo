@@ -82,6 +82,9 @@ func drawTimelineSizeButton(screen tcell.Screen, p tview.Primitive, maximized bo
 
 func (wl *WorkflowList) setupTimeline() {
 	wl.timelineView = NewTimelineView()
+	wl.timelineView.SetMouseScrollStep(func() int {
+		return mouseScrollStepFromApp(wl.app)
+	})
 	wl.timelinePanel = &timelineFrame{
 		Panel: components.NewPanel().SetTitle(fmt.Sprintf("%s Timeline", theme.IconEvent)),
 		list:  wl,

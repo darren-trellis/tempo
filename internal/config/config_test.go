@@ -105,6 +105,24 @@ func TestPreviewCacheLimit(t *testing.T) {
 	}
 }
 
+func TestMouseScrollStepSize(t *testing.T) {
+	if DefaultConfig().MouseScrollStepSize() != DefaultMouseScrollStep {
+		t.Fatalf("default mouse scroll step = %d", DefaultConfig().MouseScrollStepSize())
+	}
+	zero := 0
+	if (&Config{MouseScrollStep: &zero}).MouseScrollStepSize() != DefaultMouseScrollStep {
+		t.Fatal("mouse_scroll_step below 1 should use the default")
+	}
+	step := 4
+	if (&Config{MouseScrollStep: &step}).MouseScrollStepSize() != 4 {
+		t.Fatal("mouse_scroll_step should use the configured value")
+	}
+	huge := 1000
+	if (&Config{MouseScrollStep: &huge}).MouseScrollStepSize() != MaxMouseScrollStep {
+		t.Fatalf("mouse_scroll_step should clamp to %d", MaxMouseScrollStep)
+	}
+}
+
 func TestShouldAutoreloadDefault(t *testing.T) {
 	if !DefaultConfig().ShouldAutoreload() {
 		t.Fatal("autoreload should default to on")

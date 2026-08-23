@@ -143,7 +143,9 @@ func (wl *WorkflowList) setup() {
 	wl.tableScroll = newCharScrollView(wl.table, func() int {
 		return workflowTableContentWidth(wl.columnLayout())
 	})
-	bindTableCharScroll(wl.table, wl.tableScroll)
+	bindTableCharScroll(wl.table, wl.tableScroll, func() int {
+		return mouseScrollStepFromApp(wl.app)
+	})
 	wl.setupPreview()
 
 	wl.workflowsPanel = components.NewPanel().SetTitle(fmt.Sprintf("%s Workflows", theme.IconWorkflow))

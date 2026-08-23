@@ -55,7 +55,7 @@ func TestBindTableCharScroll(t *testing.T) {
 	table.AddRow("1", "2")
 	view := newCharScrollView(table, func() int { return 20 })
 	view.SetRect(0, 0, 10, 5)
-	bindTableCharScroll(table, view)
+	bindTableCharScroll(table, view, nil)
 
 	handler := table.MouseHandler()
 	event := tcell.NewEventMouse(1, 1, tcell.WheelRight, tcell.ModNone)
@@ -65,5 +65,12 @@ func TestBindTableCharScroll(t *testing.T) {
 	}
 	if view.offset != 1 {
 		t.Fatalf("mouse should scroll one character, offset=%d", view.offset)
+	}
+
+	view.offset = 0
+	bindTableCharScroll(table, view, func() int { return 3 })
+	consumed, _ = handler(tview.MouseScrollRight, event, func(tview.Primitive) {})
+	if !consumed || view.offset != 3 {
+		t.Fatalf("configured step should scroll 3 characters, consumed=%v offset=%d", consumed, view.offset)
 	}
 }

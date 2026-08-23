@@ -121,7 +121,7 @@ func TestBindTableHorizontalScroll(t *testing.T) {
 	table := components.NewTable()
 	table.SetHeaders("A", "B", "C")
 	table.AddRow("1", "2", "3")
-	bindTableHorizontalScroll(table)
+	bindTableHorizontalScroll(table, nil)
 	handler := table.MouseHandler()
 	event := tcell.NewEventMouse(0, 1, tcell.WheelRight, tcell.ModNone)
 	consumed, _ := handler(tview.MouseScrollRight, event, func(tview.Primitive) {})

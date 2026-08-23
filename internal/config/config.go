@@ -119,6 +119,7 @@ type Config struct {
 	Commands         map[string]CommandConfig    `yaml:"commands,omitempty"`
 	WorkflowColumns  []WorkflowColumnConfig      `yaml:"workflow_columns,omitempty"`
 	PreviewCacheSize *int                        `yaml:"preview_cache_size,omitempty"`
+	MouseScrollStep  *int                        `yaml:"mouse_scroll_step,omitempty"`
 }
 
 // IsExternalProfile returns true if the given profile name is an external
@@ -161,6 +162,8 @@ func (c *Config) ShouldAutoreload() bool {
 const (
 	DefaultPreviewCacheSize = 32
 	MaxPreviewCacheSize     = 256
+	DefaultMouseScrollStep  = 1
+	MaxMouseScrollStep      = 40
 )
 
 // PreviewCacheLimit is how many workflow histories preview mode keeps in memory.
@@ -175,6 +178,20 @@ func (c *Config) PreviewCacheLimit() int {
 	}
 	if n > MaxPreviewCacheSize {
 		return MaxPreviewCacheSize
+	}
+	return n
+}
+
+func (c *Config) MouseScrollStepSize() int {
+	if c == nil || c.MouseScrollStep == nil {
+		return DefaultMouseScrollStep
+	}
+	n := *c.MouseScrollStep
+	if n < DefaultMouseScrollStep {
+		return DefaultMouseScrollStep
+	}
+	if n > MaxMouseScrollStep {
+		return MaxMouseScrollStep
 	}
 	return n
 }

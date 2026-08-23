@@ -168,14 +168,14 @@ func scrollOffsetByColumn(offset int, cols []workflowColumn, delta int) int {
 	return offs[idx]
 }
 
-func bindTableCharScroll(table *components.Table, view *charScrollView) {
+func bindTableCharScroll(table *components.Table, view *charScrollView, step func() int) {
 	if table == nil || view == nil {
 		return
 	}
 	prev := table.GetMouseCapture()
 	table.SetMouseCapture(func(action tview.MouseAction, event *tcell.EventMouse) (tview.MouseAction, *tcell.EventMouse) {
 		if delta := horizontalMouseDelta(action, event); delta != 0 {
-			view.scrollChars(delta)
+			view.scrollChars(delta * resolveMouseScrollStep(step))
 			return tview.MouseConsumed, nil
 		}
 		if prev != nil {
