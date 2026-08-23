@@ -12,10 +12,12 @@ import (
 type previewKind int
 
 const (
-	previewActivities previewKind = iota
+	previewDetails previewKind = iota
+	previewActivities
 	previewEvents
-	previewDetails
 )
+
+var previewTabOrder = []previewKind{previewDetails, previewActivities, previewEvents}
 
 type previewActivity struct {
 	ScheduledID int64

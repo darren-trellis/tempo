@@ -44,31 +44,41 @@ func TestPreviewKindCycle(t *testing.T) {
 	if wl.previewKind != previewActivities {
 		t.Fatal("preview should default to activities")
 	}
-	if wl.rightFlex.GetItemCount() != 2 {
-		t.Fatalf("activities layout items: %d", wl.rightFlex.GetItemCount())
+	if wl.previewTabs.GetActive() != int(previewActivities) {
+		t.Fatalf("activities tab index: %d", wl.previewTabs.GetActive())
 	}
 	if desc := hintDescription(wl.Hints(), "enter"); desc != "Activities" {
 		t.Fatalf("enter hint: got %q", desc)
 	}
 
 	wl.cyclePreviewKind(1)
-	if wl.previewKind != previewEvents {
-		t.Fatalf("next kind: %d", wl.previewKind)
+	if wl.previewKind != previewEvents || wl.previewTabs.GetActive() != int(previewEvents) {
+		t.Fatalf("next kind: %d tab %d", wl.previewKind, wl.previewTabs.GetActive())
 	}
 	if desc := hintDescription(wl.Hints(), "enter"); desc != "Events" {
 		t.Fatalf("events enter hint: got %q", desc)
 	}
 
 	wl.cyclePreviewKind(1)
-	if wl.previewKind != previewDetails {
-		t.Fatalf("next kind: %d", wl.previewKind)
-	}
-	if wl.rightFlex.GetItemCount() != 1 {
-		t.Fatalf("details layout items: %d", wl.rightFlex.GetItemCount())
+	if wl.previewKind != previewDetails || wl.previewTabs.GetActive() != int(previewDetails) {
+		t.Fatalf("next kind: %d tab %d", wl.previewKind, wl.previewTabs.GetActive())
 	}
 
 	wl.cyclePreviewKind(1)
 	if wl.previewKind != previewActivities {
 		t.Fatal("cycle should wrap to activities")
+	}
+}
+
+func TestPreviewTabHit(t *testing.T) {
+	if kind, ok := previewTabAtX(0, 1); !ok || kind != previewDetails {
+		t.Fatalf("details tab: kind=%d ok=%v", kind, ok)
+	}
+	if kind, ok := previewTabAtX(0, previewTabWidth("Details")+2); !ok || kind != previewActivities {
+		t.Fatalf("activities tab: kind=%d ok=%v", kind, ok)
+	}
+	eventsX := previewTabWidth("Details") + 1 + previewTabWidth("Activities") + 2
+	if kind, ok := previewTabAtX(0, eventsX); !ok || kind != previewEvents {
+		t.Fatalf("events tab: kind=%d ok=%v", kind, ok)
 	}
 }

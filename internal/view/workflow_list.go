@@ -23,41 +23,41 @@ const (
 // WorkflowList displays a list of workflows.
 type WorkflowList struct {
 	*tview.Flex
-	app                 *App
-	namespace           string
-	table               *components.Table
-	workflowsPanel      *components.Panel
-	rightFlex           *tview.Flex
-	eventTable          *components.Table
-	eventDetail         *tview.TextView
-	eventsPanel         *components.Panel
-	eventDetailPanel    *components.Panel
-	workflowDetail      *tview.TextView
-	workflowDetailPanel *components.Panel
-	focusPane           workflowFocusPane
-	previewKind         previewKind
-	previewEvents       []temporal.EnhancedHistoryEvent
-	previewActivities   []previewActivity
-	previewWorkflowID   string
-	previewRunID        string
-	previewGen          uint64
-	previewTimer        *time.Timer
-	previewMode         bool
-	previewCache        *previewCache
-	emptyState          *components.EmptyState
-	noResultsState      *components.EmptyState
-	allWorkflows        []temporal.Workflow // Full unfiltered list
-	workflows           []temporal.Workflow // Filtered list for display
-	filterText          string
-	visibilityQuery     string // Temporal visibility query
-	loading             bool
-	autoRefresh         bool
-	refreshTicker       *time.Ticker
-	stopRefresh         chan struct{}
-	selectionMode       bool     // Multi-select mode active
-	searchHistory       []string // History of visibility queries
-	historyIndex        int      // Current position in history (-1 = not browsing)
-	maxHistorySize      int      // Maximum number of history entries
+	app               *App
+	namespace         string
+	table             *components.Table
+	workflowsPanel    *components.Panel
+	previewPanel      *components.Panel
+	previewTabs       *components.Tabs
+	eventTable        *components.Table
+	eventDetail       *tview.TextView
+	eventsPanel       *components.Panel
+	eventDetailPanel  *components.Panel
+	workflowDetail    *tview.TextView
+	focusPane         workflowFocusPane
+	previewKind       previewKind
+	previewEvents     []temporal.EnhancedHistoryEvent
+	previewActivities []previewActivity
+	previewWorkflowID string
+	previewRunID      string
+	previewGen        uint64
+	previewTimer      *time.Timer
+	previewMode       bool
+	previewCache      *previewCache
+	emptyState        *components.EmptyState
+	noResultsState    *components.EmptyState
+	allWorkflows      []temporal.Workflow // Full unfiltered list
+	workflows         []temporal.Workflow // Filtered list for display
+	filterText        string
+	visibilityQuery   string // Temporal visibility query
+	loading           bool
+	autoRefresh       bool
+	refreshTicker     *time.Ticker
+	stopRefresh       chan struct{}
+	selectionMode     bool     // Multi-select mode active
+	searchHistory     []string // History of visibility queries
+	historyIndex      int      // Current position in history (-1 = not browsing)
+	maxHistorySize    int      // Maximum number of history entries
 	// Server-side completion support
 	serverCompletions   []string            // Cached completions from server query
 	lastCompletionQuery string              // Last query sent to server (to avoid duplicates)
@@ -77,6 +77,7 @@ func NewWorkflowList(app *App, namespace string) *WorkflowList {
 		searchHistory:  make([]string, 0, 50),
 		historyIndex:   -1,
 		maxHistorySize: 50,
+		previewKind:    previewActivities,
 		previewCache:   newPreviewCache(previewCacheLimit(app)),
 	}
 	wl.setup()
@@ -100,6 +101,7 @@ func NewWorkflowListWithData(app *App, namespace string, workflows []temporal.Wo
 		searchHistory:  make([]string, 0, 50),
 		historyIndex:   -1,
 		maxHistorySize: 50,
+		previewKind:    previewActivities,
 		preloaded:      true,
 	}
 	wl.setup()
@@ -127,9 +129,6 @@ func (wl *WorkflowList) setup() {
 
 	wl.workflowsPanel = components.NewPanel().SetTitle(fmt.Sprintf("%s Workflows", theme.IconWorkflow))
 	wl.workflowsPanel.SetContent(wl.table)
-
-	wl.rightFlex = tview.NewFlex().SetDirection(tview.FlexRow)
-	wl.rightFlex.SetBackgroundColor(theme.Bg())
 
 	wl.applyPreviewLayout()
 
@@ -207,8 +206,8 @@ func (wl *WorkflowList) RefreshTheme() {
 		wl.workflowDetail.SetBackgroundColor(bg)
 		wl.workflowDetail.SetTextColor(theme.Fg())
 	}
-	if wl.rightFlex != nil {
-		wl.rightFlex.SetBackgroundColor(bg)
+	if wl.previewPanel != nil {
+		wl.previewPanel.SetBackgroundColor(bg)
 	}
 	wl.populateTable()
 	wl.applyFocusStyles()
@@ -519,6 +518,10 @@ func (wl *WorkflowList) Focus(delegate func(p tview.Primitive)) {
 	case focusEvents:
 		delegate(wl.eventTable)
 	case focusEventDetail:
+		if wl.previewKind == previewDetails && wl.workflowDetail != nil {
+			delegate(wl.workflowDetail)
+			return
+		}
 		delegate(wl.eventDetail)
 	default:
 		delegate(wl.table)
@@ -529,8 +532,8 @@ func (wl *WorkflowList) Focus(delegate func(p tview.Primitive)) {
 func (wl *WorkflowList) Draw(screen tcell.Screen) {
 	bg := theme.Bg()
 	wl.SetBackgroundColor(bg)
-	if wl.rightFlex != nil {
-		wl.rightFlex.SetBackgroundColor(bg)
+	if wl.previewPanel != nil {
+		wl.previewPanel.SetBackgroundColor(bg)
 	}
 	if wl.eventTable != nil {
 		wl.eventTable.SetBackgroundColor(bg)
