@@ -509,7 +509,7 @@ func (wl *WorkflowList) Hints() []KeyHint {
 	}
 	if wl.workersActive() {
 		return []KeyHint{
-			{Key: "h/l", Description: "Collapse/Expand"},
+			{Key: "space", Description: "Collapse/Expand"},
 			{Key: "/", Description: "Search"},
 			{Key: "r", Description: "Refresh"},
 		}
@@ -569,7 +569,7 @@ func (wl *WorkflowList) previewShowsIO() bool {
 func (wl *WorkflowList) previewListHints() []KeyHint {
 	if wl.previewKind == previewHierarchy {
 		return []KeyHint{
-			{Key: "h/l", Description: "Collapse/Expand"},
+			{Key: "space", Description: "Collapse/Expand"},
 			{Key: "+/-", Description: "Depth"},
 			{Key: "z", Description: "Timeline"},
 			{Key: "p", Description: "Preview"},

@@ -207,6 +207,21 @@ func (etv *EventTreeView) SelectedNode() *temporal.EventTreeNode {
 	return etv.selectedNode
 }
 
+// ToggleSelected collapses or expands the selected node.
+func (etv *EventTreeView) ToggleSelected() bool {
+	node := etv.GetCurrentNode()
+	if node == nil {
+		return false
+	}
+	eventNode, ok := node.GetReference().(*temporal.EventTreeNode)
+	if !ok || !eventNode.HasChildren() {
+		return false
+	}
+	eventNode.Collapsed = !eventNode.Collapsed
+	node.SetExpanded(!eventNode.Collapsed)
+	return true
+}
+
 // ExpandAll expands all nodes in the tree.
 func (etv *EventTreeView) ExpandAll() {
 	etv.walkNodes(etv.root, func(node *tview.TreeNode) {

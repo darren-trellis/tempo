@@ -201,7 +201,7 @@ func TestPreviewHierarchyTab(t *testing.T) {
 	if wl.focusPane != focusEvents {
 		t.Fatalf("o should focus the hierarchy tree, got %d", wl.focusPane)
 	}
-	if desc := hintDescription(wl.Hints(), "h/l"); desc != "Collapse/Expand" {
+	if desc := hintDescription(wl.Hints(), "space"); desc != "Collapse/Expand" {
 		t.Fatalf("hierarchy hints: %q", desc)
 	}
 	if desc := hintDescription(wl.Hints(), "c"); desc != "" {

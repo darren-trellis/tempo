@@ -131,7 +131,7 @@ func (wg *WorkflowGraphView) Stop() {
 // Hints returns keybinding hints for this view.
 func (wg *WorkflowGraphView) Hints() []KeyHint {
 	return []KeyHint{
-		{Key: "h/l", Description: "Collapse/Expand"},
+		{Key: "space", Description: "Collapse/Expand"},
 		{Key: "c", Description: "Center Graph"},
 		{Key: "+/-", Description: "Depth"},
 		{Key: "Enter", Description: "Open Detail"},

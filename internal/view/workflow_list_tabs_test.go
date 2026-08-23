@@ -128,8 +128,8 @@ func TestWorkflowListSchedulesAndWorkersTabs(t *testing.T) {
 	if hintDescription(wl.Hints(), "/") != "Search" {
 		t.Fatalf("workers hints: %q", hintDescription(wl.Hints(), "/"))
 	}
-	if hintDescription(wl.Hints(), "h/l") != "Collapse/Expand" {
-		t.Fatalf("workers tree hint: %q", hintDescription(wl.Hints(), "h/l"))
+	if hintDescription(wl.Hints(), "space") != "Collapse/Expand" {
+		t.Fatalf("workers tree hint: %q", hintDescription(wl.Hints(), "space"))
 	}
 
 	if !wl.handleListTabKey(tcell.NewEventKey(tcell.KeyRune, ']', 0)) {

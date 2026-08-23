@@ -576,6 +576,10 @@ func (eh *EventHistory) setupInputCapture() {
 
 	// Tree view bindings: common + tree-specific + vim gg/G navigation
 	treeBindings := bindings.Clone().
+		OnRune(' ', func(e *tcell.EventKey) bool {
+			eh.treeView.ToggleSelected()
+			return true
+		}).
 		OnRune('e', func(e *tcell.EventKey) bool {
 			eh.treeView.ExpandAll()
 			return true
@@ -663,6 +667,7 @@ func (eh *EventHistory) Hints() []KeyHint {
 	switch eh.viewMode {
 	case ViewModeTree:
 		hints = append(hints,
+			KeyHint{Key: "space", Description: "Collapse/Expand"},
 			KeyHint{Key: "e", Description: "Expand All"},
 			KeyHint{Key: "c", Description: "Collapse All"},
 			KeyHint{Key: "f", Description: "Jump to Failed"},

@@ -216,11 +216,8 @@ func (wl *WorkflowList) bindWorkerKeys() {
 		case 'r':
 			wv.loadData()
 			return nil
-		case 'h':
-			wv.setHostCollapsed(true)
-			return nil
-		case 'l':
-			wv.setHostCollapsed(false)
+		case ' ':
+			wv.toggleSelectedHost()
 			return nil
 		}
 		return event
