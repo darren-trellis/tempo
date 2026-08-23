@@ -23,7 +23,7 @@ func (wl *WorkflowList) toggleSelectionMode() {
 		wl.table.ClearSelection()
 		wl.updatePanelTitle()
 	}
-	wl.app.JigApp().Menu().SetHints(wl.Hints())
+	wl.refreshSelectHints()
 }
 
 func (wl *WorkflowList) updateSelectionPreview() {
@@ -33,7 +33,13 @@ func (wl *WorkflowList) updateSelectionPreview() {
 	} else {
 		wl.SetMasterTitle(fmt.Sprintf("%s Workflows (%d selected)", theme.IconWorkflow, count))
 	}
-	wl.app.JigApp().Menu().SetHints(wl.Hints())
+	wl.refreshSelectHints()
+}
+
+func (wl *WorkflowList) refreshSelectHints() {
+	if wl.app != nil && wl.app.JigApp() != nil && wl.app.JigApp().Menu() != nil {
+		wl.app.JigApp().Menu().SetHints(wl.Hints())
+	}
 }
 
 // Batch operation methods

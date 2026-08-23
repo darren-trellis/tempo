@@ -319,6 +319,11 @@ func (wl *WorkflowList) Start() {
 			return true
 		}).
 		OnRune('a', func(e *tcell.EventKey) bool {
+			if wl.selectionMode {
+				wl.table.SelectAll()
+				wl.updateSelectionPreview()
+				return true
+			}
 			wl.toggleAutoRefresh()
 			return true
 		}).
@@ -377,14 +382,6 @@ func (wl *WorkflowList) Start() {
 		OnRune('d', func(e *tcell.EventKey) bool {
 			wl.startDiff()
 			return true
-		}).
-		OnCtrlRune('a', func(e *tcell.EventKey) bool {
-			if wl.selectionMode {
-				wl.table.SelectAll()
-				wl.updateSelectionPreview()
-				return true
-			}
-			return false
 		}).
 		OnRune('o', func(e *tcell.EventKey) bool {
 			wl.showWorkflowGraph()
@@ -522,8 +519,7 @@ func (wl *WorkflowList) Hints() []KeyHint {
 	if wl.selectionMode {
 		hints := []KeyHint{
 			{Key: "space", Description: "Select"},
-			{Key: "Ctrl+A", Description: "Select All"},
-			{Key: "v", Description: "Exit Select"},
+			{Key: "a", Description: "Select All"},
 		}
 		if len(wl.table.GetSelectedRows()) > 0 {
 			hints = append(hints,
@@ -647,7 +643,7 @@ func (wl *WorkflowList) workflowPaneHints() []KeyHint {
 	)
 }
 
-// HandleEscape implements EscapeHandler to clear filter state before navigation.
+// HandleEscape implements EscapeHandler to leave select mode or clear filters before navigation.
 func (wl *WorkflowList) HandleEscape() bool {
 	if wl.taskQueuesActive() && wl.focusPane == focusPollers {
 		wl.setPollersVisible(false)
@@ -655,6 +651,10 @@ func (wl *WorkflowList) HandleEscape() bool {
 	}
 	if wl.taskQueuesActive() {
 		wl.setListKind(listWorkflows)
+		return true
+	}
+	if wl.selectionMode {
+		wl.toggleSelectionMode()
 		return true
 	}
 	if wl.focusPane != focusWorkflows {

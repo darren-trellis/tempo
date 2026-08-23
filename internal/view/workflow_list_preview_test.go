@@ -9,6 +9,46 @@ import (
 	"github.com/gdamore/tcell/v2"
 )
 
+func TestSelectModeKeys(t *testing.T) {
+	wl := NewWorkflowList(&App{}, "default")
+	wl.keepDataOnStart = true
+	wl.Start()
+
+	if desc := hintDescription(wl.Hints(), "a"); desc != "Auto-refresh" {
+		t.Fatalf("a should toggle auto-refresh, got %q", desc)
+	}
+
+	if ev := wl.table.GetInputCapture()(tcell.NewEventKey(tcell.KeyRune, 'v', 0)); ev != nil {
+		t.Fatal("v should enter select mode")
+	}
+	if !wl.selectionMode {
+		t.Fatal("v should enable select mode")
+	}
+	if desc := hintDescription(wl.Hints(), "a"); desc != "Select All" {
+		t.Fatalf("select mode a: %q", desc)
+	}
+	if desc := hintDescription(wl.Hints(), "Ctrl+A"); desc != "" {
+		t.Fatalf("ctrl+a should not be hinted, got %q", desc)
+	}
+	if desc := hintDescription(wl.Hints(), "v"); desc != "" {
+		t.Fatalf("exit select should not use v, got %q", desc)
+	}
+	if desc := hintDescription(wl.Hints(), "esc"); desc != "" {
+		t.Fatalf("esc should stay off the footer, got %q", desc)
+	}
+
+	if ev := wl.table.GetInputCapture()(tcell.NewEventKey(tcell.KeyRune, 'a', 0)); ev != nil {
+		t.Fatal("a should select all")
+	}
+	if wl.autoRefresh {
+		t.Fatal("a should not toggle auto-refresh in select mode")
+	}
+
+	if !wl.HandleEscape() || wl.selectionMode {
+		t.Fatal("esc should exit select mode")
+	}
+}
+
 func TestNewWorkflowListDoesNotPanic(t *testing.T) {
 	defer func() {
 		if r := recover(); r != nil {
