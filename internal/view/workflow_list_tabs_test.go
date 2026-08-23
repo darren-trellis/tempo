@@ -109,8 +109,8 @@ func TestTaskQueuesShowPollersAlongside(t *testing.T) {
 		t.Fatalf("workflows-only layout: %d", wl.mainFlex.GetItemCount())
 	}
 	wl.setListKind(listTaskQueues)
-	if wl.mainFlex.GetItemCount() != 1 {
-		t.Fatalf("pollers should start hidden, got %d panes", wl.mainFlex.GetItemCount())
+	if wl.mainFlex.GetItemCount() != 2 {
+		t.Fatalf("pollers should open beside queues, got %d panes", wl.mainFlex.GetItemCount())
 	}
 	if wl.taskQueues.GetItemCount() != 0 {
 		t.Fatal("pollers should not be nested inside the task queues tab")
@@ -119,10 +119,9 @@ func TestTaskQueuesShowPollersAlongside(t *testing.T) {
 		t.Fatal("enter/esc should stay off the footer")
 	}
 
-	wl.setPollersVisible(true)
 	wl.setFocusPane(focusPollers)
 	if wl.mainFlex.GetItemCount() != 2 {
-		t.Fatalf("enter should show pollers beside queues, got %d panes", wl.mainFlex.GetItemCount())
+		t.Fatalf("pollers should stay beside queues, got %d panes", wl.mainFlex.GetItemCount())
 	}
 	if wl.handleListTabKey(tcell.NewEventKey(tcell.KeyRune, ']', 0)) {
 		t.Fatal("list tab keys should not work from pollers")
