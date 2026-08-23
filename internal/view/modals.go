@@ -367,13 +367,9 @@ func (m *ProfileModal) setup() {
 	})
 
 	m.Modal.SetContent(m.table)
-	m.Modal.SetHints([]components.KeyHint{
-		{Key: "Enter", Description: "Switch"},
-		{Key: "n", Description: "New"},
-		{Key: "e", Description: "Edit"},
-		{Key: "d", Description: "Delete"},
-		{Key: "Esc", Description: "Close"},
-	})
+	if panel := m.GetPanel(); panel != nil {
+		panel.SetContent(m.table)
+	}
 	m.Modal.SetOnCancel(func() {
 		if m.onClose != nil {
 			m.onClose()
@@ -418,6 +414,16 @@ func (m *ProfileModal) SetOnNew(fn func())          { m.onNew = fn }
 func (m *ProfileModal) SetOnEdit(fn func(string))   { m.onEdit = fn }
 func (m *ProfileModal) SetOnDelete(fn func(string)) { m.onDelete = fn }
 func (m *ProfileModal) SetOnClose(fn func())        { m.onClose = fn }
+
+func (m *ProfileModal) Hints() []KeyHint {
+	return []KeyHint{
+		{Key: "Enter", Description: "Switch"},
+		{Key: "n", Description: "New"},
+		{Key: "e", Description: "Edit"},
+		{Key: "d", Description: "Delete"},
+		{Key: "Esc", Description: "Close"},
+	}
+}
 
 func (m *ProfileModal) Focus(delegate func(p tview.Primitive)) {
 	delegate(m.table)

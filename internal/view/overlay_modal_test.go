@@ -90,3 +90,14 @@ func TestOverlayModalMaximize(t *testing.T) {
 		t.Fatalf("maximize should grow the panel: rest=%dx%d max=%dx%d", restW, restH, maxW, maxH)
 	}
 }
+
+func TestProfileModalHintsStayInFooter(t *testing.T) {
+	modal := NewProfileModal()
+	hints := modal.Hints()
+	if hintDescription(hints, "n") != "New" || hintDescription(hints, "e") != "Edit" {
+		t.Fatalf("profile hints: %+v", hints)
+	}
+	if bar := modal.GetHintBar(); bar != nil && len(bar.Hints) != 0 {
+		t.Fatalf("profile hints should stay in the footer, got in-modal %+v", bar.Hints)
+	}
+}

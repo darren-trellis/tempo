@@ -1169,6 +1169,9 @@ func (a *App) ShowProfileSelector() {
 	})
 
 	a.PushModal(modal)
+	if a.app.Menu() != nil {
+		a.app.Menu().SetHints(modal.Hints())
+	}
 	a.app.SetFocus(modal)
 }
 
