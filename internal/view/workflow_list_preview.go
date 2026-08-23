@@ -270,6 +270,30 @@ func (wl *WorkflowList) cyclePreviewKind(delta int) {
 	wl.setPreviewKind(previewKind(next))
 }
 
+func (wl *WorkflowList) handlePreviewTabKey(event *tcell.EventKey) bool {
+	if event == nil || !wl.previewModeEnabled() {
+		return false
+	}
+	switch event.Rune() {
+	case '[':
+		wl.cyclePreviewKind(-1)
+		return true
+	case ']':
+		wl.cyclePreviewKind(1)
+		return true
+	case '1':
+		wl.setPreviewKind(previewDetails)
+		return true
+	case '2':
+		wl.setPreviewKind(previewActivities)
+		return true
+	case '3':
+		wl.setPreviewKind(previewEvents)
+		return true
+	}
+	return false
+}
+
 func (wl *WorkflowList) setPreviewKind(kind previewKind) {
 	if !wl.previewModeEnabled() {
 		return
@@ -415,20 +439,11 @@ func (wl *WorkflowList) handlePreviewKeys(event *tcell.EventKey) *tcell.EventKey
 	case tcell.KeyEscape:
 		wl.setFocusPane(focusWorkflows)
 		return nil
-	case tcell.KeyLeft:
-		wl.cyclePreviewKind(-1)
-		return nil
-	case tcell.KeyRight:
-		wl.cyclePreviewKind(1)
+	}
+	if wl.handlePreviewTabKey(event) {
 		return nil
 	}
 	switch event.Rune() {
-	case '[', 'h':
-		wl.cyclePreviewKind(-1)
-		return nil
-	case ']', 'l':
-		wl.cyclePreviewKind(1)
-		return nil
 	case 'p':
 		wl.togglePreviewMode()
 		return nil

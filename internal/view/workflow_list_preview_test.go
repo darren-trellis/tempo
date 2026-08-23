@@ -7,6 +7,7 @@ import (
 
 	"github.com/galaxy-io/tempo/internal/temporal"
 	"github.com/gdamore/tcell/v2"
+	"github.com/rivo/tview"
 )
 
 func TestNewWorkflowListDoesNotPanic(t *testing.T) {
@@ -16,6 +17,38 @@ func TestNewWorkflowListDoesNotPanic(t *testing.T) {
 		}
 	}()
 	NewWorkflowList(&App{}, "default")
+}
+
+func TestWorkflowTableKeepsHorizontalScrollKeys(t *testing.T) {
+	wl := NewWorkflowList(&App{}, "default")
+	wl.togglePreviewMode()
+
+	if wl.handlePreviewTabKey(tcell.NewEventKey(tcell.KeyLeft, 0, tcell.ModNone)) {
+		t.Fatal("left should not switch preview tabs from the workflows table")
+	}
+	if wl.handlePreviewTabKey(tcell.NewEventKey(tcell.KeyRune, 'h', 0)) {
+		t.Fatal("h should not switch preview tabs from the workflows table")
+	}
+
+	wl.table.SetOffset(0, 3)
+	wl.table.InputHandler()(tcell.NewEventKey(tcell.KeyLeft, 0, tcell.ModNone), func(tview.Primitive) {})
+	_, col := wl.table.GetOffset()
+	if col != 2 {
+		t.Fatalf("left should scroll the table, column offset=%d", col)
+	}
+
+	if !wl.handlePreviewTabKey(tcell.NewEventKey(tcell.KeyRune, ']', 0)) {
+		t.Fatal("] should still switch preview tabs")
+	}
+	if wl.previewKind != previewEvents {
+		t.Fatalf("] should go to events, got %d", wl.previewKind)
+	}
+	if desc := hintDescription(wl.Hints(), "h/l"); desc != "Scroll" {
+		t.Fatalf("workflows hint should keep h/l scroll, got %q", desc)
+	}
+	if desc := hintDescription(wl.Hints(), "[/]/1-3"); desc != "View" {
+		t.Fatalf("preview tabs should use [/]/1-3, got %q", desc)
+	}
 }
 
 func TestPreviewModeLayout(t *testing.T) {

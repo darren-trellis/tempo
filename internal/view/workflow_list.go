@@ -146,15 +146,8 @@ func (wl *WorkflowList) setup() {
 	wl.applyPreviewLayout()
 
 	emptyInputCapture := func(event *tcell.EventKey) *tcell.EventKey {
-		if wl.previewModeEnabled() {
-			switch event.Key() {
-			case tcell.KeyLeft:
-				wl.cyclePreviewKind(-1)
-				return nil
-			case tcell.KeyRight:
-				wl.cyclePreviewKind(1)
-				return nil
-			}
+		if wl.handlePreviewTabKey(event) {
+			return nil
 		}
 		switch event.Rune() {
 		case 'W':
@@ -184,16 +177,6 @@ func (wl *WorkflowList) setup() {
 		case 'b':
 			wl.toggleWorkflowTree()
 			return nil
-		case '[', 'h':
-			if wl.previewModeEnabled() {
-				wl.cyclePreviewKind(-1)
-				return nil
-			}
-		case ']', 'l':
-			if wl.previewModeEnabled() {
-				wl.cyclePreviewKind(1)
-				return nil
-			}
 		}
 		return event
 	}
@@ -388,48 +371,6 @@ func (wl *WorkflowList) Start() {
 			wl.toggleWorkflowTree()
 			return true
 		}).
-		OnRune('[', func(e *tcell.EventKey) bool {
-			if !wl.previewModeEnabled() {
-				return false
-			}
-			wl.cyclePreviewKind(-1)
-			return true
-		}).
-		OnRune(']', func(e *tcell.EventKey) bool {
-			if !wl.previewModeEnabled() {
-				return false
-			}
-			wl.cyclePreviewKind(1)
-			return true
-		}).
-		OnRune('h', func(e *tcell.EventKey) bool {
-			if !wl.previewModeEnabled() {
-				return false
-			}
-			wl.cyclePreviewKind(-1)
-			return true
-		}).
-		OnRune('l', func(e *tcell.EventKey) bool {
-			if !wl.previewModeEnabled() {
-				return false
-			}
-			wl.cyclePreviewKind(1)
-			return true
-		}).
-		On(tcell.KeyLeft, func(e *tcell.EventKey) bool {
-			if !wl.previewModeEnabled() {
-				return false
-			}
-			wl.cyclePreviewKind(-1)
-			return true
-		}).
-		On(tcell.KeyRight, func(e *tcell.EventKey) bool {
-			if !wl.previewModeEnabled() {
-				return false
-			}
-			wl.cyclePreviewKind(1)
-			return true
-		}).
 		OnRune('i', func(e *tcell.EventKey) bool {
 			return wl.showPreviewIO()
 		}).
@@ -458,6 +399,9 @@ func (wl *WorkflowList) Start() {
 		})
 
 	wl.table.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		if wl.handlePreviewTabKey(event) {
+			return nil
+		}
 		if bindings.Handle(event) {
 			return nil
 		}
@@ -505,7 +449,7 @@ func (wl *WorkflowList) Hints() []KeyHint {
 			return []KeyHint{
 				{Key: "j/k", Description: wl.previewKind.title()},
 				{Key: "tab", Description: "Details"},
-				{Key: "h/l/←/→", Description: "View"},
+				{Key: "[/]/1-3", Description: "View"},
 				{Key: "i", Description: "Input/Output"},
 				{Key: "z", Description: "Timeline"},
 				{Key: "b", Description: treeModeHint(wl.workflowTreeMode)},
@@ -517,7 +461,7 @@ func (wl *WorkflowList) Hints() []KeyHint {
 			return []KeyHint{
 				{Key: "j/k", Description: "Scroll"},
 				{Key: "tab", Description: "Workflows"},
-				{Key: "h/l/←/→", Description: "View"},
+				{Key: "[/]/1-3", Description: "View"},
 				{Key: "i", Description: "Input/Output"},
 				{Key: "z", Description: "Timeline"},
 				{Key: "b", Description: treeModeHint(wl.workflowTreeMode)},
@@ -545,7 +489,7 @@ func (wl *WorkflowList) Hints() []KeyHint {
 		hints = []KeyHint{
 			{Key: "enter", Description: wl.previewKind.title()},
 			{Key: "tab", Description: wl.previewKind.title()},
-			{Key: "h/l/←/→", Description: "View"},
+			{Key: "[/]/1-3", Description: "View"},
 			{Key: "i", Description: "Input/Output"},
 			{Key: "z", Description: "Timeline"},
 			{Key: "b", Description: treeModeHint(wl.workflowTreeMode)},

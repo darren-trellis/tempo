@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/galaxy-io/tempo/internal/temporal"
+	"github.com/gdamore/tcell/v2"
 )
 
 func TestPreviewActivitiesFromEvents(t *testing.T) {
@@ -32,6 +33,49 @@ func TestPreviewActivitiesFromEvents(t *testing.T) {
 	}
 	if got[1].Type != "Charge" || got[1].Status != "Failed" || got[1].Failure != "timeout" || got[1].Attempt != 2 {
 		t.Fatalf("second activity: %+v", got[1])
+	}
+}
+
+func TestPreviewTabKeys(t *testing.T) {
+	wl := NewWorkflowList(&App{}, "default")
+	wl.togglePreviewMode()
+
+	if ev := wl.handlePreviewKeys(tcell.NewEventKey(tcell.KeyRune, 'h', 0)); ev == nil {
+		t.Fatal("h should not switch preview tabs")
+	}
+	if ev := wl.handlePreviewKeys(tcell.NewEventKey(tcell.KeyLeft, 0, tcell.ModNone)); ev == nil {
+		t.Fatal("left should not switch preview tabs")
+	}
+	if ev := wl.handlePreviewKeys(tcell.NewEventKey(tcell.KeyRune, 'l', 0)); ev == nil {
+		t.Fatal("l should not switch preview tabs")
+	}
+	if ev := wl.handlePreviewKeys(tcell.NewEventKey(tcell.KeyRight, 0, tcell.ModNone)); ev == nil {
+		t.Fatal("right should not switch preview tabs")
+	}
+
+	if ev := wl.handlePreviewKeys(tcell.NewEventKey(tcell.KeyRune, ']', 0)); ev != nil {
+		t.Fatal("] should switch preview tabs")
+	}
+	if wl.previewKind != previewEvents {
+		t.Fatalf("] should go to events, got %d", wl.previewKind)
+	}
+	if ev := wl.handlePreviewKeys(tcell.NewEventKey(tcell.KeyRune, '1', 0)); ev != nil {
+		t.Fatal("1 should select details")
+	}
+	if wl.previewKind != previewDetails {
+		t.Fatalf("1 should select details, got %d", wl.previewKind)
+	}
+	if ev := wl.handlePreviewKeys(tcell.NewEventKey(tcell.KeyRune, '2', 0)); ev != nil {
+		t.Fatal("2 should select activities")
+	}
+	if wl.previewKind != previewActivities {
+		t.Fatalf("2 should select activities, got %d", wl.previewKind)
+	}
+	if ev := wl.handlePreviewKeys(tcell.NewEventKey(tcell.KeyRune, '3', 0)); ev != nil {
+		t.Fatal("3 should select events")
+	}
+	if wl.previewKind != previewEvents {
+		t.Fatalf("3 should select events, got %d", wl.previewKind)
 	}
 }
 
