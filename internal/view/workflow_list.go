@@ -28,6 +28,7 @@ type WorkflowList struct {
 	app                   *App
 	namespace             string
 	table                 *components.Table
+	tableScroll           *charScrollView
 	workflowsPanel        *components.Panel
 	previewPanel          *components.Panel
 	previewTabs           *components.Tabs
@@ -139,11 +140,14 @@ func (wl *WorkflowList) setup() {
 	wl.table.SetBorder(false)
 	wl.table.SetBackgroundColor(theme.Bg())
 	applyWorkflowColumnHeaders(wl.table, wl.columnLayout())
-	bindTableHorizontalScroll(wl.table)
+	wl.tableScroll = newCharScrollView(wl.table, func() int {
+		return workflowTableContentWidth(wl.columnLayout())
+	})
+	bindTableCharScroll(wl.table, wl.tableScroll)
 	wl.setupPreview()
 
 	wl.workflowsPanel = components.NewPanel().SetTitle(fmt.Sprintf("%s Workflows", theme.IconWorkflow))
-	wl.workflowsPanel.SetContent(wl.table)
+	wl.workflowsPanel.SetContent(wl.tableScroll)
 
 	wl.applyPreviewLayout()
 
@@ -240,9 +244,14 @@ func (wl *WorkflowList) SetMasterTitle(title string) {
 }
 
 func (wl *WorkflowList) SetMasterContent(content tview.Primitive) {
-	if wl.workflowsPanel != nil {
-		wl.workflowsPanel.SetContent(content)
+	if wl.workflowsPanel == nil {
+		return
 	}
+	if content == wl.table && wl.tableScroll != nil {
+		wl.workflowsPanel.SetContent(wl.tableScroll)
+		return
+	}
+	wl.workflowsPanel.SetContent(content)
 }
 
 // Name returns the view name.
@@ -404,6 +413,9 @@ func (wl *WorkflowList) Start() {
 		if wl.handlePreviewTabKey(event) {
 			return nil
 		}
+		if wl.handleWorkflowScroll(event) {
+			return nil
+		}
 		if bindings.Handle(event) {
 			return nil
 		}
@@ -415,6 +427,35 @@ func (wl *WorkflowList) Start() {
 		return
 	}
 	wl.loadData()
+}
+
+func (wl *WorkflowList) handleWorkflowScroll(event *tcell.EventKey) bool {
+	if wl.tableScroll == nil || event == nil {
+		return false
+	}
+	switch event.Key() {
+	case tcell.KeyLeft:
+		wl.tableScroll.scrollChars(-1)
+		return true
+	case tcell.KeyRight:
+		wl.tableScroll.scrollChars(1)
+		return true
+	case tcell.KeyHome:
+		wl.tableScroll.scrollTo(scrollOffsetByColumn(wl.tableScroll.offset, wl.columnLayout(), -1))
+		return true
+	case tcell.KeyEnd:
+		wl.tableScroll.scrollTo(scrollOffsetByColumn(wl.tableScroll.offset, wl.columnLayout(), 1))
+		return true
+	}
+	switch event.Rune() {
+	case 'h':
+		wl.tableScroll.scrollChars(-1)
+		return true
+	case 'l':
+		wl.tableScroll.scrollChars(1)
+		return true
+	}
+	return false
 }
 
 // Stop is called when the view is deactivated.
@@ -508,6 +549,7 @@ func (wl *WorkflowList) Hints() []KeyHint {
 	hints = append(hints,
 		KeyHint{Key: "e", Description: "Event Graph"},
 		KeyHint{Key: "h/l", Description: "Scroll"},
+		KeyHint{Key: "home/end", Description: "Columns"},
 		KeyHint{Key: "|", Description: "Columns"},
 		KeyHint{Key: "/", Description: "Filter"},
 		KeyHint{Key: "F", Description: "Query"},

@@ -1,0 +1,186 @@
+package view
+
+import (
+	"github.com/atterpac/jig/components"
+	"github.com/gdamore/tcell/v2"
+	"github.com/rivo/tview"
+)
+
+type clipScreen struct {
+	tcell.Screen
+	x, y, w, h int
+}
+
+func (s *clipScreen) SetContent(x, y int, mainc rune, combc []rune, style tcell.Style) {
+	if x < s.x || x >= s.x+s.w || y < s.y || y >= s.y+s.h {
+		return
+	}
+	s.Screen.SetContent(x, y, mainc, combc, style)
+}
+
+type charScrollView struct {
+	*tview.Box
+	content      tview.Primitive
+	offset       int
+	contentWidth func() int
+}
+
+func newCharScrollView(content tview.Primitive, contentWidth func() int) *charScrollView {
+	return &charScrollView{
+		Box:          tview.NewBox(),
+		content:      content,
+		contentWidth: contentWidth,
+	}
+}
+
+func (v *charScrollView) Draw(screen tcell.Screen) {
+	x, y, w, h := v.GetInnerRect()
+	v.clamp()
+	if v.content == nil || w <= 0 || h <= 0 {
+		return
+	}
+	v.content.SetRect(x-v.offset, y, w+v.offset, h)
+	v.content.Draw(&clipScreen{Screen: screen, x: x, y: y, w: w, h: h})
+}
+
+func (v *charScrollView) Focus(delegate func(p tview.Primitive)) {
+	if v.content != nil {
+		delegate(v.content)
+		return
+	}
+	delegate(v)
+}
+
+func (v *charScrollView) HasFocus() bool {
+	if v.content != nil {
+		return v.content.HasFocus()
+	}
+	return v.Box.HasFocus()
+}
+
+func (v *charScrollView) InputHandler() func(*tcell.EventKey, func(tview.Primitive)) {
+	return v.WrapInputHandler(func(event *tcell.EventKey, setFocus func(tview.Primitive)) {
+		if v.content != nil {
+			if handler := v.content.InputHandler(); handler != nil {
+				handler(event, setFocus)
+			}
+		}
+	})
+}
+
+func (v *charScrollView) MouseHandler() func(tview.MouseAction, *tcell.EventMouse, func(tview.Primitive)) (bool, tview.Primitive) {
+	return v.WrapMouseHandler(func(action tview.MouseAction, event *tcell.EventMouse, setFocus func(tview.Primitive)) (bool, tview.Primitive) {
+		if v.content != nil {
+			if handler := v.content.MouseHandler(); handler != nil {
+				return handler(action, event, setFocus)
+			}
+		}
+		return false, nil
+	})
+}
+
+func (v *charScrollView) viewport() int {
+	_, _, w, _ := v.GetInnerRect()
+	return w
+}
+
+func (v *charScrollView) maxOffset() int {
+	width := 0
+	if v.contentWidth != nil {
+		width = v.contentWidth()
+	}
+	max := width - v.viewport()
+	if max < 0 {
+		return 0
+	}
+	return max
+}
+
+func (v *charScrollView) clamp() {
+	if v.offset < 0 {
+		v.offset = 0
+	}
+	if max := v.maxOffset(); v.offset > max {
+		v.offset = max
+	}
+}
+
+func (v *charScrollView) scrollChars(delta int) {
+	v.offset += delta
+	v.clamp()
+}
+
+func (v *charScrollView) scrollTo(offset int) {
+	v.offset = offset
+	v.clamp()
+}
+
+func workflowTableContentWidth(cols []workflowColumn) int {
+	if len(cols) == 0 {
+		return 0
+	}
+	width := 0
+	for i, col := range cols {
+		width += col.width
+		if i < len(cols)-1 {
+			width++
+		}
+	}
+	return width
+}
+
+func workflowColumnOffsets(cols []workflowColumn) []int {
+	offs := make([]int, len(cols))
+	x := 0
+	for i, col := range cols {
+		offs[i] = x
+		x += col.width
+		if i < len(cols)-1 {
+			x++
+		}
+	}
+	return offs
+}
+
+func scrollOffsetByColumn(offset int, cols []workflowColumn, delta int) int {
+	offs := workflowColumnOffsets(cols)
+	if len(offs) == 0 {
+		return 0
+	}
+	idx := 0
+	for i, start := range offs {
+		if start <= offset {
+			idx = i
+		}
+	}
+	if delta < 0 {
+		if offset > offs[idx] {
+			return offs[idx]
+		}
+		if idx > 0 {
+			return offs[idx-1]
+		}
+		return 0
+	}
+	if idx+1 < len(offs) {
+		return offs[idx+1]
+	}
+	return offs[idx]
+}
+
+func bindTableCharScroll(table *components.Table, view *charScrollView) {
+	if table == nil || view == nil {
+		return
+	}
+	prev := table.GetMouseCapture()
+	table.SetMouseCapture(func(action tview.MouseAction, event *tcell.EventMouse) (tview.MouseAction, *tcell.EventMouse) {
+		if delta := horizontalMouseDelta(action, event); delta != 0 {
+			view.scrollChars(delta)
+			return tview.MouseConsumed, nil
+		}
+		if prev != nil {
+			return prev(action, event)
+		}
+		return action, event
+	})
+}

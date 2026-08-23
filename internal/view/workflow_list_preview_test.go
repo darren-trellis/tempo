@@ -7,7 +7,6 @@ import (
 
 	"github.com/galaxy-io/tempo/internal/temporal"
 	"github.com/gdamore/tcell/v2"
-	"github.com/rivo/tview"
 )
 
 func TestNewWorkflowListDoesNotPanic(t *testing.T) {
@@ -30,11 +29,19 @@ func TestWorkflowTableKeepsHorizontalScrollKeys(t *testing.T) {
 		t.Fatal("h should not switch preview tabs from the workflows table")
 	}
 
-	wl.table.SetOffset(0, 3)
-	wl.table.InputHandler()(tcell.NewEventKey(tcell.KeyLeft, 0, tcell.ModNone), func(tview.Primitive) {})
-	_, col := wl.table.GetOffset()
-	if col != 2 {
-		t.Fatalf("left should scroll the table, column offset=%d", col)
+	wl.tableScroll.SetRect(0, 0, 20, 10)
+	wl.tableScroll.scrollTo(4)
+	if !wl.handleWorkflowScroll(tcell.NewEventKey(tcell.KeyLeft, 0, tcell.ModNone)) {
+		t.Fatal("left should scroll the workflows table")
+	}
+	if wl.tableScroll.offset != 3 {
+		t.Fatalf("left should scroll one character, offset=%d", wl.tableScroll.offset)
+	}
+	if !wl.handleWorkflowScroll(tcell.NewEventKey(tcell.KeyEnd, 0, tcell.ModNone)) {
+		t.Fatal("end should scroll by column")
+	}
+	if wl.tableScroll.offset <= 3 {
+		t.Fatalf("end should jump to the next column, offset=%d", wl.tableScroll.offset)
 	}
 
 	if !wl.handlePreviewTabKey(tcell.NewEventKey(tcell.KeyRune, ']', 0)) {
