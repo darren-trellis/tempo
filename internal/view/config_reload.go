@@ -97,6 +97,7 @@ func (a *App) applyReloadedConfig(cfg *config.Config) {
 		}
 		if current := a.app.Pages().Current(); current != nil {
 			if wl, ok := current.(*WorkflowList); ok {
+				wl.previewCache.setLimit(cfg.PreviewCacheLimit())
 				if needColumns {
 					wl.populateTable()
 				}

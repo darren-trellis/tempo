@@ -118,6 +118,7 @@ type Config struct {
 	HelpStyle        string                      `yaml:"help_style,omitempty"` // "modal" (default) or "sheet"
 	Commands         map[string]CommandConfig    `yaml:"commands,omitempty"`
 	WorkflowColumns  []WorkflowColumnConfig      `yaml:"workflow_columns,omitempty"`
+	PreviewCacheSize *int                        `yaml:"preview_cache_size,omitempty"`
 }
 
 // IsExternalProfile returns true if the given profile name is an external
@@ -155,6 +156,27 @@ func (c *Config) ShouldAutoreload() bool {
 		return true
 	}
 	return *c.Autoreload
+}
+
+const (
+	DefaultPreviewCacheSize = 32
+	MaxPreviewCacheSize     = 256
+)
+
+// PreviewCacheLimit is how many workflow histories preview mode keeps in memory.
+// Defaults to 32. Set preview_cache_size to 0 to disable caching.
+func (c *Config) PreviewCacheLimit() int {
+	if c == nil || c.PreviewCacheSize == nil {
+		return DefaultPreviewCacheSize
+	}
+	n := *c.PreviewCacheSize
+	if n < 0 {
+		return 0
+	}
+	if n > MaxPreviewCacheSize {
+		return MaxPreviewCacheSize
+	}
+	return n
 }
 
 // DefaultConfig returns a config with default values.

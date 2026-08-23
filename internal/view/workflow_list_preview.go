@@ -327,6 +327,19 @@ func (wl *WorkflowList) schedulePreview(w temporal.Workflow, force bool) {
 		return
 	}
 
+	if !force {
+		if events, ok := wl.previewCache.get(w.ID, w.RunID); ok {
+			atomic.AddUint64(&wl.previewGen, 1)
+			wl.previewWorkflowID = w.ID
+			wl.previewRunID = w.RunID
+			if wl.previewTimer != nil {
+				wl.previewTimer.Stop()
+			}
+			wl.showPreviewEvents(w, events)
+			return
+		}
+	}
+
 	gen := atomic.AddUint64(&wl.previewGen, 1)
 	wl.previewWorkflowID = w.ID
 	wl.previewRunID = w.RunID
@@ -384,6 +397,7 @@ func (wl *WorkflowList) loadPreview(gen uint64, w temporal.Workflow) {
 
 func (wl *WorkflowList) showPreviewEvents(w temporal.Workflow, events []temporal.EnhancedHistoryEvent) {
 	wl.previewEvents = events
+	wl.previewCache.put(w.ID, w.RunID, events)
 	wl.eventTable.ClearRows()
 	wl.eventTable.SetHeaders("ID", "TIME", "TYPE", "NAME")
 	if wl.eventsPanel != nil {

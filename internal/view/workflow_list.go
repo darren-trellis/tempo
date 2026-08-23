@@ -39,6 +39,7 @@ type WorkflowList struct {
 	previewGen        uint64
 	previewTimer      *time.Timer
 	previewMode       bool
+	previewCache      *previewCache
 	emptyState        *components.EmptyState
 	noResultsState    *components.EmptyState
 	allWorkflows      []temporal.Workflow // Full unfiltered list
@@ -72,6 +73,7 @@ func NewWorkflowList(app *App, namespace string) *WorkflowList {
 		searchHistory:  make([]string, 0, 50),
 		historyIndex:   -1,
 		maxHistorySize: 50,
+		previewCache:   newPreviewCache(previewCacheLimit(app)),
 	}
 	wl.setup()
 

@@ -73,6 +73,20 @@ func TestSetWorkflowColumnsOmitsDefaults(t *testing.T) {
 	}
 }
 
+func TestPreviewCacheLimit(t *testing.T) {
+	if DefaultConfig().PreviewCacheLimit() != DefaultPreviewCacheSize {
+		t.Fatalf("default cache size = %d", DefaultConfig().PreviewCacheLimit())
+	}
+	zero := 0
+	if (&Config{PreviewCacheSize: &zero}).PreviewCacheLimit() != 0 {
+		t.Fatal("preview_cache_size: 0 should disable the cache")
+	}
+	huge := 1000
+	if (&Config{PreviewCacheSize: &huge}).PreviewCacheLimit() != MaxPreviewCacheSize {
+		t.Fatalf("cache size should clamp to %d", MaxPreviewCacheSize)
+	}
+}
+
 func TestShouldAutoreloadDefault(t *testing.T) {
 	if !DefaultConfig().ShouldAutoreload() {
 		t.Fatal("autoreload should default to on")
