@@ -12,10 +12,6 @@ import (
 	"github.com/rivo/tview"
 )
 
-var workflowTableHeaders = []string{
-	"WORKFLOW ID", "STATUS", "TYPE", "STARTED", "ENDED", "DURATION", "TASK QUEUE", "RUN ID",
-}
-
 // WorkflowList displays a list of workflows.
 type WorkflowList struct {
 	*components.MasterDetailView
@@ -93,9 +89,10 @@ func (wl *WorkflowList) CommandContext() (workflowID, runID, workflowType string
 }
 
 func (wl *WorkflowList) setup() {
-	wl.table.SetHeaders(workflowTableHeaders...)
+	wl.table.SetEvaluateAllRows(true)
 	wl.table.SetBorder(false)
 	wl.table.SetBackgroundColor(theme.Bg())
+	applyWorkflowColumnHeaders(wl.table, wl.columnLayout())
 
 	emptyInputCapture := func(event *tcell.EventKey) *tcell.EventKey {
 		switch event.Rune() {
@@ -113,6 +110,9 @@ func (wl *WorkflowList) setup() {
 			return nil
 		case 'a':
 			wl.toggleAutoRefresh()
+			return nil
+		case '|':
+			wl.showColumnEditor()
 			return nil
 		}
 		return event
@@ -261,6 +261,10 @@ func (wl *WorkflowList) Start() {
 		OnRune('o', func(e *tcell.EventKey) bool {
 			wl.showWorkflowGraph()
 			return true
+		}).
+		OnRune('|', func(e *tcell.EventKey) bool {
+			wl.showColumnEditor()
+			return true
 		})
 
 	wl.table.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
@@ -300,6 +304,8 @@ func (wl *WorkflowList) Hints() []KeyHint {
 
 	hints := []KeyHint{
 		{Key: "enter", Description: "Detail"},
+		{Key: "h/l", Description: "Scroll"},
+		{Key: "|", Description: "Columns"},
 		{Key: "/", Description: "Filter"},
 		{Key: "F", Description: "Query"},
 		{Key: "f", Description: "Templates"},

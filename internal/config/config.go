@@ -39,9 +39,9 @@ type CommandConfig struct {
 
 // ConnectionConfig holds Temporal connection settings.
 type ConnectionConfig struct {
-	Address   string                    `yaml:"address"`
-	Namespace string                    `yaml:"namespace"`
-	TLS       TLSConfig                 `yaml:"tls,omitempty"`
+	Address       string                   `yaml:"address"`
+	Namespace     string                   `yaml:"namespace"`
+	TLS           TLSConfig                `yaml:"tls,omitempty"`
 	APIKey        string                   `yaml:"api_key,omitempty"`        // For Temporal Cloud API key authentication
 	GRPCMeta      map[string]string        `yaml:"grpc_meta,omitempty"`      // Custom gRPC metadata headers (KEY=VALUE pairs)
 	CodecEndpoint string                   `yaml:"codec_endpoint,omitempty"` // Temporal codec server base URL
@@ -116,6 +116,7 @@ type Config struct {
 	CheckUpdates     *bool                       `yaml:"check_updates,omitempty"`
 	HelpStyle        string                      `yaml:"help_style,omitempty"` // "modal" (default) or "sheet"
 	Commands         map[string]CommandConfig    `yaml:"commands,omitempty"`
+	WorkflowColumns  []WorkflowColumnConfig      `yaml:"workflow_columns,omitempty"`
 }
 
 // IsExternalProfile returns true if the given profile name is an external
@@ -537,4 +538,145 @@ func ValidateTheme(name string) bool {
 	}
 
 	return false
+}
+
+const (
+	WorkflowColumnWorkflowID = "workflow_id"
+	WorkflowColumnStatus     = "status"
+	WorkflowColumnType       = "type"
+	WorkflowColumnStarted    = "started"
+	WorkflowColumnEnded      = "ended"
+	WorkflowColumnDuration   = "duration"
+	WorkflowColumnTaskQueue  = "task_queue"
+	WorkflowColumnRunID      = "run_id"
+
+	MinWorkflowColumnWidth = 4
+	MaxWorkflowColumnWidth = 80
+)
+
+// WorkflowColumnConfig is one column in the workflows table.
+// Omit a column to hide it. Width is a max character width.
+type WorkflowColumnConfig struct {
+	ID    string `yaml:"id"`
+	Width int    `yaml:"width,omitempty"`
+}
+
+func defaultWorkflowColumns() []WorkflowColumnConfig {
+	return []WorkflowColumnConfig{
+		{ID: WorkflowColumnWorkflowID, Width: 36},
+		{ID: WorkflowColumnStatus, Width: 12},
+		{ID: WorkflowColumnType, Width: 24},
+		{ID: WorkflowColumnStarted, Width: 11},
+		{ID: WorkflowColumnEnded, Width: 11},
+		{ID: WorkflowColumnDuration, Width: 12},
+		{ID: WorkflowColumnTaskQueue, Width: 20},
+		{ID: WorkflowColumnRunID, Width: 36},
+	}
+}
+
+// DefaultWorkflowColumnWidth returns the built-in width for a column id.
+func DefaultWorkflowColumnWidth(id string) int {
+	for _, col := range defaultWorkflowColumns() {
+		if col.ID == id {
+			return col.Width
+		}
+	}
+	return 16
+}
+
+func knownWorkflowColumn(id string) bool {
+	for _, col := range defaultWorkflowColumns() {
+		if col.ID == id {
+			return true
+		}
+	}
+	return false
+}
+
+// DefaultWorkflowColumns returns the built-in workflows table layout.
+func DefaultWorkflowColumns() []WorkflowColumnConfig {
+	return defaultWorkflowColumns()
+}
+
+// KnownWorkflowColumnIDs returns every supported workflows column id.
+func KnownWorkflowColumnIDs() []string {
+	cols := defaultWorkflowColumns()
+	ids := make([]string, len(cols))
+	for i, col := range cols {
+		ids[i] = col.ID
+	}
+	return ids
+}
+
+// ClampWorkflowColumnWidth keeps a column width within supported bounds.
+func ClampWorkflowColumnWidth(width int) int {
+	if width < MinWorkflowColumnWidth {
+		return MinWorkflowColumnWidth
+	}
+	if width > MaxWorkflowColumnWidth {
+		return MaxWorkflowColumnWidth
+	}
+	return width
+}
+
+// ResolveWorkflowColumns validates order and widths, filling in defaults.
+func ResolveWorkflowColumns(cols []WorkflowColumnConfig) []WorkflowColumnConfig {
+	if len(cols) == 0 {
+		return defaultWorkflowColumns()
+	}
+
+	seen := make(map[string]bool, len(cols))
+	out := make([]WorkflowColumnConfig, 0, len(cols))
+	for _, col := range cols {
+		id := strings.ToLower(strings.TrimSpace(col.ID))
+		if !knownWorkflowColumn(id) || seen[id] {
+			continue
+		}
+		seen[id] = true
+		width := col.Width
+		if width <= 0 {
+			width = DefaultWorkflowColumnWidth(id)
+		}
+		out = append(out, WorkflowColumnConfig{
+			ID:    id,
+			Width: ClampWorkflowColumnWidth(width),
+		})
+	}
+	if len(out) == 0 {
+		return defaultWorkflowColumns()
+	}
+	return out
+}
+
+// WorkflowColumnLayout returns the resolved workflows table layout.
+func (c *Config) WorkflowColumnLayout() []WorkflowColumnConfig {
+	if c == nil {
+		return defaultWorkflowColumns()
+	}
+	return ResolveWorkflowColumns(c.WorkflowColumns)
+}
+
+// SetWorkflowColumns stores a resolved layout. Defaults are omitted from yaml.
+func (c *Config) SetWorkflowColumns(cols []WorkflowColumnConfig) {
+	if c == nil {
+		return
+	}
+	resolved := ResolveWorkflowColumns(cols)
+	if workflowColumnsEqual(resolved, defaultWorkflowColumns()) {
+		c.WorkflowColumns = nil
+		return
+	}
+	c.WorkflowColumns = resolved
+}
+
+func workflowColumnsEqual(a, b []WorkflowColumnConfig) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i].ID != b[i].ID || a[i].Width != b[i].Width {
+			return false
+		}
+	}
+	return true
 }

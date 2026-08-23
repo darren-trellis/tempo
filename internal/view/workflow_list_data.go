@@ -6,6 +6,7 @@ import (
 	"sort"
 	"time"
 
+	"github.com/atterpac/jig/components"
 	"github.com/atterpac/jig/theme"
 	"github.com/galaxy-io/tempo/internal/temporal"
 )
@@ -106,8 +107,9 @@ func (wl *WorkflowList) loadMockData() {
 func (wl *WorkflowList) populateTable() {
 	currentRow := wl.table.SelectedRow()
 
+	cols := wl.columnLayout()
 	wl.table.ClearRows()
-	wl.table.SetHeaders(workflowTableHeaders...)
+	applyWorkflowColumnHeaders(wl.table, cols)
 
 	if len(wl.workflows) == 0 {
 		if len(wl.allWorkflows) == 0 {
@@ -120,21 +122,13 @@ func (wl *WorkflowList) populateTable() {
 
 	wl.SetMasterContent(wl.table)
 
-	widths := wl.calculateColumnWidths()
-
 	now := time.Now()
 	for _, w := range wl.workflows {
-		statusHandle := temporal.GetWorkflowStatus(w.Status)
-		wl.table.AddRowWithStatus(statusHandle, 1,
-			truncateIfNeeded(w.ID, widths.id),
-			w.Status,
-			truncateIfNeeded(w.Type, widths.typ),
-			formatRelativeTime(now, w.StartTime),
-			workflowEndTime(now, w),
-			workflowDuration(now, w),
-			truncateIfNeeded(w.TaskQueue, widths.queue),
-			truncateIfNeeded(w.RunID, widths.runID),
-		)
+		cells := make([]components.TableCell, len(cols))
+		for i, col := range cols {
+			cells[i] = col.cell(now, w)
+		}
+		wl.table.AddStyledRow(cells)
 	}
 
 	if wl.table.RowCount() > 0 {
@@ -166,76 +160,17 @@ func (wl *WorkflowList) updateStats() {
 }
 
 func (wl *WorkflowList) showError(err error) {
+	cols := wl.columnLayout()
 	wl.table.ClearRows()
-	wl.table.SetHeaders(workflowTableHeaders...)
-	wl.table.AddRowWithColor(theme.Error(),
-		theme.IconError+" Error loading workflows",
-		err.Error(),
-		"", "", "", "", "", "",
-	)
-}
-
-type workflowColWidths struct {
-	id, typ, queue, runID int
-}
-
-func (wl *WorkflowList) calculateColumnWidths() workflowColWidths {
-	_, _, totalWidth, _ := wl.MasterDetailView.GetInnerRect()
-	width := totalWidth - 4
-	if width <= 0 {
-		return workflowColWidths{id: 25, typ: 15, queue: 14, runID: 12}
+	applyWorkflowColumnHeaders(wl.table, cols)
+	cells := make([]string, len(cols))
+	if len(cells) > 0 {
+		cells[0] = theme.IconError + " Error loading workflows"
 	}
-
-	const (
-		statusWidth   = 12
-		startedWidth  = 11
-		endedWidth    = 11
-		durationWidth = 12
-		separators    = 16
-		minID         = 15
-		minType       = 10
-		minQueue      = 10
-		minRunID      = 10
-		maxRunID      = 36
-	)
-
-	fixed := statusWidth + startedWidth + endedWidth + durationWidth + separators
-	available := width - fixed
-	if available <= minID+minType+minQueue+minRunID {
-		return workflowColWidths{id: minID, typ: minType, queue: minQueue, runID: minRunID}
+	if len(cells) > 1 {
+		cells[1] = err.Error()
 	}
-
-	runID := maxRunID
-	if available < minID+minType+minQueue+maxRunID {
-		runID = minRunID
-	}
-
-	variable := available - runID
-	id := (variable * 50) / 100
-	rest := variable - id
-	typ := rest / 2
-	queue := rest - typ
-
-	if id >= 50 {
-		id = 0
-	} else if id < minID {
-		id = minID
-	}
-	if typ >= 40 {
-		typ = 0
-	} else if typ < minType {
-		typ = minType
-	}
-	if queue >= 40 {
-		queue = 0
-	} else if queue < minQueue {
-		queue = minQueue
-	}
-	if runID >= maxRunID {
-		runID = 0
-	}
-
-	return workflowColWidths{id: id, typ: typ, queue: queue, runID: runID}
+	wl.table.AddRowWithColor(theme.Error(), cells...)
 }
 
 // Auto-refresh methods
