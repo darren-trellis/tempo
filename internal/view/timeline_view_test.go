@@ -1,10 +1,12 @@
 package view
 
 import (
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/galaxy-io/tempo/internal/temporal"
+	"github.com/gdamore/tcell/v2"
 )
 
 func TestSelectByScheduledID(t *testing.T) {
@@ -28,5 +30,62 @@ func TestSelectByScheduledID(t *testing.T) {
 	lane := tv.SelectedLane()
 	if lane == nil || timelineLaneScheduledID(*lane) != 8 {
 		t.Fatal("selected lane should be the second activity")
+	}
+}
+
+func TestTimelineBarName(t *testing.T) {
+	if got := timelineBarName(TimelineLane{Name: "Activity: ValidateOrder"}); got != "ValidateOrder" {
+		t.Fatalf("activity: %q", got)
+	}
+	if got := timelineBarName(TimelineLane{Name: "Timer: sleep"}); got != "sleep" {
+		t.Fatalf("timer: %q", got)
+	}
+}
+
+func TestFitTimelineName(t *testing.T) {
+	if got := fitTimelineName("ValidateOrder", 20); got != "ValidateOrder" {
+		t.Fatalf("short name: %q", got)
+	}
+	if got := fitTimelineName("ValidateOrder", 8); got != "Validat…" {
+		t.Fatalf("truncated: %q", got)
+	}
+	if got := fitTimelineName("ValidateOrder", 0); got != "" {
+		t.Fatalf("empty width: %q", got)
+	}
+}
+
+func TestTimelineDrawsNameInsideBar(t *testing.T) {
+	start := time.Date(2026, 8, 23, 12, 0, 0, 0, time.UTC)
+	end := start.Add(time.Minute)
+	tv := NewTimelineView()
+	tv.SetNodes(temporal.BuildEventTree([]temporal.EnhancedHistoryEvent{
+		{ID: 1, Type: "WorkflowExecutionStarted", Time: start},
+		{ID: 5, Type: "ActivityTaskScheduled", Time: start, ActivityType: "ValidateOrder"},
+		{ID: 6, Type: "ActivityTaskCompleted", Time: end, ScheduledEventID: 5},
+	}))
+	tv.SetRect(0, 0, 80, 10)
+
+	screen := tcell.NewSimulationScreen("UTF-8")
+	if err := screen.Init(); err != nil {
+		t.Fatal(err)
+	}
+	screen.SetSize(80, 10)
+	tv.Draw(screen)
+
+	var header, row strings.Builder
+	for x := 0; x < 80; x++ {
+		ch, _, _, _ := screen.GetContent(x, 0)
+		header.WriteRune(ch)
+		ch, _, _, _ = screen.GetContent(x, 2)
+		row.WriteRune(ch)
+	}
+	if strings.Contains(header.String(), "Event") {
+		t.Fatalf("header should not list activities, got %q", header.String())
+	}
+	if strings.Contains(row.String(), "Activity:") {
+		t.Fatalf("bar should not repeat the activity list prefix, got %q", row.String())
+	}
+	if !strings.Contains(row.String(), "ValidateOrder") {
+		t.Fatalf("bar should contain the activity name, got %q", row.String())
 	}
 }

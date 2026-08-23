@@ -2,6 +2,7 @@ package view
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/atterpac/jig/theme"
@@ -11,8 +12,7 @@ import (
 )
 
 const (
-	timelineLabelWidth = 25 // Width for lane labels on the left
-	timelineMinWidth   = 40 // Minimum timeline bar area width
+	timelineMinWidth = 40
 )
 
 // TimelineLane represents a horizontal lane in the timeline.
@@ -142,47 +142,33 @@ func (tv *TimelineView) Draw(screen tcell.Screen) {
 	tv.Box.DrawForSubclass(screen, tv)
 
 	x, y, width, height := tv.GetInnerRect()
-	if width < timelineLabelWidth+10 || height < 3 {
+	if width < timelineMinWidth || height < 3 {
 		return
 	}
 
-	// Draw header with time scale
 	tv.drawHeader(screen, x, y, width)
-
-	// Draw lanes starting from y+2 (after header)
-	barAreaWidth := width - timelineLabelWidth - 1
-	if barAreaWidth < timelineMinWidth {
-		barAreaWidth = timelineMinWidth
-	}
 
 	timeRange := tv.endTime.Sub(tv.startTime)
 	if timeRange <= 0 {
 		timeRange = time.Minute
 	}
 
-	visibleLanes := height - 3 // Subtract header rows
+	visibleLanes := height - 3
 	startLane := tv.scrollY
 	endLane := startLane + visibleLanes
 	if endLane > len(tv.lanes) {
 		endLane = len(tv.lanes)
 	}
 
-	barStartX := x + timelineLabelWidth + 1
-
 	for i := startLane; i < endLane; i++ {
 		lane := tv.lanes[i]
 		laneY := y + 2 + (i - startLane)
-
-		// Draw lane label
-		tv.drawLaneLabel(screen, x, laneY, lane, i == tv.selectedLane)
-
-		// Draw lane bar
-		tv.drawLaneBar(screen, barStartX, laneY, barAreaWidth, lane, timeRange, i == tv.selectedLane)
+		tv.drawLaneBar(screen, x, laneY, width, lane, timeRange, i == tv.selectedLane)
 	}
 
 	// Draw cursor line for selected lane
 	if tv.selectedLane >= 0 && tv.selectedLane < len(tv.lanes) {
-		tv.drawCursor(screen, barStartX, y, barAreaWidth, height, timeRange)
+		tv.drawCursor(screen, x, y, width, height, timeRange)
 	}
 
 	// Draw legend at bottom if space
@@ -193,8 +179,7 @@ func (tv *TimelineView) Draw(screen tcell.Screen) {
 
 // drawHeader draws the time scale header.
 func (tv *TimelineView) drawHeader(screen tcell.Screen, x, y, width int) {
-	barAreaWidth := width - timelineLabelWidth - 1
-	if barAreaWidth <= 0 {
+	if width <= 0 {
 		return
 	}
 
@@ -203,94 +188,40 @@ func (tv *TimelineView) drawHeader(screen tcell.Screen, x, y, width int) {
 		return
 	}
 
-	// Draw label column header
-	labelStyle := tcell.StyleDefault.Foreground(theme.PanelTitle()).Background(theme.Bg())
-	tview.Print(screen, "Event", x, y, timelineLabelWidth, tview.AlignLeft, theme.PanelTitle())
-
-	// Draw time markers (scaled to width, with rounding)
 	markerCount := 5
-	if barAreaWidth < 60 {
+	if width < 60 {
 		markerCount = 3
 	}
 
-	barStartX := x + timelineLabelWidth + 1
+	tickStyle := tcell.StyleDefault.Foreground(theme.PanelTitle()).Background(theme.Bg())
 	zoomLevel := tv.zoomLevel
 	if zoomLevel < 0.1 {
 		zoomLevel = 0.1
 	}
 
 	for i := 0; i <= markerCount; i++ {
-		// Calculate position with zoom and scroll
-		rawPos := barAreaWidth * i / markerCount
-		pos := barStartX + int(float64(rawPos)*zoomLevel) - tv.scrollX
-
-		if pos < barStartX || pos >= x+width {
+		rawPos := width * i / markerCount
+		pos := x + int(float64(rawPos)*zoomLevel) - tv.scrollX
+		if pos < x || pos >= x+width {
 			continue
 		}
 
-		// Calculate time at this position (accounting for scroll/zoom)
-		effectivePos := int(float64(pos-barStartX+tv.scrollX) / zoomLevel)
+		effectivePos := int(float64(pos-x+tv.scrollX) / zoomLevel)
 		if effectivePos < 0 {
 			effectivePos = 0
 		}
-		if effectivePos > barAreaWidth {
-			effectivePos = barAreaWidth
+		if effectivePos > width {
+			effectivePos = width
 		}
-		offset := time.Duration(float64(timeRange) * float64(effectivePos) / float64(barAreaWidth))
-
-		// Round to nice value
-		offset = roundDuration(offset)
-
-		// Format as relative duration from start
-		marker := formatRelativeDuration(offset)
-
-		// Draw marker
-		tview.Print(screen, marker, pos, y, 10, tview.AlignLeft, theme.FgDim())
-
-		// Draw tick mark
-		screen.SetContent(pos, y+1, '│', nil, labelStyle)
+		offset := roundDuration(time.Duration(float64(timeRange) * float64(effectivePos) / float64(width)))
+		tview.Print(screen, formatRelativeDuration(offset), pos, y, 10, tview.AlignLeft, theme.FgDim())
+		screen.SetContent(pos, y+1, '│', nil, tickStyle)
 	}
 
-	// Draw horizontal line under header
 	lineStyle := tcell.StyleDefault.Foreground(theme.Border()).Background(theme.Bg())
-	for i := x + timelineLabelWidth + 1; i < x+width; i++ {
+	for i := x; i < x+width; i++ {
 		screen.SetContent(i, y+1, '─', nil, lineStyle)
 	}
-}
-
-// drawLaneLabel draws the label for a lane.
-func (tv *TimelineView) drawLaneLabel(screen tcell.Screen, x, y int, lane TimelineLane, selected bool) {
-	// Truncate name if needed
-	name := lane.Name
-	maxLen := timelineLabelWidth - 2
-	if len(name) > maxLen {
-		name = name[:maxLen-1] + "…"
-	}
-
-	// Choose style based on selection
-	var style tcell.Style
-	if selected {
-		style = tcell.StyleDefault.Foreground(theme.SelectionFg()).Background(theme.SelectionBg()).Bold(true)
-	} else {
-		style = tcell.StyleDefault.Foreground(tv.statusColor(lane.Status)).Background(theme.Bg())
-	}
-
-	// Clear label area
-	for i := 0; i < timelineLabelWidth; i++ {
-		screen.SetContent(x+i, y, ' ', nil, style)
-	}
-
-	// Draw name
-	for i, r := range name {
-		if x+i >= x+timelineLabelWidth {
-			break
-		}
-		screen.SetContent(x+i, y, r, nil, style)
-	}
-
-	// Draw separator
-	sepStyle := tcell.StyleDefault.Foreground(theme.Border()).Background(theme.Bg())
-	screen.SetContent(x+timelineLabelWidth, y, '│', nil, sepStyle)
 }
 
 // drawLaneBar draws the timeline bar for a lane.
@@ -329,27 +260,65 @@ func (tv *TimelineView) drawLaneBar(screen tcell.Screen, x, y, width int, lane T
 		barEnd = width
 	}
 
-	// Choose bar character and color based on status
 	barChar, barColor := tv.barStyle(lane.Status)
-	barStyle := tcell.StyleDefault.Foreground(barColor).Background(theme.Bg())
-
+	barStyle := tcell.StyleDefault.Foreground(theme.Bg()).Background(barColor)
+	nameStyle := barStyle
 	if selected {
-		barStyle = barStyle.Bold(true)
+		barStyle = tcell.StyleDefault.Foreground(theme.SelectionFg()).Background(theme.SelectionBg()).Bold(true)
+		nameStyle = barStyle
 	}
 
-	// Draw empty space before bar
 	emptyStyle := tcell.StyleDefault.Foreground(theme.BgLight()).Background(theme.Bg())
 	for i := 0; i < barStart && i < width; i++ {
 		screen.SetContent(x+i, y, '·', nil, emptyStyle)
 	}
 
-	// Draw the bar
-	for i := barStart; i < barEnd && i < width; i++ {
-		screen.SetContent(x+i, y, barChar, nil, barStyle)
+	barWidth := barEnd - barStart
+	label := timelineBarName(lane)
+	name := []rune(fitTimelineName(label, barWidth-2))
+	nameStart := 1
+	if barWidth < 3 {
+		name = nil
 	}
 
-	// Draw empty space after bar
+	for i := barStart; i < barEnd && i < width; i++ {
+		rel := i - barStart
+		ch := ' '
+		style := barStyle
+		if len(name) > 0 && rel >= nameStart && rel-nameStart < len(name) {
+			ch = name[rel-nameStart]
+			style = nameStyle
+		} else if barWidth < 3 {
+			ch = barChar
+			style = tcell.StyleDefault.Foreground(barColor).Background(theme.Bg())
+			if selected {
+				style = style.Bold(true)
+			}
+		}
+		screen.SetContent(x+i, y, ch, nil, style)
+	}
+
+	if len(name) == 0 && label != "" {
+		outside := []rune(fitTimelineName(label, width-barEnd-1))
+		labelStyle := tcell.StyleDefault.Foreground(barColor).Background(theme.Bg())
+		if selected {
+			labelStyle = labelStyle.Bold(true)
+		}
+		pos := barEnd + 1
+		for _, r := range outside {
+			if pos >= width {
+				break
+			}
+			screen.SetContent(x+pos, y, r, nil, labelStyle)
+			pos++
+		}
+	}
+
 	for i := barEnd; i < width; i++ {
+		mainc, _, _, _ := screen.GetContent(x+i, y)
+		if mainc != ' ' && mainc != 0 {
+			continue
+		}
 		screen.SetContent(x+i, y, '·', nil, emptyStyle)
 	}
 }
@@ -604,9 +573,31 @@ func (tv *TimelineView) barStyle(status string) (rune, tcell.Color) {
 	}
 }
 
-// statusColor returns the color for a status.
-func (tv *TimelineView) statusColor(status string) tcell.Color {
-	return temporal.GetWorkflowStatus(status).Color()
+func timelineBarName(lane TimelineLane) string {
+	name := strings.TrimSpace(lane.Name)
+	switch {
+	case strings.HasPrefix(name, "Activity: "):
+		name = strings.TrimPrefix(name, "Activity: ")
+	case strings.HasPrefix(name, "Timer: "):
+		name = strings.TrimPrefix(name, "Timer: ")
+	case strings.HasPrefix(name, "ChildWorkflow: "):
+		name = strings.TrimPrefix(name, "ChildWorkflow: ")
+	}
+	return name
+}
+
+func fitTimelineName(name string, width int) string {
+	if width <= 0 || name == "" {
+		return ""
+	}
+	runes := []rune(name)
+	if len(runes) <= width {
+		return name
+	}
+	if width == 1 {
+		return string(runes[0])
+	}
+	return string(runes[:width-1]) + "…"
 }
 
 // InputHandler handles keyboard input.
