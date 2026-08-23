@@ -18,47 +18,54 @@ const (
 	focusWorkflows workflowFocusPane = iota
 	focusEvents
 	focusEventDetail
+	focusTimeline
 )
 
 // WorkflowList displays a list of workflows.
 type WorkflowList struct {
 	*tview.Flex
-	app               *App
-	namespace         string
-	table             *components.Table
-	workflowsPanel    *components.Panel
-	previewPanel      *components.Panel
-	previewTabs       *components.Tabs
-	rightFlex         *tview.Flex
-	eventTable        *components.Table
-	eventDetail       *tview.TextView
-	eventDetailPanel  *components.Panel
-	eventsPanel       *components.Panel
-	workflowDetail    *tview.TextView
-	focusPane         workflowFocusPane
-	previewKind       previewKind
-	previewEvents     []temporal.EnhancedHistoryEvent
-	previewActivities []previewActivity
-	previewWorkflowID string
-	previewRunID      string
-	previewGen        uint64
-	previewTimer      *time.Timer
-	previewMode       bool
-	previewCache      *previewCache
-	emptyState        *components.EmptyState
-	noResultsState    *components.EmptyState
-	allWorkflows      []temporal.Workflow // Full unfiltered list
-	workflows         []temporal.Workflow // Filtered list for display
-	filterText        string
-	visibilityQuery   string // Temporal visibility query
-	loading           bool
-	autoRefresh       bool
-	refreshTicker     *time.Ticker
-	stopRefresh       chan struct{}
-	selectionMode     bool     // Multi-select mode active
-	searchHistory     []string // History of visibility queries
-	historyIndex      int      // Current position in history (-1 = not browsing)
-	maxHistorySize    int      // Maximum number of history entries
+	mainFlex              *tview.Flex
+	app                   *App
+	namespace             string
+	table                 *components.Table
+	workflowsPanel        *components.Panel
+	previewPanel          *components.Panel
+	previewTabs           *components.Tabs
+	rightFlex             *tview.Flex
+	eventTable            *components.Table
+	eventDetail           *tview.TextView
+	eventDetailPanel      *components.Panel
+	eventsPanel           *components.Panel
+	workflowDetail        *tview.TextView
+	timelineView          *TimelineView
+	timelinePanel         *components.Panel
+	timelineVisible       bool
+	highlightedActivityID int64
+	timelineSyncing       bool
+	focusPane             workflowFocusPane
+	previewKind           previewKind
+	previewEvents         []temporal.EnhancedHistoryEvent
+	previewActivities     []previewActivity
+	previewWorkflowID     string
+	previewRunID          string
+	previewGen            uint64
+	previewTimer          *time.Timer
+	previewMode           bool
+	previewCache          *previewCache
+	emptyState            *components.EmptyState
+	noResultsState        *components.EmptyState
+	allWorkflows          []temporal.Workflow // Full unfiltered list
+	workflows             []temporal.Workflow // Filtered list for display
+	filterText            string
+	visibilityQuery       string // Temporal visibility query
+	loading               bool
+	autoRefresh           bool
+	refreshTicker         *time.Ticker
+	stopRefresh           chan struct{}
+	selectionMode         bool     // Multi-select mode active
+	searchHistory         []string // History of visibility queries
+	historyIndex          int      // Current position in history (-1 = not browsing)
+	maxHistorySize        int      // Maximum number of history entries
 	// Server-side completion support
 	serverCompletions   []string            // Cached completions from server query
 	lastCompletionQuery string              // Last query sent to server (to avoid duplicates)
@@ -70,7 +77,7 @@ type WorkflowList struct {
 // NewWorkflowList creates a new workflow list view.
 func NewWorkflowList(app *App, namespace string) *WorkflowList {
 	wl := &WorkflowList{
-		Flex:           tview.NewFlex().SetDirection(tview.FlexColumn),
+		Flex:           tview.NewFlex().SetDirection(tview.FlexRow),
 		app:            app,
 		namespace:      namespace,
 		table:          components.NewTable(),
@@ -93,7 +100,7 @@ func NewWorkflowList(app *App, namespace string) *WorkflowList {
 // NewWorkflowListWithData creates a workflow list pre-populated with data (no server fetch).
 func NewWorkflowListWithData(app *App, namespace string, workflows []temporal.Workflow) *WorkflowList {
 	wl := &WorkflowList{
-		Flex:           tview.NewFlex().SetDirection(tview.FlexColumn),
+		Flex:           tview.NewFlex().SetDirection(tview.FlexRow),
 		app:            app,
 		namespace:      namespace,
 		table:          components.NewTable(),
@@ -123,6 +130,8 @@ func (wl *WorkflowList) CommandContext() (workflowID, runID, workflowType string
 
 func (wl *WorkflowList) setup() {
 	wl.SetBackgroundColor(theme.Bg())
+	wl.mainFlex = tview.NewFlex().SetDirection(tview.FlexColumn)
+	wl.mainFlex.SetBackgroundColor(theme.Bg())
 	wl.table.SetEvaluateAllRows(true)
 	wl.table.SetBorder(false)
 	wl.table.SetBackgroundColor(theme.Bg())
@@ -167,6 +176,9 @@ func (wl *WorkflowList) setup() {
 		case 'p':
 			wl.togglePreviewMode()
 			return nil
+		case 'z':
+			wl.toggleTimeline()
+			return nil
 		case '[', 'h':
 			if wl.previewModeEnabled() {
 				wl.cyclePreviewKind(-1)
@@ -196,7 +208,7 @@ func (wl *WorkflowList) setup() {
 	wl.clearPreview()
 
 	wl.table.SetSelectionChangedFunc(func(row, col int) {
-		if wl.previewModeEnabled() && row > 0 && row-1 < len(wl.workflows) {
+		if wl.historyNeeded() && row > 0 && row-1 < len(wl.workflows) {
 			wl.schedulePreview(wl.workflows[row-1], false)
 		}
 	})
@@ -223,6 +235,9 @@ func (wl *WorkflowList) RefreshTheme() {
 	}
 	if wl.previewPanel != nil {
 		wl.previewPanel.SetBackgroundColor(bg)
+	}
+	if wl.timelineView != nil {
+		wl.timelineView.SetBackgroundColor(bg)
 	}
 	wl.populateTable()
 	wl.applyFocusStyles()
@@ -360,6 +375,10 @@ func (wl *WorkflowList) Start() {
 			wl.togglePreviewMode()
 			return true
 		}).
+		OnRune('z', func(e *tcell.EventKey) bool {
+			wl.toggleTimeline()
+			return true
+		}).
 		OnRune('[', func(e *tcell.EventKey) bool {
 			if !wl.previewModeEnabled() {
 				return false
@@ -415,14 +434,14 @@ func (wl *WorkflowList) Start() {
 			return false
 		}).
 		On(tcell.KeyTab, func(e *tcell.EventKey) bool {
-			if !wl.previewModeEnabled() {
+			if !wl.previewModeEnabled() && !wl.timelineVisible {
 				return false
 			}
 			wl.cycleFocus(1)
 			return true
 		}).
 		On(tcell.KeyBacktab, func(e *tcell.EventKey) bool {
-			if !wl.previewModeEnabled() {
+			if !wl.previewModeEnabled() && !wl.timelineVisible {
 				return false
 			}
 			wl.cycleFocus(-1)
@@ -471,7 +490,7 @@ func (wl *WorkflowList) Hints() []KeyHint {
 		return hints
 	}
 
-	if wl.previewModeEnabled() {
+	if wl.previewModeEnabled() || wl.timelineVisible {
 		switch wl.focusPane {
 		case focusEvents:
 			return []KeyHint{
@@ -479,6 +498,7 @@ func (wl *WorkflowList) Hints() []KeyHint {
 				{Key: "tab", Description: "Details"},
 				{Key: "h/l/←/→", Description: "View"},
 				{Key: "i", Description: "Input/Output"},
+				{Key: "z", Description: "Timeline"},
 				{Key: "p", Description: "Preview"},
 				{Key: "e", Description: "Event Graph"},
 				{Key: "esc", Description: "Workflows"},
@@ -489,7 +509,17 @@ func (wl *WorkflowList) Hints() []KeyHint {
 				{Key: "tab", Description: "Workflows"},
 				{Key: "h/l/←/→", Description: "View"},
 				{Key: "i", Description: "Input/Output"},
+				{Key: "z", Description: "Timeline"},
 				{Key: "p", Description: "Preview"},
+				{Key: "esc", Description: "Workflows"},
+			}
+		case focusTimeline:
+			return []KeyHint{
+				{Key: "j/k", Description: "Lane"},
+				{Key: "h/l", Description: "Scroll"},
+				{Key: "+/-", Description: "Zoom"},
+				{Key: "tab", Description: "Workflows"},
+				{Key: "z", Description: "Timeline"},
 				{Key: "esc", Description: "Workflows"},
 			}
 		}
@@ -505,8 +535,12 @@ func (wl *WorkflowList) Hints() []KeyHint {
 			{Key: "tab", Description: wl.previewKind.title()},
 			{Key: "h/l/←/→", Description: "View"},
 			{Key: "i", Description: "Input/Output"},
+			{Key: "z", Description: "Timeline"},
 			{Key: "p", Description: "Preview"},
 		}
+	}
+	if !wl.previewModeEnabled() {
+		hints = append(hints, KeyHint{Key: "z", Description: "Timeline"})
 	}
 	hints = append(hints,
 		KeyHint{Key: "e", Description: "Event Graph"},
@@ -570,6 +604,12 @@ func (wl *WorkflowList) Focus(delegate func(p tview.Primitive)) {
 			return
 		}
 		delegate(wl.eventDetail)
+	case focusTimeline:
+		if wl.timelineView != nil {
+			delegate(wl.timelineView)
+			return
+		}
+		delegate(wl.table)
 	default:
 		delegate(wl.table)
 	}
@@ -591,6 +631,9 @@ func (wl *WorkflowList) Draw(screen tcell.Screen) {
 	}
 	if wl.rightFlex != nil {
 		wl.rightFlex.SetBackgroundColor(bg)
+	}
+	if wl.timelineView != nil {
+		wl.timelineView.SetBackgroundColor(bg)
 	}
 	wl.syncFocusFromPrimitives()
 	wl.Flex.Draw(screen)

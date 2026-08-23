@@ -106,7 +106,13 @@ func (tv *TimelineView) SetNodes(nodes []*temporal.EventTreeNode) {
 		return
 	}
 
+	prevID := int64(0)
+	if lane := tv.SelectedLane(); lane != nil {
+		prevID = timelineLaneScheduledID(*lane)
+	}
+
 	tv.lanes = validLanes
+	tv.selectedLane = 0
 	tv.startTime = minStart
 
 	// Set end time: use max end time, or now for running items
@@ -119,6 +125,10 @@ func (tv *TimelineView) SetNodes(nodes []*temporal.EventTreeNode) {
 	// Ensure we have at least some time range
 	if tv.endTime.Sub(tv.startTime) < time.Second {
 		tv.endTime = tv.startTime.Add(time.Minute)
+	}
+
+	if prevID != 0 {
+		tv.SelectByScheduledID(prevID)
 	}
 }
 
@@ -636,37 +646,83 @@ func (tv *TimelineView) InputHandler() func(event *tcell.EventKey, setFocus func
 	})
 }
 
-// moveSelection moves the lane selection up or down.
-func (tv *TimelineView) moveSelection(delta int) {
-	if len(tv.lanes) == 0 {
-		return
+func timelineLaneScheduledID(lane TimelineLane) int64 {
+	if lane.Node == nil {
+		return 0
 	}
-
-	oldSelection := tv.selectedLane
-
-	tv.selectedLane += delta
-	if tv.selectedLane < 0 {
-		tv.selectedLane = 0
+	for _, ev := range lane.Node.Events {
+		if ev == nil {
+			continue
+		}
+		if ev.Type == "ActivityTaskScheduled" {
+			return ev.ID
+		}
 	}
-	if tv.selectedLane >= len(tv.lanes) {
-		tv.selectedLane = len(tv.lanes) - 1
+	if len(lane.Node.Events) > 0 && lane.Node.Events[0] != nil {
+		if lane.Node.Events[0].ScheduledEventID != 0 {
+			return lane.Node.Events[0].ScheduledEventID
+		}
+		return lane.Node.Events[0].ID
 	}
+	return 0
+}
 
-	// Adjust scroll to keep selection visible
+func (tv *TimelineView) ensureLaneVisible() {
 	_, _, _, height := tv.GetInnerRect()
 	visibleLanes := height - 3
-
+	if visibleLanes < 1 {
+		visibleLanes = 1
+	}
 	if tv.selectedLane < tv.scrollY {
 		tv.scrollY = tv.selectedLane
 	}
 	if tv.selectedLane >= tv.scrollY+visibleLanes {
 		tv.scrollY = tv.selectedLane - visibleLanes + 1
 	}
+	if tv.scrollY < 0 {
+		tv.scrollY = 0
+	}
+}
 
-	// Notify if selection changed
-	if tv.selectedLane != oldSelection && tv.onSelectionChange != nil {
+func (tv *TimelineView) setSelectedLane(index int, notify bool) {
+	if index < 0 || index >= len(tv.lanes) {
+		return
+	}
+	changed := tv.selectedLane != index
+	tv.selectedLane = index
+	tv.ensureLaneVisible()
+	if notify && changed && tv.onSelectionChange != nil {
 		tv.onSelectionChange(&tv.lanes[tv.selectedLane])
 	}
+}
+
+// SelectByScheduledID highlights the lane for the activity scheduled event.
+func (tv *TimelineView) SelectByScheduledID(id int64) bool {
+	if id == 0 {
+		return false
+	}
+	for i, lane := range tv.lanes {
+		if timelineLaneScheduledID(lane) == id {
+			tv.setSelectedLane(i, false)
+			return true
+		}
+	}
+	return false
+}
+
+// moveSelection moves the lane selection up or down.
+func (tv *TimelineView) moveSelection(delta int) {
+	if len(tv.lanes) == 0 {
+		return
+	}
+	next := tv.selectedLane + delta
+	if next < 0 {
+		next = 0
+	}
+	if next >= len(tv.lanes) {
+		next = len(tv.lanes) - 1
+	}
+	tv.setSelectedLane(next, true)
 }
 
 // selectFirst jumps to the first lane.
@@ -774,13 +830,13 @@ func roundDuration(d time.Duration) time.Duration {
 	}
 
 	rules := []roundRule{
-		{100 * time.Millisecond, 10 * time.Millisecond},   // < 100ms: round to 10ms
-		{time.Second, 50 * time.Millisecond},              // < 1s: round to 50ms
-		{10 * time.Second, 500 * time.Millisecond},        // < 10s: round to 500ms
-		{time.Minute, time.Second},                        // < 1m: round to 1s
-		{10 * time.Minute, 10 * time.Second},              // < 10m: round to 10s
-		{time.Hour, time.Minute},                          // < 1h: round to 1m
-		{24 * time.Hour, 10 * time.Minute},                // < 24h: round to 10m
+		{100 * time.Millisecond, 10 * time.Millisecond}, // < 100ms: round to 10ms
+		{time.Second, 50 * time.Millisecond},            // < 1s: round to 50ms
+		{10 * time.Second, 500 * time.Millisecond},      // < 10s: round to 500ms
+		{time.Minute, time.Second},                      // < 1m: round to 1s
+		{10 * time.Minute, 10 * time.Second},            // < 10m: round to 10s
+		{time.Hour, time.Minute},                        // < 1h: round to 1m
+		{24 * time.Hour, 10 * time.Minute},              // < 24h: round to 10m
 	}
 
 	for _, rule := range rules {

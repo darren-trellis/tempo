@@ -150,6 +150,9 @@ func (wl *WorkflowList) activateSelectedWorkflow() {
 }
 
 func (wl *WorkflowList) paneAt(x, y int) (workflowFocusPane, bool) {
+	if wl.timelineVisible && wl.timelinePanel != nil && wl.timelinePanel.InRect(x, y) {
+		return focusTimeline, true
+	}
 	if wl.previewModeEnabled() {
 		if _, ok := wl.previewTabAt(x, y); ok {
 			return focusWorkflows, false
@@ -216,19 +219,22 @@ func (wl *WorkflowList) applyPreviewLayout() {
 		if wl.previewTimer != nil {
 			wl.previewTimer.Stop()
 		}
-		if wl.eventTable != nil {
+		if wl.eventTable != nil && !wl.timelineVisible {
 			wl.clearPreview()
 		}
 		wl.focusPane = focusWorkflows
 	}
 
-	wl.Clear()
-	if on {
-		wl.AddItem(wl.workflowsPanel, 0, 11, true)
-		wl.AddItem(wl.rightFlex, 0, 9, false)
-	} else if wl.workflowsPanel != nil {
-		wl.AddItem(wl.workflowsPanel, 0, 1, true)
+	if wl.mainFlex != nil {
+		wl.mainFlex.Clear()
+		if on {
+			wl.mainFlex.AddItem(wl.workflowsPanel, 0, 11, true)
+			wl.mainFlex.AddItem(wl.rightFlex, 0, 9, false)
+		} else if wl.workflowsPanel != nil {
+			wl.mainFlex.AddItem(wl.workflowsPanel, 0, 1, true)
+		}
 	}
+	wl.applyMainLayout()
 
 	if on {
 		wl.applyPreviewPage()
@@ -386,6 +392,7 @@ func (wl *WorkflowList) setupPreview() {
 	wl.eventDetail.SetInputCapture(wl.capturePreviewTextView(wl.eventDetail))
 	wl.workflowDetail.SetInputCapture(wl.capturePreviewTextView(wl.workflowDetail))
 	wl.previewTabs.SetInputCapture(wl.handlePreviewKeys)
+	wl.setupTimeline()
 }
 
 func (wl *WorkflowList) capturePreviewTextView(view *tview.TextView) func(*tcell.EventKey) *tcell.EventKey {
@@ -425,6 +432,9 @@ func (wl *WorkflowList) handlePreviewKeys(event *tcell.EventKey) *tcell.EventKey
 	case 'p':
 		wl.togglePreviewMode()
 		return nil
+	case 'z':
+		wl.toggleTimeline()
+		return nil
 	case 'i':
 		if wl.showPreviewIO() {
 			return nil
@@ -445,8 +455,14 @@ func (wl *WorkflowList) updatePreviewSelection(row int) {
 	idx := row - 1
 	if wl.previewKind == previewActivities {
 		if idx < len(wl.previewActivities) {
+			if !wl.timelineSyncing {
+				wl.highlightedActivityID = wl.previewActivities[idx].ScheduledID
+			}
 			wl.eventDetail.SetText(formatSelectedActivityDetail(wl.previewActivities[idx]))
 			wl.eventDetail.ScrollToBeginning()
+			if !wl.timelineSyncing {
+				wl.syncTimelineFromActivity()
+			}
 		}
 		return
 	}
@@ -457,14 +473,25 @@ func (wl *WorkflowList) updatePreviewSelection(row int) {
 }
 
 func (wl *WorkflowList) previewFocusOrder() []workflowFocusPane {
-	if wl.previewKind == previewDetails {
-		return []workflowFocusPane{focusWorkflows, focusEventDetail}
+	order := []workflowFocusPane{focusWorkflows}
+	if wl.previewModeEnabled() {
+		if wl.previewKind == previewDetails {
+			order = append(order, focusEventDetail)
+		} else {
+			order = append(order, focusEvents, focusEventDetail)
+		}
 	}
-	return []workflowFocusPane{focusWorkflows, focusEvents, focusEventDetail}
+	if wl.timelineVisible {
+		order = append(order, focusTimeline)
+	}
+	return order
 }
 
 func (wl *WorkflowList) cycleFocus(delta int) {
 	order := wl.previewFocusOrder()
+	if len(order) == 0 {
+		return
+	}
 	idx := 0
 	for i, pane := range order {
 		if pane == wl.focusPane {
@@ -480,6 +507,9 @@ func (wl *WorkflowList) cycleFocus(delta int) {
 }
 
 func (wl *WorkflowList) setFocusPane(pane workflowFocusPane) {
+	if pane == focusTimeline {
+		wl.syncTimelineFromActivity()
+	}
 	wl.focusPane = pane
 	if wl.app == nil || wl.app.JigApp() == nil {
 		wl.applyFocusStyles()
@@ -494,6 +524,8 @@ func (wl *WorkflowList) setFocusPane(pane workflowFocusPane) {
 		} else {
 			wl.app.JigApp().SetFocus(wl.eventDetail)
 		}
+	case focusTimeline:
+		wl.app.JigApp().SetFocus(wl.timelineView)
 	default:
 		wl.app.JigApp().SetFocus(wl.table)
 	}
@@ -514,6 +546,9 @@ func (wl *WorkflowList) applyFocusStyles() {
 	if wl.eventsPanel != nil {
 		wl.eventsPanel.SetFocused(wl.focusPane == focusEvents)
 	}
+	if wl.timelinePanel != nil {
+		wl.timelinePanel.SetFocused(wl.focusPane == focusTimeline)
+	}
 	if wl.table != nil {
 		wl.table.SetSelectable(wl.focusPane == focusWorkflows, false)
 	}
@@ -531,6 +566,8 @@ func (wl *WorkflowList) syncFocusFromPrimitives() {
 		pane = focusEventDetail
 	case wl.eventTable != nil && wl.eventTable.HasFocus():
 		pane = focusEvents
+	case wl.timelineView != nil && wl.timelineView.HasFocus():
+		pane = focusTimeline
 	case wl.table != nil && wl.table.HasFocus():
 		pane = focusWorkflows
 	default:
@@ -593,6 +630,10 @@ func (wl *WorkflowList) clearPreview() {
 	wl.previewActivities = nil
 	wl.previewWorkflowID = ""
 	wl.previewRunID = ""
+	wl.highlightedActivityID = 0
+	if wl.timelineView != nil {
+		wl.timelineView.SetNodes(nil)
+	}
 	if wl.eventTable != nil {
 		wl.eventTable.ClearRows()
 		wl.eventTable.SetHeaders("STATUS", "NAME", "STARTED", "DURATION")
@@ -624,11 +665,14 @@ func (wl *WorkflowList) setPreviewStatus(message string) {
 }
 
 func (wl *WorkflowList) schedulePreview(w temporal.Workflow, force bool) {
-	if !wl.previewModeEnabled() {
+	if !wl.historyNeeded() {
 		return
 	}
 	if !force && wl.previewWorkflowID == w.ID && wl.previewRunID == w.RunID {
 		return
+	}
+	if wl.previewWorkflowID != w.ID || wl.previewRunID != w.RunID {
+		wl.highlightedActivityID = 0
 	}
 
 	if !force {
@@ -701,7 +745,20 @@ func (wl *WorkflowList) showPreviewEvents(w temporal.Workflow, events []temporal
 	wl.previewEvents = events
 	wl.previewActivities = previewActivitiesFromEvents(events)
 	wl.previewCache.put(w.ID, w.RunID, events)
+	if wl.highlightedActivityID != 0 {
+		found := false
+		for _, a := range wl.previewActivities {
+			if a.ScheduledID == wl.highlightedActivityID {
+				found = true
+				break
+			}
+		}
+		if !found {
+			wl.highlightedActivityID = 0
+		}
+	}
 	wl.renderPreview(w)
+	wl.refreshTimeline()
 }
 
 func (wl *WorkflowList) renderPreview(w temporal.Workflow) {
@@ -770,8 +827,19 @@ func (wl *WorkflowList) renderPreviewActivities(w temporal.Workflow) {
 			a.duration(),
 		)
 	}
-	wl.eventTable.SelectRow(0)
-	wl.eventDetail.SetText(formatSelectedActivityDetail(wl.previewActivities[0]))
+	idx := 0
+	if wl.highlightedActivityID != 0 {
+		for i, a := range wl.previewActivities {
+			if a.ScheduledID == wl.highlightedActivityID {
+				idx = i
+				break
+			}
+		}
+	} else {
+		wl.highlightedActivityID = wl.previewActivities[0].ScheduledID
+	}
+	wl.eventTable.SelectRow(idx)
+	wl.eventDetail.SetText(formatSelectedActivityDetail(wl.previewActivities[idx]))
 }
 
 func mockPreviewEvents(w temporal.Workflow) []temporal.EnhancedHistoryEvent {
