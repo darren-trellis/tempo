@@ -95,16 +95,16 @@ func TestPreviewKindCycle(t *testing.T) {
 	if wl.rightFlex.GetItemCount() != 2 {
 		t.Fatalf("activities should show a sibling detail pane, got %d items", wl.rightFlex.GetItemCount())
 	}
-	if desc := hintDescription(wl.Hints(), "enter"); desc != "Activities" {
-		t.Fatalf("enter hint: got %q", desc)
+	if desc := hintDescription(wl.Hints(), "enter"); desc != "" {
+		t.Fatalf("enter should stay off the footer, got %q", desc)
 	}
 
 	wl.cyclePreviewKind(1)
 	if wl.previewKind != previewEvents || wl.previewTabs.GetActive() != int(previewEvents) {
 		t.Fatalf("next kind: %d tab %d", wl.previewKind, wl.previewTabs.GetActive())
 	}
-	if desc := hintDescription(wl.Hints(), "enter"); desc != "Events" {
-		t.Fatalf("events enter hint: got %q", desc)
+	if desc := hintDescription(wl.Hints(), "enter"); desc != "" {
+		t.Fatalf("events enter should stay off the footer, got %q", desc)
 	}
 
 	wl.cyclePreviewKind(1)

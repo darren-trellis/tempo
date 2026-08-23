@@ -104,6 +104,11 @@ func (wl *WorkflowList) bindTaskQueueKeys() {
 		if wl.handleFocusCycleKey(event) || wl.handleListTabKey(event) {
 			return nil
 		}
+		if event.Key() == tcell.KeyEnter {
+			wl.setPollersVisible(true)
+			wl.setFocusPane(focusPollers)
+			return nil
+		}
 		switch event.Rune() {
 		case '/':
 			tq.showSearch()
@@ -115,7 +120,7 @@ func (wl *WorkflowList) bindTaskQueueKeys() {
 		return event
 	})
 	tq.pollerTable.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
-		if wl.handleFocusCycleKey(event) || wl.handleListTabKey(event) {
+		if wl.handleFocusCycleKey(event) {
 			return nil
 		}
 		if event.Rune() == 'r' {
@@ -124,6 +129,22 @@ func (wl *WorkflowList) bindTaskQueueKeys() {
 		}
 		return event
 	})
+}
+
+func (wl *WorkflowList) setPollersVisible(on bool) {
+	if wl.pollersVisible == on {
+		return
+	}
+	wl.pollersVisible = on
+	if !on && wl.focusPane == focusPollers {
+		wl.focusPane = focusWorkflows
+	}
+	wl.applyMainLayout()
+	if wl.app != nil && wl.app.JigApp() != nil {
+		wl.setFocusPane(wl.focusPane)
+		return
+	}
+	wl.applyFocusStyles()
 }
 
 func (wl *WorkflowList) taskQueuesActive() bool {
@@ -166,7 +187,7 @@ func (wl *WorkflowList) handleListTabKey(event *tcell.EventKey) bool {
 	if event == nil {
 		return false
 	}
-	if wl.previewModeEnabled() && !wl.taskQueuesActive() && wl.focusPane != focusWorkflows {
+	if wl.focusPane != focusWorkflows {
 		return false
 	}
 	switch event.Rune() {

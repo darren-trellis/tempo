@@ -26,8 +26,8 @@ func TestWorkflowListTaskQueueTab(t *testing.T) {
 	if hintDescription(wl.Hints(), "t") != "" {
 		t.Fatal("task queues should not have a dedicated key")
 	}
-	if hintDescription(wl.Hints(), "[/]/1-2") != "View" {
-		t.Fatalf("list tabs should use [/]/1-2, got %q", hintDescription(wl.Hints(), "[/]/1-2"))
+	if hintDescription(wl.Hints(), "[/]/1-2") != "" {
+		t.Fatal("list tab keys should stay off the footer")
 	}
 	if wl.Name() != "workflows" {
 		t.Fatalf("name: %q", wl.Name())
@@ -45,8 +45,8 @@ func TestWorkflowListTaskQueueTab(t *testing.T) {
 	if hintDescription(wl.Hints(), "t") != "" {
 		t.Fatal("task queues tab should not restore the t key")
 	}
-	if hintDescription(wl.Hints(), "esc") != "Workflows" {
-		t.Fatalf("esc hint: %q", hintDescription(wl.Hints(), "esc"))
+	if hintDescription(wl.Hints(), "esc") != "" {
+		t.Fatalf("esc should stay off the footer, got %q", hintDescription(wl.Hints(), "esc"))
 	}
 
 	if !wl.HandleEscape() || wl.taskQueuesActive() {
@@ -109,22 +109,29 @@ func TestTaskQueuesShowPollersAlongside(t *testing.T) {
 		t.Fatalf("workflows-only layout: %d", wl.mainFlex.GetItemCount())
 	}
 	wl.setListKind(listTaskQueues)
-	if wl.mainFlex.GetItemCount() != 2 {
-		t.Fatalf("task queues should sit beside pollers, got %d panes", wl.mainFlex.GetItemCount())
+	if wl.mainFlex.GetItemCount() != 1 {
+		t.Fatalf("pollers should start hidden, got %d panes", wl.mainFlex.GetItemCount())
 	}
 	if wl.taskQueues.GetItemCount() != 0 {
 		t.Fatal("pollers should not be nested inside the task queues tab")
 	}
-	if hintDescription(wl.Hints(), "esc") != "Workflows" {
-		t.Fatalf("queues esc: %q", hintDescription(wl.Hints(), "esc"))
+	if hintDescription(wl.Hints(), "enter") != "" || hintDescription(wl.Hints(), "esc") != "" {
+		t.Fatal("enter/esc should stay off the footer")
 	}
 
-	wl.focusPane = focusPollers
-	if hintDescription(wl.Hints(), "esc") != "Queues" {
-		t.Fatalf("pollers esc: %q", hintDescription(wl.Hints(), "esc"))
+	wl.setPollersVisible(true)
+	wl.setFocusPane(focusPollers)
+	if wl.mainFlex.GetItemCount() != 2 {
+		t.Fatalf("enter should show pollers beside queues, got %d panes", wl.mainFlex.GetItemCount())
 	}
-	if !wl.HandleEscape() || wl.focusPane != focusWorkflows || !wl.taskQueuesActive() {
-		t.Fatal("escape from pollers should return to queues")
+	if wl.handleListTabKey(tcell.NewEventKey(tcell.KeyRune, ']', 0)) {
+		t.Fatal("list tab keys should not work from pollers")
+	}
+	if !wl.HandleEscape() || wl.pollersVisible || wl.focusPane != focusWorkflows || !wl.taskQueuesActive() {
+		t.Fatal("escape from pollers should hide the pane and return to queues")
+	}
+	if wl.mainFlex.GetItemCount() != 1 {
+		t.Fatalf("hidden pollers should leave queues full width, got %d panes", wl.mainFlex.GetItemCount())
 	}
 }
 
@@ -150,7 +157,7 @@ func TestTaskQueueKeysSurviveModalRestart(t *testing.T) {
 	if wl.shouldFocusWorkflowTable() {
 		t.Fatal("start should keep focus on task queues")
 	}
-	if hintDescription(wl.Hints(), "[/]/1-2") != "View" {
-		t.Fatalf("hints after restart: %q", hintDescription(wl.Hints(), "[/]/1-2"))
+	if hintDescription(wl.Hints(), "[/]/1-2") != "" {
+		t.Fatalf("list tab keys should stay off the footer, got %q", hintDescription(wl.Hints(), "[/]/1-2"))
 	}
 }

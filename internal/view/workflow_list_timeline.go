@@ -143,7 +143,7 @@ func (wl *WorkflowList) applyMainLayout() {
 			if wl.workflowsPanel != nil {
 				wl.mainFlex.AddItem(wl.workflowsPanel, 0, 11, true)
 			}
-			if wl.taskQueues != nil && wl.taskQueues.pollerPanel != nil {
+			if wl.pollersVisible && wl.taskQueues != nil && wl.taskQueues.pollerPanel != nil {
 				wl.mainFlex.AddItem(wl.taskQueues.pollerPanel, 0, 9, false)
 			}
 		}

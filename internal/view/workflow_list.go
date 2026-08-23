@@ -33,6 +33,7 @@ type WorkflowList struct {
 	workflowTab           *components.Tab
 	taskQueues            *TaskQueueView
 	listKind              listKind
+	pollersVisible        bool
 	workflowsPanel        *components.Panel
 	previewPanel          *components.Panel
 	previewTabs           *components.Tabs
@@ -508,15 +509,9 @@ func (wl *WorkflowList) Stop() {
 // Hints returns keybinding hints for this view.
 func (wl *WorkflowList) Hints() []KeyHint {
 	if wl.taskQueuesActive() {
-		esc := "Workflows"
-		if wl.focusPane == focusPollers {
-			esc = "Queues"
-		}
 		return []KeyHint{
-			{Key: "[/]/1-2", Description: "View"},
 			{Key: "/", Description: "Search"},
 			{Key: "r", Description: "Refresh"},
-			{Key: "esc", Description: esc},
 		}
 	}
 
@@ -532,7 +527,6 @@ func (wl *WorkflowList) Hints() []KeyHint {
 				KeyHint{Key: "X", Description: "Terminate"},
 			)
 		}
-		hints = append(hints, KeyHint{Key: "esc", Description: "Back"})
 		return hints
 	}
 
@@ -555,29 +549,20 @@ func (wl *WorkflowList) previewIOHint() []KeyHint {
 }
 
 func (wl *WorkflowList) previewListHints() []KeyHint {
-	hints := []KeyHint{
-		{Key: "[/]/1-3", Description: "View"},
-	}
-	hints = append(hints, wl.previewIOHint()...)
+	hints := wl.previewIOHint()
 	return append(hints,
 		KeyHint{Key: "z", Description: "Timeline"},
 		KeyHint{Key: "p", Description: "Preview"},
 		KeyHint{Key: "e", Description: "Event Graph"},
-		KeyHint{Key: "esc", Description: "Workflows"},
 	)
 }
 
 func (wl *WorkflowList) previewSideHints() []KeyHint {
 	if wl.previewKind == previewDetails {
 		hints := []KeyHint{{Key: "y", Description: "Yank"}}
-		if wl.selectedPreviewDetailRowIs(workflowInfoParent) {
-			hints = append(hints, KeyHint{Key: "enter", Description: "Parent"})
-		}
 		return append(hints,
-			KeyHint{Key: "[/]/1-3", Description: "View"},
 			KeyHint{Key: "z", Description: "Timeline"},
 			KeyHint{Key: "p", Description: "Preview"},
-			KeyHint{Key: "esc", Description: "Workflows"},
 		)
 	}
 	return wl.previewListHints()
@@ -589,20 +574,15 @@ func (wl *WorkflowList) timelineHints() []KeyHint {
 		{Key: "m", Description: timelineSizeHint(wl.timelineNarrow)},
 		{Key: "z", Description: "Timeline"},
 		{Key: "p", Description: "Preview"},
-		{Key: "esc", Description: "Workflows"},
 	}
 }
 
 func (wl *WorkflowList) workflowPaneHints() []KeyHint {
 	hints := []KeyHint{
-		{Key: "enter", Description: "Detail"},
 		{Key: "p", Description: "Preview"},
-		{Key: "[/]/1-2", Description: "View"},
 	}
 	if wl.previewModeEnabled() {
 		hints = []KeyHint{
-			{Key: "enter", Description: wl.previewKind.title()},
-			{Key: "[/]/1-2", Description: "View"},
 			{Key: "i", Description: "Input/Output"},
 		}
 		hints = append(hints,
@@ -643,14 +623,13 @@ func (wl *WorkflowList) workflowPaneHints() []KeyHint {
 		KeyHint{Key: "s", Description: "Schedules"},
 		KeyHint{Key: "T", Description: "Theme"},
 		KeyHint{Key: "?", Description: "Help"},
-		KeyHint{Key: "esc", Description: "Back"},
 	)
 }
 
 // HandleEscape implements EscapeHandler to clear filter state before navigation.
 func (wl *WorkflowList) HandleEscape() bool {
 	if wl.taskQueuesActive() && wl.focusPane == focusPollers {
-		wl.setFocusPane(focusWorkflows)
+		wl.setPollersVisible(false)
 		return true
 	}
 	if wl.taskQueuesActive() {

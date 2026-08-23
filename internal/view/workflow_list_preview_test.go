@@ -57,13 +57,13 @@ func TestWorkflowTableKeepsHorizontalScrollKeys(t *testing.T) {
 	if desc := hintDescription(wl.Hints(), "h/l"); desc != "" {
 		t.Fatalf("obvious scroll keys should stay off the footer, got %q", desc)
 	}
-	if desc := hintDescription(wl.Hints(), "[/]/1-2"); desc != "View" {
-		t.Fatalf("main window should use [/]/1-2, got %q", desc)
+	if desc := hintDescription(wl.Hints(), "[/]/1-2"); desc != "" {
+		t.Fatalf("list tab keys should stay off the footer, got %q", desc)
 	}
 
 	wl.focusPane = focusEvents
-	if desc := hintDescription(wl.Hints(), "[/]/1-3"); desc != "View" {
-		t.Fatalf("preview should use [/]/1-3, got %q", desc)
+	if desc := hintDescription(wl.Hints(), "[/]/1-3"); desc != "" {
+		t.Fatalf("preview tab keys should stay off the footer, got %q", desc)
 	}
 	if !wl.handlePreviewTabKey(tcell.NewEventKey(tcell.KeyRune, ']', 0)) {
 		t.Fatal("] should switch preview tabs when preview is focused")
@@ -118,16 +118,16 @@ func TestPreviewModeLayout(t *testing.T) {
 	if wl.GetItemCount() != 1 {
 		t.Fatalf("default layout should be workflows only, got %d items", wl.GetItemCount())
 	}
-	if desc := hintDescription(wl.Hints(), "enter"); desc != "Detail" {
-		t.Fatalf("default enter hint: got %q", desc)
+	if desc := hintDescription(wl.Hints(), "enter"); desc != "" {
+		t.Fatalf("enter should stay off the footer, got %q", desc)
 	}
 
 	wl.togglePreviewMode()
 	if wl.mainFlex.GetItemCount() != 2 {
 		t.Fatalf("preview should show events pane, got %d items", wl.mainFlex.GetItemCount())
 	}
-	if desc := hintDescription(wl.Hints(), "enter"); desc != "Activities" {
-		t.Fatalf("preview enter hint: got %q", desc)
+	if desc := hintDescription(wl.Hints(), "enter"); desc != "" {
+		t.Fatalf("preview enter should stay off the footer, got %q", desc)
 	}
 
 	wl.togglePreviewMode()

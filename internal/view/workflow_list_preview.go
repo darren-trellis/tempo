@@ -154,7 +154,7 @@ func (wl *WorkflowList) paneAt(x, y int) (workflowFocusPane, bool) {
 		return focusTimeline, true
 	}
 	if wl.taskQueuesActive() {
-		if wl.taskQueues != nil && wl.taskQueues.pollerPanel != nil && wl.taskQueues.pollerPanel.InRect(x, y) {
+		if wl.pollersVisible && wl.taskQueues != nil && wl.taskQueues.pollerPanel != nil && wl.taskQueues.pollerPanel.InRect(x, y) {
 			return focusPollers, true
 		}
 		if wl.workflowsPanel != nil && wl.workflowsPanel.InRect(x, y) {
@@ -535,7 +535,10 @@ func (wl *WorkflowList) updatePreviewSelection(row int) {
 
 func (wl *WorkflowList) previewFocusOrder() []workflowFocusPane {
 	if wl.taskQueuesActive() {
-		return []workflowFocusPane{focusWorkflows, focusPollers}
+		if wl.pollersVisible {
+			return []workflowFocusPane{focusWorkflows, focusPollers}
+		}
+		return []workflowFocusPane{focusWorkflows}
 	}
 	order := []workflowFocusPane{focusWorkflows}
 	if wl.previewModeEnabled() {
