@@ -49,6 +49,36 @@ func TestSelectModeKeys(t *testing.T) {
 	}
 }
 
+func TestSelectModeSpaceAdvancesRow(t *testing.T) {
+	wl := NewWorkflowList(&App{}, "default")
+	wl.keepDataOnStart = true
+	wl.Start()
+	wl.loadMockData()
+	wl.table.SelectRow(0)
+
+	if ev := wl.table.GetInputCapture()(tcell.NewEventKey(tcell.KeyRune, 'v', 0)); ev != nil {
+		t.Fatal("v should enter select mode")
+	}
+	if ev := wl.table.GetInputCapture()(tcell.NewEventKey(tcell.KeyRune, ' ', 0)); ev != nil {
+		t.Fatal("space should select the current row")
+	}
+	if len(wl.table.GetSelectedRows()) != 1 {
+		t.Fatal("space should select the row that was highlighted")
+	}
+	if wl.table.SelectedRow() != 1 {
+		t.Fatalf("space should move highlight to the next row, got %d", wl.table.SelectedRow())
+	}
+
+	last := wl.table.RowCount() - 1
+	wl.table.SelectRow(last)
+	if ev := wl.table.GetInputCapture()(tcell.NewEventKey(tcell.KeyRune, ' ', 0)); ev != nil {
+		t.Fatal("space should select the last row")
+	}
+	if wl.table.SelectedRow() != last {
+		t.Fatalf("space on the last row should stay put, got %d", wl.table.SelectedRow())
+	}
+}
+
 func TestNewWorkflowListDoesNotPanic(t *testing.T) {
 	defer func() {
 		if r := recover(); r != nil {

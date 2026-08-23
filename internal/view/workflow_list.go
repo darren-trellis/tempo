@@ -295,6 +295,9 @@ func (wl *WorkflowList) Start() {
 		OnRune(' ', func(e *tcell.EventKey) bool {
 			if wl.selectionMode {
 				wl.table.ToggleSelection()
+				if next := wl.table.SelectedRow() + 1; next < wl.table.RowCount() {
+					wl.table.SelectRow(next)
+				}
 				wl.updateSelectionPreview()
 				return true
 			}
