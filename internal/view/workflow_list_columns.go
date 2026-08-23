@@ -323,12 +323,11 @@ func (wl *WorkflowList) showColumnEditor() {
 
 	refresh()
 
-	modal := components.NewModal(components.ModalConfig{
-		Title:    fmt.Sprintf("%s Workflow Columns", theme.IconWorkflow),
-		Width:    56,
-		Height:   20,
-		Backdrop: true,
-	})
+	modal := newOverlayModal(components.ModalConfig{
+		Title:  fmt.Sprintf("%s Workflow Columns", theme.IconWorkflow),
+		Width:  56,
+		Height: 20,
+	}, wl)
 	modal.SetContent(table)
 	modal.SetHints([]components.KeyHint{
 		{Key: "j/k", Description: "Select"},
