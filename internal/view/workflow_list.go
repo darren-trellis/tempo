@@ -385,6 +385,12 @@ func (wl *WorkflowList) Start() {
 			return true
 		}).
 		OnRune('d', func(e *tcell.EventKey) bool {
+			if wl.selectionMode {
+				if len(wl.table.GetSelectedRows()) > 0 {
+					wl.showBatchDeleteConfirm()
+				}
+				return true
+			}
 			wl.startDiff()
 			return true
 		}).
@@ -527,6 +533,7 @@ func (wl *WorkflowList) Hints() []KeyHint {
 			hints = append(hints,
 				KeyHint{Key: "c", Description: "Cancel"},
 				KeyHint{Key: "X", Description: "Terminate"},
+				KeyHint{Key: "d", Description: "Delete"},
 			)
 		}
 		return hints

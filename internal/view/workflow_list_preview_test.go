@@ -13,6 +13,7 @@ func TestSelectModeKeys(t *testing.T) {
 	wl := NewWorkflowList(&App{}, "default")
 	wl.keepDataOnStart = true
 	wl.Start()
+	wl.loadMockData()
 
 	if desc := hintDescription(wl.Hints(), "a"); desc != "Auto-refresh" {
 		t.Fatalf("a should toggle auto-refresh, got %q", desc)
@@ -37,11 +38,18 @@ func TestSelectModeKeys(t *testing.T) {
 		t.Fatalf("esc should stay off the footer, got %q", desc)
 	}
 
+	if desc := hintDescription(wl.Hints(), "d"); desc != "" {
+		t.Fatalf("delete should stay hidden until a row is selected, got %q", desc)
+	}
+
 	if ev := wl.table.GetInputCapture()(tcell.NewEventKey(tcell.KeyRune, 'a', 0)); ev != nil {
 		t.Fatal("a should select all")
 	}
 	if wl.autoRefresh {
 		t.Fatal("a should not toggle auto-refresh in select mode")
+	}
+	if desc := hintDescription(wl.Hints(), "d"); desc != "Delete" {
+		t.Fatalf("select mode d: %q", desc)
 	}
 
 	if !wl.HandleEscape() || wl.selectionMode {
@@ -76,6 +84,37 @@ func TestSelectModeSpaceAdvancesRow(t *testing.T) {
 	}
 	if wl.table.SelectedRow() != last {
 		t.Fatalf("space on the last row should stay put, got %d", wl.table.SelectedRow())
+	}
+}
+
+func TestSelectModeDelete(t *testing.T) {
+	wl := NewWorkflowList(&App{}, "default")
+	wl.keepDataOnStart = true
+	wl.Start()
+	wl.loadMockData()
+	wl.table.SelectRow(0)
+
+	if ev := wl.table.GetInputCapture()(tcell.NewEventKey(tcell.KeyRune, 'v', 0)); ev != nil {
+		t.Fatal("v should enter select mode")
+	}
+	if desc := hintDescription(wl.Hints(), "d"); desc != "" {
+		t.Fatalf("delete should stay hidden until a row is selected, got %q", desc)
+	}
+
+	if ev := wl.table.GetInputCapture()(tcell.NewEventKey(tcell.KeyRune, ' ', 0)); ev != nil {
+		t.Fatal("space should select the current row")
+	}
+	if desc := hintDescription(wl.Hints(), "d"); desc != "Delete" {
+		t.Fatalf("select mode d: %q", desc)
+	}
+
+	got := wl.selectedWorkflowIndices()
+	if len(got) != 1 || got[0] != 0 {
+		t.Fatalf("selected indices: %v, want [0]", got)
+	}
+
+	if ev := wl.table.GetInputCapture()(tcell.NewEventKey(tcell.KeyRune, 'd', 0)); ev != nil {
+		t.Fatal("d should open delete confirm in select mode")
 	}
 }
 

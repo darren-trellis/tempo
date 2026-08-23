@@ -42,10 +42,23 @@ func (wl *WorkflowList) refreshSelectHints() {
 	}
 }
 
+func (wl *WorkflowList) selectedWorkflowIndices() []int {
+	selected := wl.table.GetSelectedRows()
+	indices := make([]int, 0, len(selected))
+	for _, row := range selected {
+		idx := row - 1
+		if idx < 0 || idx >= len(wl.workflows) {
+			continue
+		}
+		indices = append(indices, idx)
+	}
+	return indices
+}
+
 // Batch operation methods
 
 func (wl *WorkflowList) showBatchCancelConfirm() {
-	selected := wl.table.GetSelectedRows()
+	selected := wl.selectedWorkflowIndices()
 	if len(selected) == 0 {
 		return
 	}
@@ -145,7 +158,7 @@ func (wl *WorkflowList) executeBatchCancel(indices []int, reason string) {
 }
 
 func (wl *WorkflowList) showBatchTerminateConfirm() {
-	selected := wl.table.GetSelectedRows()
+	selected := wl.selectedWorkflowIndices()
 	if len(selected) == 0 {
 		return
 	}
@@ -238,6 +251,105 @@ func (wl *WorkflowList) executeBatchTerminate(indices []int, reason string) {
 			wl.toggleSelectionMode()
 			wl.loadData()
 			msg := fmt.Sprintf("Terminated %d workflow(s)", succeeded)
+			if failed > 0 {
+				msg += fmt.Sprintf(", %d failed", failed)
+				wl.app.ToastError(msg)
+			} else {
+				wl.app.ToastSuccess(msg)
+			}
+		})
+	}()
+}
+
+func (wl *WorkflowList) showBatchDeleteConfirm() {
+	selected := wl.selectedWorkflowIndices()
+	if len(selected) == 0 {
+		return
+	}
+
+	form := components.NewFormBuilder().
+		Text("confirm", "Type delete to confirm").
+		Placeholder("delete").
+		Validate(validators.Custom(func(value any) error {
+			if s, ok := value.(string); ok && s == "delete" {
+				return nil
+			}
+			return fmt.Errorf("must type delete")
+		})).
+		Done().
+		OnSubmit(func(values map[string]any) {
+			confirm, _ := values["confirm"].(string)
+			if confirm != "delete" {
+				return
+			}
+			wl.closeModal()
+			wl.executeBatchDelete(selected)
+		}).
+		OnCancel(func() {
+			wl.closeModal()
+		}).
+		Build()
+
+	warningText := tview.NewTextView().SetDynamicColors(true)
+	warningText.SetBackgroundColor(theme.Bg())
+	warningText.SetText(fmt.Sprintf(`[%s]⚠ WARNING: This permanently deletes the workflow and its history.
+This action cannot be undone.[-]
+
+[%s]Selected:[-] %d workflow(s)`,
+		theme.TagError(),
+		theme.TagFgDim(), len(selected)))
+
+	content := tview.NewFlex().SetDirection(tview.FlexRow).
+		AddItem(warningText, 5, 0, false).
+		AddItem(form, 0, 1, true)
+	content.SetBackgroundColor(theme.Bg())
+
+	modal := newModal(components.ModalConfig{
+		Title:    fmt.Sprintf("%s Delete %d Workflow(s)", theme.IconError, len(selected)),
+		Width:    65,
+		Height:   16,
+		Backdrop: true,
+	})
+	modal.SetContent(content)
+	modal.SetHints([]components.KeyHint{
+		{Key: "Ctrl+S", Description: "Delete"},
+		{Key: "Esc", Description: "Cancel"},
+	})
+
+	wl.app.PushModal(modal)
+	if jig := wl.app.JigApp(); jig != nil {
+		jig.SetFocus(form)
+	}
+}
+
+func (wl *WorkflowList) executeBatchDelete(indices []int) {
+	provider := wl.app.Provider()
+	if provider == nil {
+		return
+	}
+
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+
+		var succeeded, failed int
+		for _, idx := range indices {
+			if idx >= len(wl.workflows) {
+				continue
+			}
+			wf := wl.workflows[idx]
+			err := provider.DeleteWorkflow(ctx, wl.namespace, wf.ID, wf.RunID)
+			if err != nil {
+				failed++
+			} else {
+				succeeded++
+			}
+		}
+
+		wl.app.JigApp().QueueUpdateDraw(func() {
+			wl.toggleSelectionMode()
+			wl.loadData()
+			msg := fmt.Sprintf("Deleted %d workflow(s)", succeeded)
 			if failed > 0 {
 				msg += fmt.Sprintf(", %d failed", failed)
 				wl.app.ToastError(msg)
