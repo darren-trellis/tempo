@@ -12,32 +12,35 @@ import (
 	"github.com/rivo/tview"
 )
 
-// WorkflowList displays a list of workflows with a preview panel.
+var workflowTableHeaders = []string{
+	"WORKFLOW ID", "STATUS", "TYPE", "STARTED", "ENDED", "DURATION", "TASK QUEUE", "RUN ID",
+}
+
+// WorkflowList displays a list of workflows.
 type WorkflowList struct {
 	*components.MasterDetailView
-	app              *App
-	namespace        string
-	table            *components.Table
-	preview          *tview.TextView
-	emptyState       *components.EmptyState
-	noResultsState   *components.EmptyState
-	allWorkflows     []temporal.Workflow // Full unfiltered list
-	workflows        []temporal.Workflow // Filtered list for display
-	filterText       string
-	visibilityQuery  string // Temporal visibility query
-	loading          bool
-	autoRefresh      bool
-	refreshTicker    *time.Ticker
-	stopRefresh      chan struct{}
-	selectionMode    bool     // Multi-select mode active
-	searchHistory    []string // History of visibility queries
-	historyIndex     int      // Current position in history (-1 = not browsing)
-	maxHistorySize   int      // Maximum number of history entries
+	app             *App
+	namespace       string
+	table           *components.Table
+	emptyState      *components.EmptyState
+	noResultsState  *components.EmptyState
+	allWorkflows    []temporal.Workflow // Full unfiltered list
+	workflows       []temporal.Workflow // Filtered list for display
+	filterText      string
+	visibilityQuery string // Temporal visibility query
+	loading         bool
+	autoRefresh     bool
+	refreshTicker   *time.Ticker
+	stopRefresh     chan struct{}
+	selectionMode   bool     // Multi-select mode active
+	searchHistory   []string // History of visibility queries
+	historyIndex    int      // Current position in history (-1 = not browsing)
+	maxHistorySize  int      // Maximum number of history entries
 	// Server-side completion support
 	serverCompletions   []string            // Cached completions from server query
 	lastCompletionQuery string              // Last query sent to server (to avoid duplicates)
 	originalWorkflows   []temporal.Workflow // Original workflows before server search
-	preloaded           bool               // True if workflows were provided at construction time
+	preloaded           bool                // True if workflows were provided at construction time
 }
 
 // NewWorkflowList creates a new workflow list view.
@@ -46,7 +49,6 @@ func NewWorkflowList(app *App, namespace string) *WorkflowList {
 		app:            app,
 		namespace:      namespace,
 		table:          components.NewTable(),
-		preview:        tview.NewTextView(),
 		workflows:      []temporal.Workflow{},
 		stopRefresh:    make(chan struct{}, 1), // Buffered to ensure stop signal isn't lost
 		searchHistory:  make([]string, 0, 50),
@@ -67,7 +69,6 @@ func NewWorkflowListWithData(app *App, namespace string, workflows []temporal.Wo
 		app:            app,
 		namespace:      namespace,
 		table:          components.NewTable(),
-		preview:        tview.NewTextView(),
 		allWorkflows:   workflows,
 		workflows:      workflows,
 		stopRefresh:    make(chan struct{}, 1),
@@ -92,17 +93,10 @@ func (wl *WorkflowList) CommandContext() (workflowID, runID, workflowType string
 }
 
 func (wl *WorkflowList) setup() {
-	wl.table.SetHeaders("WORKFLOW ID", "STATUS", "TYPE", "START TIME")
+	wl.table.SetHeaders(workflowTableHeaders...)
 	wl.table.SetBorder(false)
 	wl.table.SetBackgroundColor(theme.Bg())
 
-	// Configure preview
-	wl.preview.SetDynamicColors(true)
-	wl.preview.SetBackgroundColor(theme.Bg())
-	wl.preview.SetTextColor(theme.Fg())
-	wl.preview.SetWordWrap(true)
-
-	// Create empty states with input capture for keybindings
 	emptyInputCapture := func(event *tcell.EventKey) *tcell.EventKey {
 		switch event.Rune() {
 		case 'W':
@@ -120,9 +114,6 @@ func (wl *WorkflowList) setup() {
 		case 'a':
 			wl.toggleAutoRefresh()
 			return nil
-		case 'p':
-			wl.togglePreview()
-			return nil
 		}
 		return event
 	}
@@ -139,21 +130,10 @@ func (wl *WorkflowList) setup() {
 		SetMessage("No workflows match the current filter")
 	wl.noResultsState.SetInputCapture(emptyInputCapture)
 
-	// Create MasterDetailView
 	wl.MasterDetailView = components.NewMasterDetailView().
 		SetMasterTitle(fmt.Sprintf("%s Workflows", theme.IconWorkflow)).
-		SetDetailTitle(fmt.Sprintf("%s Preview", theme.IconInfo)).
 		SetMasterContent(wl.table).
-		SetDetailContent(wl.preview).
-		SetRatio(0.6).
-		ConfigureEmpty(theme.IconInfo, "No Selection", "Select a workflow to view details")
-
-	// Selection change handler to update preview
-	wl.table.SetSelectionChangedFunc(func(row, col int) {
-		if row > 0 && row-1 < len(wl.workflows) {
-			wl.updatePreview(wl.workflows[row-1])
-		}
-	})
+		HideDetail()
 
 	// Selection handler for drill-down
 	wl.table.SetOnSelect(func(row int) {
@@ -164,24 +144,9 @@ func (wl *WorkflowList) setup() {
 	})
 }
 
-func (wl *WorkflowList) togglePreview() {
-	wl.ToggleDetail()
-	// Repopulate table to recalculate column widths for new layout
-	wl.populateTable()
-}
-
 // RefreshTheme updates all component colors after a theme change.
 func (wl *WorkflowList) RefreshTheme() {
-	bg := theme.Bg()
-
-	// Update table
-	wl.table.SetBackgroundColor(bg)
-
-	// Update preview
-	wl.preview.SetBackgroundColor(bg)
-	wl.preview.SetTextColor(theme.Fg())
-
-	// Re-render table with new theme colors
+	wl.table.SetBackgroundColor(theme.Bg())
 	wl.populateTable()
 }
 
@@ -231,10 +196,6 @@ func (wl *WorkflowList) Start() {
 		}).
 		OnRune('r', func(e *tcell.EventKey) bool {
 			wl.loadData()
-			return true
-		}).
-		OnRune('p', func(e *tcell.EventKey) bool {
-			wl.togglePreview()
 			return true
 		}).
 		OnRune('y', func(e *tcell.EventKey) bool {
@@ -359,7 +320,6 @@ func (wl *WorkflowList) Hints() []KeyHint {
 		KeyHint{Key: "W", Description: "Signal+Start"},
 		KeyHint{Key: "y", Description: "Copy ID"},
 		KeyHint{Key: "r", Description: "Refresh"},
-		KeyHint{Key: "p", Description: "Preview"},
 		KeyHint{Key: "a", Description: "Auto-refresh"},
 		KeyHint{Key: "t", Description: "Task Queues"},
 		KeyHint{Key: "s", Description: "Schedules"},
@@ -388,10 +348,7 @@ func (wl *WorkflowList) Focus(delegate func(p tview.Primitive)) {
 	delegate(wl.table)
 }
 
-// Draw applies theme colors dynamically and draws the view.
+// Draw draws the workflow list.
 func (wl *WorkflowList) Draw(screen tcell.Screen) {
-	bg := theme.Bg()
-	wl.preview.SetBackgroundColor(bg)
-	wl.preview.SetTextColor(theme.Fg())
 	wl.MasterDetailView.Draw(screen)
 }

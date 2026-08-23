@@ -6,7 +6,7 @@ import (
 	"runtime"
 	"time"
 
-	"github.com/atterpac/jig/theme"
+	"github.com/galaxy-io/tempo/internal/temporal"
 )
 
 // ptr returns a pointer to the given value.
@@ -93,7 +93,23 @@ func copyToClipboard(text string) error {
 	return cmd.Wait()
 }
 
-// copyWorkflowID copies the selected workflow ID to clipboard.
+func workflowEndTime(now time.Time, w temporal.Workflow) string {
+	if w.EndTime != nil {
+		return formatRelativeTime(now, *w.EndTime)
+	}
+	return "-"
+}
+
+func workflowDuration(now time.Time, w temporal.Workflow) string {
+	if w.EndTime != nil {
+		return w.EndTime.Sub(w.StartTime).Round(time.Second).String()
+	}
+	if w.Status == "Running" {
+		return now.Sub(w.StartTime).Round(time.Second).String()
+	}
+	return "-"
+}
+
 func (wl *WorkflowList) copyWorkflowID() {
 	row := wl.table.SelectedRow()
 	if row < 0 || row >= len(wl.workflows) {
@@ -102,26 +118,8 @@ func (wl *WorkflowList) copyWorkflowID() {
 
 	wf := wl.workflows[row]
 	if err := copyToClipboard(wf.ID); err != nil {
-		wl.preview.SetText(fmt.Sprintf("[%s]%s Failed to copy: %s[-]",
-			theme.TagError(), theme.IconError, err.Error()))
+		wl.app.ShowToastError("Failed to copy: " + err.Error())
 		return
 	}
-
-	wl.preview.SetText(fmt.Sprintf(`[%s::b]Copied to clipboard[-:-:-]
-
-[%s]%s[-]
-
-[%s]Workflow ID copied![-]`,
-		theme.TagPanelTitle(),
-		theme.TagAccent(), wf.ID,
-		theme.TagSuccess()))
-
-	go func() {
-		time.Sleep(1500 * time.Millisecond)
-		wl.app.JigApp().QueueUpdateDraw(func() {
-			if row < len(wl.workflows) {
-				wl.updatePreview(wl.workflows[row])
-			}
-		})
-	}()
+	wl.app.ShowToastSuccess("Copied workflow ID")
 }

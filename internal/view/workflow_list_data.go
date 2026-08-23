@@ -107,7 +107,7 @@ func (wl *WorkflowList) populateTable() {
 	currentRow := wl.table.SelectedRow()
 
 	wl.table.ClearRows()
-	wl.table.SetHeaders("WORKFLOW ID", "STATUS", "TYPE", "START TIME")
+	wl.table.SetHeaders(workflowTableHeaders...)
 
 	if len(wl.workflows) == 0 {
 		if len(wl.allWorkflows) == 0 {
@@ -115,95 +115,35 @@ func (wl *WorkflowList) populateTable() {
 		} else {
 			wl.SetMasterContent(wl.noResultsState)
 		}
-		wl.preview.SetText("")
 		return
 	}
 
 	wl.SetMasterContent(wl.table)
 
-	// Calculate dynamic column widths based on available space
-	idWidth, typeWidth := wl.calculateColumnWidths()
+	widths := wl.calculateColumnWidths()
 
 	now := time.Now()
 	for _, w := range wl.workflows {
 		statusHandle := temporal.GetWorkflowStatus(w.Status)
-		wl.table.AddRowWithStatus(statusHandle, 1, // status column is index 1
-			truncateIfNeeded(w.ID, idWidth),
+		wl.table.AddRowWithStatus(statusHandle, 1,
+			truncateIfNeeded(w.ID, widths.id),
 			w.Status,
-			truncateIfNeeded(w.Type, typeWidth),
+			truncateIfNeeded(w.Type, widths.typ),
 			formatRelativeTime(now, w.StartTime),
+			workflowEndTime(now, w),
+			workflowDuration(now, w),
+			truncateIfNeeded(w.TaskQueue, widths.queue),
+			truncateIfNeeded(w.RunID, widths.runID),
 		)
 	}
 
 	if wl.table.RowCount() > 0 {
 		if currentRow >= 0 && currentRow < len(wl.workflows) {
 			wl.table.SelectRow(currentRow)
-			wl.updatePreview(wl.workflows[currentRow])
 		} else {
 			wl.table.SelectRow(0)
-			if len(wl.workflows) > 0 {
-				wl.updatePreview(wl.workflows[0])
-			}
 		}
 	}
-}
-
-func (wl *WorkflowList) updatePreview(w temporal.Workflow) {
-	now := time.Now()
-	statusHandle := temporal.GetWorkflowStatus(w.Status)
-	statusColor := statusHandle.ColorTag()
-	statusIcon := statusHandle.Icon()
-
-	endTimeStr := "-"
-	durationStr := "-"
-	if w.EndTime != nil {
-		endTimeStr = formatRelativeTime(now, *w.EndTime)
-		durationStr = w.EndTime.Sub(w.StartTime).Round(time.Second).String()
-	} else if w.Status == "Running" {
-		durationStr = time.Since(w.StartTime).Round(time.Second).String()
-	}
-
-	text := fmt.Sprintf(`[%s::b]Workflow[-:-:-]
-[%s]%s[-]
-
-[%s]Status[-]
-[%s]%s %s[-]
-
-[%s]Type[-]
-[%s]%s[-]
-
-[%s]Started[-]
-[%s]%s[-]
-
-[%s]Ended[-]
-[%s]%s[-]
-
-[%s]Duration[-]
-[%s]%s[-]
-
-[%s]Task Queue[-]
-[%s]%s[-]
-
-[%s]Run ID[-]
-[%s]%s[-]`,
-		theme.TagPanelTitle(),
-		theme.TagFg(), truncate(w.ID, 35),
-		theme.TagFgDim(),
-		statusColor, statusIcon, w.Status,
-		theme.TagFgDim(),
-		theme.TagFg(), w.Type,
-		theme.TagFgDim(),
-		theme.TagFg(), formatRelativeTime(now, w.StartTime),
-		theme.TagFgDim(),
-		theme.TagFg(), endTimeStr,
-		theme.TagFgDim(),
-		theme.TagFg(), durationStr,
-		theme.TagFgDim(),
-		theme.TagFg(), w.TaskQueue,
-		theme.TagFgDim(),
-		theme.TagFgDim(), truncate(w.RunID, 30),
-	)
-	wl.preview.SetText(text)
 }
 
 func (wl *WorkflowList) updateStats() {
@@ -227,83 +167,75 @@ func (wl *WorkflowList) updateStats() {
 
 func (wl *WorkflowList) showError(err error) {
 	wl.table.ClearRows()
-	wl.table.SetHeaders("WORKFLOW ID", "STATUS", "TYPE", "START TIME")
+	wl.table.SetHeaders(workflowTableHeaders...)
 	wl.table.AddRowWithColor(theme.Error(),
 		theme.IconError+" Error loading workflows",
 		err.Error(),
-		"",
-		"",
+		"", "", "", "", "", "",
 	)
 }
 
-// calculateColumnWidths determines optimal column widths based on available space.
-// Returns (idWidth, typeWidth) where 0 means no truncation needed.
-func (wl *WorkflowList) calculateColumnWidths() (int, int) {
-	// Calculate width based on parent and preview state
+type workflowColWidths struct {
+	id, typ, queue, runID int
+}
+
+func (wl *WorkflowList) calculateColumnWidths() workflowColWidths {
 	_, _, totalWidth, _ := wl.MasterDetailView.GetInnerRect()
-
-	var width int
-	if totalWidth > 0 {
-		if wl.IsDetailVisible() {
-			// Left panel gets 3/5 of space when preview is shown
-			width = (totalWidth * 3) / 5
-		} else {
-			// Left panel gets full width when preview is hidden
-			width = totalWidth
-		}
-		// Account for panel border/padding (~4 chars)
-		width -= 4
-	}
-
-	// If no width available (not yet drawn), use conservative defaults
+	width := totalWidth - 4
 	if width <= 0 {
-		return 25, 15
+		return workflowColWidths{id: 25, typ: 15, queue: 14, runID: 12}
 	}
 
-	// Fixed column widths:
-	// STATUS: max 12 chars (for "TERMINATED" + padding)
-	// START TIME: max 12 chars (for "12mo ago" + padding)
-	// Column separators: roughly 2 chars between each of 4 columns = 6 chars
-	// Left margin/selection indicator: ~2 chars
 	const (
-		statusWidth    = 12
-		startTimeWidth = 12
-		separators     = 8
-		minIDWidth     = 15 // Minimum readable ID width
-		minTypeWidth   = 10 // Minimum readable type width
+		statusWidth   = 12
+		startedWidth  = 11
+		endedWidth    = 11
+		durationWidth = 12
+		separators    = 16
+		minID         = 15
+		minType       = 10
+		minQueue      = 10
+		minRunID      = 10
+		maxRunID      = 36
 	)
 
-	fixedWidth := statusWidth + startTimeWidth + separators
-	availableForVariable := width - fixedWidth
-
-	if availableForVariable <= 0 {
-		// Extremely narrow terminal, use minimums
-		return minIDWidth, minTypeWidth
+	fixed := statusWidth + startedWidth + endedWidth + durationWidth + separators
+	available := width - fixed
+	if available <= minID+minType+minQueue+minRunID {
+		return workflowColWidths{id: minID, typ: minType, queue: minQueue, runID: minRunID}
 	}
 
-	// Priority: ID > Type
-	// Give ID 60% of variable space, Type 40%
-	idWidth := (availableForVariable * 60) / 100
-	typeWidth := availableForVariable - idWidth
-
-	// If we have plenty of space, don't truncate at all (return 0)
-	// Typical workflow IDs are ~36 chars (UUID), types vary widely
-	if idWidth >= 50 {
-		idWidth = 0 // No truncation needed for ID
-	}
-	if typeWidth >= 40 {
-		typeWidth = 0 // No truncation needed for Type
+	runID := maxRunID
+	if available < minID+minType+minQueue+maxRunID {
+		runID = minRunID
 	}
 
-	// Ensure minimums if we are truncating
-	if idWidth > 0 && idWidth < minIDWidth {
-		idWidth = minIDWidth
+	variable := available - runID
+	id := (variable * 50) / 100
+	rest := variable - id
+	typ := rest / 2
+	queue := rest - typ
+
+	if id >= 50 {
+		id = 0
+	} else if id < minID {
+		id = minID
 	}
-	if typeWidth > 0 && typeWidth < minTypeWidth {
-		typeWidth = minTypeWidth
+	if typ >= 40 {
+		typ = 0
+	} else if typ < minType {
+		typ = minType
+	}
+	if queue >= 40 {
+		queue = 0
+	} else if queue < minQueue {
+		queue = minQueue
+	}
+	if runID >= maxRunID {
+		runID = 0
 	}
 
-	return idWidth, typeWidth
+	return workflowColWidths{id: id, typ: typ, queue: queue, runID: runID}
 }
 
 // Auto-refresh methods

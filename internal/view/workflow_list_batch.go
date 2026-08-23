@@ -8,7 +8,6 @@ import (
 	"github.com/atterpac/jig/components"
 	"github.com/atterpac/jig/theme"
 	"github.com/atterpac/jig/validators"
-	"github.com/galaxy-io/tempo/internal/temporal"
 	"github.com/rivo/tview"
 )
 
@@ -30,43 +29,9 @@ func (wl *WorkflowList) toggleSelectionMode() {
 func (wl *WorkflowList) updateSelectionPreview() {
 	count := len(wl.table.GetSelectedRows())
 	if count == 0 {
-		row := wl.table.SelectedRow()
-		if row >= 0 && row < len(wl.workflows) {
-			wl.updatePreview(wl.workflows[row])
-		}
+		wl.SetMasterTitle(fmt.Sprintf("%s Workflows (Select Mode)", theme.IconWorkflow))
 	} else {
-		var running, completed, failed int
-		selected := wl.table.GetSelectedRows()
-		for _, idx := range selected {
-			if idx < len(wl.workflows) {
-				switch wl.workflows[idx].Status {
-				case "Running":
-					running++
-				case "Completed":
-					completed++
-				case "Failed":
-					failed++
-				}
-			}
-		}
-
-		text := fmt.Sprintf(`[%s::b]Selected Workflows[-:-:-]
-[%s]%d workflow(s)[-]
-
-[%s]Status Breakdown[-]
-[%s]%s Running: %d[-]
-[%s]%s Completed: %d[-]
-[%s]%s Failed: %d[-]
-
-[%s]Press 'c' to cancel or 'X' to terminate selected workflows[-]`,
-			theme.TagPanelTitle(),
-			theme.TagAccent(), count,
-			theme.TagFgDim(),
-			temporal.StatusRunning.ColorTag(), temporal.StatusRunning.Icon(), running,
-			temporal.StatusCompleted.ColorTag(), temporal.StatusCompleted.Icon(), completed,
-			temporal.StatusFailed.ColorTag(), temporal.StatusFailed.Icon(), failed,
-			theme.TagFgDim())
-		wl.preview.SetText(text)
+		wl.SetMasterTitle(fmt.Sprintf("%s Workflows (%d selected)", theme.IconWorkflow, count))
 	}
 	wl.app.JigApp().Menu().SetHints(wl.Hints())
 }
@@ -89,8 +54,8 @@ func (wl *WorkflowList) showBatchCancelConfirm() {
 
 	form := components.NewFormBuilder().
 		Text("reason", "Reason (optional)").
-			Value("Batch cancelled via tempo").
-			Done().
+		Value("Batch cancelled via tempo").
+		Done().
 		OnSubmit(func(values map[string]any) {
 			reason := values["reason"].(string)
 			wl.closeModal()
@@ -162,13 +127,13 @@ func (wl *WorkflowList) executeBatchCancel(indices []int, reason string) {
 		wl.app.JigApp().QueueUpdateDraw(func() {
 			wl.toggleSelectionMode()
 			wl.loadData()
-			wl.preview.SetText(fmt.Sprintf(`[%s::b]Batch Cancel Complete[-:-:-]
-
-[%s]Cancelled:[-] %d workflow(s)
-[%s]Failed:[-] %d workflow(s)`,
-				theme.TagPanelTitle(),
-				theme.TagSuccess(), succeeded,
-				theme.TagError(), failed))
+			msg := fmt.Sprintf("Cancelled %d workflow(s)", succeeded)
+			if failed > 0 {
+				msg += fmt.Sprintf(", %d failed", failed)
+				wl.app.ToastError(msg)
+			} else {
+				wl.app.ToastSuccess(msg)
+			}
 		})
 	}()
 }
@@ -189,9 +154,9 @@ func (wl *WorkflowList) showBatchTerminateConfirm() {
 
 	form := components.NewFormBuilder().
 		Text("reason", "Reason (required)").
-			Placeholder("Enter reason for termination").
-			Validate(validators.Required()).
-			Done().
+		Placeholder("Enter reason for termination").
+		Validate(validators.Required()).
+		Done().
 		OnSubmit(func(values map[string]any) {
 			reason := values["reason"].(string)
 			wl.closeModal()
@@ -266,13 +231,13 @@ func (wl *WorkflowList) executeBatchTerminate(indices []int, reason string) {
 		wl.app.JigApp().QueueUpdateDraw(func() {
 			wl.toggleSelectionMode()
 			wl.loadData()
-			wl.preview.SetText(fmt.Sprintf(`[%s::b]Batch Terminate Complete[-:-:-]
-
-[%s]Terminated:[-] %d workflow(s)
-[%s]Failed:[-] %d workflow(s)`,
-				theme.TagPanelTitle(),
-				theme.TagSuccess(), succeeded,
-				theme.TagError(), failed))
+			msg := fmt.Sprintf("Terminated %d workflow(s)", succeeded)
+			if failed > 0 {
+				msg += fmt.Sprintf(", %d failed", failed)
+				wl.app.ToastError(msg)
+			} else {
+				wl.app.ToastSuccess(msg)
+			}
 		})
 	}()
 }
