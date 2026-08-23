@@ -1255,15 +1255,16 @@ func (a *App) applyProfile(name string, persist bool) {
 		CodecEndpoint: profileCfg.CodecEndpoint,
 	}
 
-	a.app.QueueUpdateDraw(func() {
-		if current := a.app.Pages().Current(); current != nil {
-			current.Stop()
-		}
-		a.setProfile(name + " (connecting...)")
-		a.setConnected(false)
-	})
-
+	// QueueUpdateDraw from the UI thread deadlocks (Enter in the profile modal).
 	go func() {
+		a.app.QueueUpdateDraw(func() {
+			if current := a.app.Pages().Current(); current != nil {
+				current.Stop()
+			}
+			a.setProfile(name + " (connecting...)")
+			a.setConnected(false)
+		})
+
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		err := provider.ReconnectWithConfig(ctx, connConfig)
 		cancel()
