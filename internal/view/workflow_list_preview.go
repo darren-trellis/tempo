@@ -81,8 +81,6 @@ func (wl *WorkflowList) setupPreview() {
 		}
 		return event
 	})
-
-	wl.clearPreview()
 }
 
 func (wl *WorkflowList) focusPreview() {
@@ -111,14 +109,18 @@ func (wl *WorkflowList) clearPreview() {
 	wl.eventTable.ClearRows()
 	wl.eventTable.SetHeaders("ID", "TIME", "TYPE", "NAME")
 	wl.eventDetail.SetText(fmt.Sprintf("[%s]Select a workflow to load events[-]", theme.TagFgDim()))
-	wl.SetDetailTitle(fmt.Sprintf("%s Events", theme.IconEvent))
+	if wl.MasterDetailView != nil {
+		wl.SetDetailTitle(fmt.Sprintf("%s Events", theme.IconEvent))
+	}
 }
 
 func (wl *WorkflowList) setPreviewStatus(title, message string) {
 	wl.eventTable.ClearRows()
 	wl.eventTable.SetHeaders("ID", "TIME", "TYPE", "NAME")
 	wl.eventDetail.SetText(fmt.Sprintf("[%s]%s[-]", theme.TagFgDim(), message))
-	wl.SetDetailTitle(title)
+	if wl.MasterDetailView != nil {
+		wl.SetDetailTitle(title)
+	}
 }
 
 func (wl *WorkflowList) schedulePreview(w temporal.Workflow, force bool) {

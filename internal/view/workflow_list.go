@@ -147,6 +147,7 @@ func (wl *WorkflowList) setup() {
 		SetMasterContent(wl.table).
 		SetDetailContent(wl.preview).
 		SetRatio(0.55)
+	wl.clearPreview()
 
 	wl.table.SetSelectionChangedFunc(func(row, col int) {
 		if row > 0 && row-1 < len(wl.workflows) {
