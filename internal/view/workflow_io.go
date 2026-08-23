@@ -77,6 +77,7 @@ func showWorkflowIO(app *App, background tview.Primitive, workflowType, input, o
 		MinWidth:  120,
 		MinHeight: 35,
 	}, background)
+	modal.frameless = true
 
 	inputView := tview.NewTextView().
 		SetDynamicColors(true).

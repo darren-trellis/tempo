@@ -63,6 +63,31 @@ func TestOverlayModalHints(t *testing.T) {
 	}
 }
 
+func TestOverlayModalFramelessHidesParentPane(t *testing.T) {
+	inner := tview.NewBox()
+	modal := newOverlayModal(components.ModalConfig{
+		Title:     "Input/Output",
+		MinWidth:  20,
+		MinHeight: 10,
+	}, tview.NewBox())
+	modal.frameless = true
+	modal.SetContent(inner)
+	modal.SetRect(0, 0, 80, 24)
+
+	screen := tcell.NewSimulationScreen("UTF-8")
+	if err := screen.Init(); err != nil {
+		t.Fatal(err)
+	}
+	screen.SetSize(80, 24)
+	modal.Draw(screen)
+
+	px, py, pw, ph := modal.GetPanel().GetRect()
+	cx, cy, cw, ch := inner.GetRect()
+	if cx != px || cy != py || cw != pw || ch != ph {
+		t.Fatalf("content should fill the modal without a parent pane, panel=%d,%d %dx%d content=%d,%d %dx%d", px, py, pw, ph, cx, cy, cw, ch)
+	}
+}
+
 func TestOverlayModalMaximize(t *testing.T) {
 	modal := newOverlayModal(components.ModalConfig{
 		Title:     "IO",
