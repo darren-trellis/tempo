@@ -5,6 +5,8 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"path/filepath"
+	"runtime/debug"
 	"sync"
 	"time"
 
@@ -30,6 +32,7 @@ var (
 	tlsCA         = flag.String("tls-ca", "", "Path to CA certificate (overrides profile)")
 	tlsServerName = flag.String("tls-server-name", "", "Server name for TLS verification (overrides profile)")
 	tlsSkipVerify = flag.Bool("tls-skip-verify", false, "Skip TLS verification (insecure)")
+	codecEndpoint = flag.String("codec-endpoint", "", "Temporal codec server URL for decoding payloads (overrides profile)")
 	themeNameFlag = flag.String("theme", "", "Theme name (overrides config file)")
 	devMode       = flag.Bool("dev", false, "Development mode: test splash screen with theme cycling")
 	versionFlag   = flag.Bool("version", false, "Print version information and exit")
@@ -105,6 +108,7 @@ func main() {
 		TLSSkipVerify: profileConfig.TLS.SkipVerify,
 		APIKey:        profileConfig.APIKey,
 		GRPCMeta:      profileConfig.GRPCMeta,
+		CodecEndpoint: profileConfig.CodecEndpoint,
 	}
 
 	// CLI flags override profile settings
@@ -129,6 +133,11 @@ func main() {
 	if *tlsSkipVerify {
 		connConfig.TLSSkipVerify = true
 	}
+	if *codecEndpoint != "" {
+		connConfig.CodecEndpoint = *codecEndpoint
+	}
+
+	defer recoverAndLog()
 
 	// Run connection with UI
 	provider, err := connectWithUI(connConfig)
@@ -145,6 +154,20 @@ func main() {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
+}
+
+func recoverAndLog() {
+	r := recover()
+	if r == nil {
+		return
+	}
+	stack := debug.Stack()
+	logPath := filepath.Join(config.ConfigDir(), "tempo.log")
+	if f, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644); err == nil {
+		fmt.Fprintf(f, "%s PANIC: %v\n%s\n", time.Now().Format(time.RFC3339), r, stack)
+		_ = f.Close()
+	}
+	fmt.Fprintf(os.Stderr, "tempo panicked: %v\nSee %s\n", r, logPath)
 }
 
 const splashLogo = `

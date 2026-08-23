@@ -452,7 +452,7 @@ func NewProfileForm() *ProfileForm {
 		Modal: components.NewModal(components.ModalConfig{
 			Title:    fmt.Sprintf("%s New Profile", theme.IconInfo),
 			Width:    60,
-			Height:   22,
+			Height:   24,
 			Backdrop: true,
 		}),
 	}
@@ -499,6 +499,11 @@ func (f *ProfileForm) buildForm(name string, cfg config.ConnectionConfig, isEdit
 	builder.Text("namespace", "Default Namespace").
 		Placeholder("default").
 		Value(cfg.Namespace).
+		Done()
+
+	builder.Text("codecEndpoint", "Codec Endpoint (optional)").
+		Placeholder("https://codec.example.com").
+		Value(cfg.CodecEndpoint).
 		Done()
 
 	// TLS settings (optional)
@@ -549,8 +554,9 @@ func (f *ProfileForm) buildForm(name string, cfg config.ConnectionConfig, isEdit
 				ServerName: values["tlsServerName"].(string),
 				SkipVerify: skipVerify,
 			},
-			APIKey:   cfg.APIKey,
-			GRPCMeta: cfg.GRPCMeta,
+			APIKey:        cfg.APIKey,
+			GRPCMeta:      cfg.GRPCMeta,
+			CodecEndpoint: values["codecEndpoint"].(string),
 		}
 
 		if f.onSave != nil {

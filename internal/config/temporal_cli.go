@@ -73,7 +73,8 @@ func loadTemporalEnvYAML(path string) (map[string]ConnectionConfig, error) {
 				CA:         props["tls-ca-path"],
 				ServerName: props["tls-server-name"],
 			},
-			APIKey: props["api-key"],
+			APIKey:        props["api-key"],
+			CodecEndpoint: firstNonEmpty(props["codec-endpoint"], props["codec_endpoint"]),
 		}
 		profiles[name] = conn
 	}
@@ -87,10 +88,11 @@ type temporalTOMLConfig struct {
 }
 
 type temporalTOMLProfile struct {
-	Address   string              `toml:"address"`
-	Namespace string              `toml:"namespace"`
-	APIKey    string              `toml:"api_key"`
-	TLS       temporalTOMLTLS     `toml:"tls"`
+	Address       string          `toml:"address"`
+	Namespace     string          `toml:"namespace"`
+	APIKey        string          `toml:"api_key"`
+	CodecEndpoint string          `toml:"codec_endpoint"`
+	TLS           temporalTOMLTLS `toml:"tls"`
 }
 
 type temporalTOMLTLS struct {
@@ -117,10 +119,20 @@ func loadTemporalProfileTOML(path string) (map[string]ConnectionConfig, error) {
 				CA:         p.TLS.CAPath,
 				ServerName: p.TLS.ServerName,
 			},
-			APIKey: p.APIKey,
+			APIKey:        p.APIKey,
+			CodecEndpoint: p.CodecEndpoint,
 		}
 		profiles[name] = conn
 	}
 
 	return profiles, nil
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, v := range values {
+		if v != "" {
+			return v
+		}
+	}
+	return ""
 }

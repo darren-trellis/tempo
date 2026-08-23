@@ -30,6 +30,7 @@ type Context struct {
 	TLSServerName string
 	TLSSkipVerify bool
 	APIKey        string
+	CodecEndpoint string
 }
 
 var placeholderRe = regexp.MustCompile(`\{([^}]+)\}`)
@@ -54,6 +55,8 @@ func ExpandCmd(template string, ctx Context) (string, error) {
 			val = ctx.Address
 		case "profile":
 			val = ctx.Profile
+		case "codec_endpoint":
+			val = ctx.CodecEndpoint
 		default:
 			// Check positional args: {1}, {2}, etc.
 			if n, err := strconv.Atoi(key); err == nil && n >= 1 {
@@ -121,6 +124,9 @@ func InjectConnectionFlags(cmdStr string, ctx Context) string {
 	}
 	if ctx.APIKey != "" && !strings.Contains(cmdStr, "--api-key") {
 		flags = append(flags, fmt.Sprintf("--api-key %q", ctx.APIKey))
+	}
+	if ctx.CodecEndpoint != "" && !strings.Contains(cmdStr, "--codec-endpoint") {
+		flags = append(flags, fmt.Sprintf("--codec-endpoint %q", ctx.CodecEndpoint))
 	}
 
 	if len(flags) == 0 {

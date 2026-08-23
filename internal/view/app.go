@@ -263,7 +263,7 @@ func (a *App) updateCrumbs() {
 }
 
 // Status bar helpers
-// Section layout: [0] profile, [1] namespace, [2] connection status
+// Section layout: [0] profile, [1] namespace, [2] connection status, [3] codec status
 
 func (a *App) setConnected(connected bool) {
 	icon := theme.IconDisconnected
@@ -287,6 +287,49 @@ func (a *App) setConnected(connected bool) {
 	} else {
 		a.statusBar.AddSection(section)
 	}
+	a.refreshCodecStatus()
+}
+
+func (a *App) setCodecStatus(text string, colorFunc func() tcell.Color, icon string) {
+	section := layout.StatusSection{
+		Icon:      icon,
+		Text:      text,
+		ColorFunc: colorFunc,
+	}
+	if a.statusBar.SectionCount() >= 4 {
+		a.statusBar.UpdateSection(3, section)
+	} else {
+		a.statusBar.AddSection(section)
+	}
+}
+
+func (a *App) refreshCodecStatus() {
+	var endpoint, namespace string
+	if a.provider != nil {
+		cfg := a.provider.Config()
+		endpoint = cfg.CodecEndpoint
+		namespace = cfg.Namespace
+	}
+	if namespace == "" {
+		namespace = a.currentNS
+	}
+	if endpoint == "" {
+		a.setCodecStatus("no codec", theme.FgDim, "")
+		return
+	}
+	if a.statusBar.SectionCount() < 4 {
+		a.setCodecStatus("codec…", theme.FgDim, theme.IconCloud)
+	}
+	go func() {
+		err := temporal.ProbeCodec(endpoint, namespace)
+		a.app.QueueUpdateDraw(func() {
+			if err != nil {
+				a.setCodecStatus("codec down", theme.Error, theme.IconDisconnected)
+				return
+			}
+			a.setCodecStatus("codec", theme.Success, theme.IconCloud)
+		})
+	}()
 }
 
 func (a *App) setProfile(name string) {
@@ -450,6 +493,7 @@ func (a *App) Run() error {
 
 // checkForUpdates checks for updates and automatically applies them.
 func (a *App) checkForUpdates() {
+	defer func() { _ = recover() }()
 	// Skip auto-update for Homebrew installs - use `brew upgrade` instead
 	if update.IsHomebrewInstall() {
 		return
@@ -1174,6 +1218,7 @@ func (a *App) SwitchProfile(name string) {
 		TLSSkipVerify: profileCfg.TLS.SkipVerify,
 		APIKey:        profileCfg.APIKey,
 		GRPCMeta:      profileCfg.GRPCMeta,
+		CodecEndpoint: profileCfg.CodecEndpoint,
 	}
 
 	// Stop current views
@@ -1444,6 +1489,7 @@ func (a *App) buildCommandContext(args []string) command.Context {
 			ctx.TLSServerName = expanded.TLS.ServerName
 			ctx.TLSSkipVerify = expanded.TLS.SkipVerify
 			ctx.APIKey = expanded.APIKey
+			ctx.CodecEndpoint = expanded.CodecEndpoint
 		}
 	}
 

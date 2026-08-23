@@ -6,6 +6,7 @@ import (
 	"runtime"
 	"strings"
 
+	"github.com/Masterminds/semver/v3"
 	"github.com/creativeprojects/go-selfupdate"
 )
 
@@ -78,19 +79,24 @@ func (u *Updater) CheckForUpdate(ctx context.Context) (*UpdateInfo, error) {
 		NeedsUpdate:    false,
 	}
 
-	// Check if we need an update
-	// For "dev" version, always consider it needs update if a release exists
-	if Version == "dev" {
-		info.NeedsUpdate = true
-		return info, nil
-	}
-
-	// Compare versions
-	if latest.GreaterThan(Version) {
+	if canCompareVersion(Version) && latest.GreaterThan(Version) {
 		info.NeedsUpdate = true
 	}
 
 	return info, nil
+}
+
+func canCompareVersion(version string) bool {
+	if version == "" || version == "dev" {
+		return false
+	}
+	if strings.Contains(version, "dirty") {
+		return false
+	}
+	if _, err := semver.NewVersion(strings.TrimPrefix(version, "v")); err != nil {
+		return false
+	}
+	return true
 }
 
 // ApplyUpdate downloads and applies the update.

@@ -843,15 +843,15 @@ func formatFailureSidePanel(ev *temporal.EnhancedHistoryEvent) string {
 	var result strings.Builder
 	if ev.FailureSource != "" {
 		result.WriteString(fmt.Sprintf("\n\n[%s::b]Source[-:-:-]\n[%s]%s[-]",
-			theme.TagAccent(), theme.TagFg(), tview.Escape(ev.FailureSource)))
+			theme.TagAccent(), theme.TagFg(), escapeForTView(ev.FailureSource)))
 	}
 	if ev.FailureStackTrace != "" {
 		result.WriteString(fmt.Sprintf("\n\n[%s::b]Stack Trace[-:-:-]\n[%s]%s[-]",
-			theme.TagAccent(), theme.TagFgDim(), tview.Escape(ev.FailureStackTrace)))
+			theme.TagAccent(), theme.TagFgDim(), escapeForTView(ev.FailureStackTrace)))
 	}
 	if ev.FailureCause != "" {
 		result.WriteString(fmt.Sprintf("\n\n[%s::b]Cause[-:-:-]\n[%s]%s[-]",
-			theme.TagAccent(), theme.TagFgDim(), tview.Escape(ev.FailureCause)))
+			theme.TagAccent(), theme.TagFgDim(), escapeForTView(ev.FailureCause)))
 	}
 	return result.String()
 }
@@ -1115,7 +1115,7 @@ func highlightJSONValueLine(line string) string {
 		trimmed := strings.TrimSpace(prefix)
 		if strings.HasPrefix(trimmed, "\"") && strings.HasSuffix(trimmed, "\"") {
 			// JSON key with quotes - use accent color
-			return fmt.Sprintf("[%s]%s[-]:[%s]%s[-]", theme.TagAccent(), prefix, theme.TagFg(), highlightValues(suffix))
+			return fmt.Sprintf("[%s]%s[-]:[%s]%s[-]", theme.TagAccent(), escapeForTView(prefix), theme.TagFg(), highlightValues(suffix))
 		}
 	}
 
@@ -1124,7 +1124,7 @@ func highlightJSONValueLine(line string) string {
 
 // highlightValues highlights JSON values (booleans, null, numbers).
 func highlightValues(s string) string {
-	result := tview.Escape(s)
+	result := escapeForTView(s)
 	result = strings.ReplaceAll(result, "true", fmt.Sprintf("[%s]true[-]", temporal.StatusCompleted.ColorTag()))
 	result = strings.ReplaceAll(result, "false", fmt.Sprintf("[%s]false[-]", temporal.StatusFailed.ColorTag()))
 	result = strings.ReplaceAll(result, "null", fmt.Sprintf("[%s]null[-]", theme.TagFgDim()))
@@ -1191,11 +1191,9 @@ func highlightJSONLine(line string) string {
 		// Check if prefix looks like a key (has quotes or is a simple word)
 		trimmed := strings.TrimSpace(prefix)
 		if strings.HasPrefix(trimmed, "\"") || strings.HasPrefix(trimmed, "'") {
-			// JSON key with quotes
-			return fmt.Sprintf("[%s]%s[-]%s", theme.TagAccent(), prefix, highlightJSONValue(suffix))
+			return fmt.Sprintf("[%s]%s[-]%s", theme.TagAccent(), escapeForTView(prefix), highlightJSONValue(suffix))
 		} else if !strings.Contains(trimmed, " ") && len(trimmed) > 0 {
-			// Simple key without quotes (like "Details:", "Result:")
-			return fmt.Sprintf("[%s::b]%s[-:-:-]%s", theme.TagAccent(), prefix, highlightJSONValue(suffix))
+			return fmt.Sprintf("[%s::b]%s[-:-:-]%s", theme.TagAccent(), escapeForTView(prefix), highlightJSONValue(suffix))
 		}
 	}
 
@@ -1205,7 +1203,7 @@ func highlightJSONLine(line string) string {
 // highlightJSONValue highlights JSON values (strings, numbers, booleans).
 func highlightJSONValue(s string) string {
 	// Replace common JSON patterns with highlighted versions
-	result := tview.Escape(s)
+	result := escapeForTView(s)
 
 	// Highlight string values (simple approach)
 	// This is a basic implementation - a full JSON parser would be more robust

@@ -91,6 +91,7 @@ tempo --address localhost:7233 // default dev server address loads without flag
 | `--tls-ca`          | Path to CA certificate                |
 | `--tls-server-name` | Server name for TLS verification      |
 | `--tls-skip-verify` | Skip TLS verification (insecure)      |
+| `--codec-endpoint`  | Codec server URL for decoding payloads |
 | `--theme`           | Theme name                            |
 
 ### Keybindings
@@ -136,11 +137,14 @@ profiles:
   staging:
     address: temporal.staging.example.com:7233
     namespace: staging
+    codec_endpoint: https://codec.example.com
     tls:
       cert: /path/to/client.pem
       key: /path/to/client-key.pem
       ca: /path/to/ca.pem
 ```
+
+`codec_endpoint` is the Temporal codec server base URL (the same value as `temporal --codec-endpoint`). Tempo POSTs to `/encode` and `/decode`, sends `X-Namespace`, and substitutes `{namespace}` in the URL when present. Environment variables are expanded (`${TEMPORAL_CODEC_URL}`).
 
 ## Themes
 

@@ -462,7 +462,7 @@ func formatKeyValueDetailsWorkflow(details string) string {
 				result.WriteString(fmt.Sprintf("[%s]%s[-]", theme.TagFg(), highlightValuesWorkflow(value)))
 			}
 		} else {
-			result.WriteString(fmt.Sprintf("[%s]%s[-]", theme.TagFg(), kv.value))
+			result.WriteString(fmt.Sprintf("[%s]%s[-]", theme.TagFg(), escapeForTView(kv.value)))
 		}
 	}
 
@@ -567,17 +567,22 @@ func highlightJSONLineWorkflow(line string) string {
 
 		trimmed := strings.TrimSpace(prefix)
 		if strings.HasPrefix(trimmed, "\"") && strings.HasSuffix(trimmed, "\"") {
-			// JSON key with quotes - use accent color
-			return fmt.Sprintf("[%s]%s[-]:[%s]%s[-]", theme.TagAccent(), prefix, theme.TagFg(), highlightValuesWorkflow(suffix))
+			return fmt.Sprintf("[%s]%s[-]:[%s]%s[-]", theme.TagAccent(), escapeForTView(prefix), theme.TagFg(), highlightValuesWorkflow(suffix))
 		}
 	}
 
 	return highlightValuesWorkflow(line)
 }
 
+// escapeForTView removes '[' so tview cannot parse payload bytes as style tags.
+// tview.Escape only handles already-closed tags like [red], not raw '['.
+func escapeForTView(s string) string {
+	return strings.ReplaceAll(s, "[", "［")
+}
+
 // highlightValuesWorkflow highlights JSON values (booleans, null).
 func highlightValuesWorkflow(s string) string {
-	result := s
+	result := escapeForTView(s)
 	result = strings.ReplaceAll(result, "true", fmt.Sprintf("[%s]true[-]", temporal.StatusCompleted.ColorTag()))
 	result = strings.ReplaceAll(result, "false", fmt.Sprintf("[%s]false[-]", temporal.StatusFailed.ColorTag()))
 	result = strings.ReplaceAll(result, "null", fmt.Sprintf("[%s]null[-]", theme.TagFgDim()))

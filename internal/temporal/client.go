@@ -119,6 +119,9 @@ func NewClient(ctx context.Context, connConfig ConnectionConfig) (*Client, error
 	if len(connConfig.GRPCMeta) > 0 {
 		opts.HeadersProvider = &staticHeadersProvider{headers: connConfig.GRPCMeta}
 	}
+	if dc := dataConverterFor(connConfig); dc != nil {
+		opts.DataConverter = dc
+	}
 
 	c, err := client.DialContext(ctx, opts)
 	if err != nil {
@@ -265,6 +268,9 @@ func (c *Client) reconnectWithConfig(ctx context.Context, connConfig ConnectionC
 	// Attach custom gRPC metadata headers if configured
 	if len(connConfig.GRPCMeta) > 0 {
 		opts.HeadersProvider = &staticHeadersProvider{headers: connConfig.GRPCMeta}
+	}
+	if dc := dataConverterFor(connConfig); dc != nil {
+		opts.DataConverter = dc
 	}
 
 	newClient, err := client.DialContext(ctx, opts)
@@ -513,6 +519,8 @@ func (c *Client) ListWorkflows(ctx context.Context, namespace string, opts ListO
 		return nil, "", fmt.Errorf("failed to list workflows: %w", err)
 	}
 
+	decodePayloadsInMessages(c.payloadCodec(namespace), asProtoMessages(resp.GetExecutions())...)
+
 	var workflows []Workflow
 	for _, exec := range resp.GetExecutions() {
 		wf := Workflow{
@@ -623,7 +631,9 @@ func (c *Client) GetWorkflowHistory(ctx context.Context, namespace, workflowID, 
 			return nil, fmt.Errorf("failed to get workflow history: %w", err)
 		}
 
-		for _, event := range resp.GetHistory().GetEvents() {
+		historyEvents := resp.GetHistory().GetEvents()
+		decodePayloadsInMessages(c.payloadCodec(namespace), asProtoMessages(historyEvents)...)
+		for _, event := range historyEvents {
 			he := HistoryEvent{
 				ID:      event.GetEventId(),
 				Type:    formatEventType(event.GetEventType().String()),
@@ -664,7 +674,9 @@ func (c *Client) GetEnhancedWorkflowHistory(ctx context.Context, namespace, work
 			return nil, fmt.Errorf("failed to get workflow history: %w", err)
 		}
 
-		for _, event := range resp.GetHistory().GetEvents() {
+		historyEvents := resp.GetHistory().GetEvents()
+		decodePayloadsInMessages(c.payloadCodec(namespace), asProtoMessages(historyEvents)...)
+		for _, event := range historyEvents {
 			he := extractEnhancedEvent(event)
 			events = append(events, he)
 		}
