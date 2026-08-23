@@ -574,6 +574,11 @@ func (a *App) ToastError(message string) {
 	a.toasts.Error(message)
 }
 
+// ToastWarning displays a warning toast (call from within QueueUpdateDraw).
+func (a *App) ToastWarning(message string) {
+	a.toasts.Warning(message)
+}
+
 // connectionMonitor periodically checks the connection and attempts reconnection if needed.
 func (a *App) connectionMonitor() {
 	ticker := time.NewTicker(connectionCheckInterval)

@@ -237,7 +237,7 @@ func (wl *WorkflowList) showColumnEditor() {
 			return
 		}
 		if !items[row].hidden && visibleCount() == 1 {
-			wl.app.ShowToastWarning("Keep at least one column visible")
+			wl.app.ToastWarning("Keep at least one column visible")
 			return
 		}
 		items[row].hidden = !items[row].hidden
@@ -245,7 +245,12 @@ func (wl *WorkflowList) showColumnEditor() {
 		table.SelectRow(row)
 	}
 
+	var saving bool
 	save := func() {
+		if saving {
+			return
+		}
+		saving = true
 		var cols []config.WorkflowColumnConfig
 		for _, item := range items {
 			if item.hidden {
@@ -256,13 +261,14 @@ func (wl *WorkflowList) showColumnEditor() {
 		if cfg := wl.app.Config(); cfg != nil {
 			cfg.SetWorkflowColumns(cols)
 			if err := cfg.Save(); err != nil {
-				wl.app.ShowToastError("Failed to save columns: " + err.Error())
+				saving = false
+				wl.app.ToastError("Failed to save columns: " + err.Error())
 				return
 			}
 		}
 		wl.closeModal()
 		wl.populateTable()
-		wl.app.ShowToastSuccess("Saved workflow columns")
+		wl.app.ToastSuccess("Saved workflow columns")
 	}
 
 	bindings := input.NewKeyBindings().
@@ -326,6 +332,7 @@ func (wl *WorkflowList) showColumnEditor() {
 
 	refresh()
 
+	wl.keepDataOnStart = true
 	modal := newOverlayModal(components.ModalConfig{
 		Title:  fmt.Sprintf("%s Workflow Columns", theme.IconWorkflow),
 		Width:  56,

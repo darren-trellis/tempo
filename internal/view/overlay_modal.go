@@ -22,7 +22,14 @@ func newOverlayModal(cfg components.ModalConfig, background tview.Primitive) *ov
 
 func (m *overlayModal) SetHints(hints []components.KeyHint) *overlayModal {
 	m.hints = hints
-	m.Modal.SetHints(hints)
+	return m
+}
+
+func (m *overlayModal) SetContent(content tview.Primitive) *overlayModal {
+	m.Modal.SetContent(content)
+	if panel := m.GetPanel(); panel != nil {
+		panel.SetContent(content)
+	}
 	return m
 }
 
