@@ -7,6 +7,7 @@ import (
 
 	"github.com/galaxy-io/tempo/internal/temporal"
 	"github.com/gdamore/tcell/v2"
+	"github.com/rivo/tview"
 )
 
 func TestSelectByScheduledID(t *testing.T) {
@@ -87,6 +88,35 @@ func TestTimelineDrawsNameInsideBar(t *testing.T) {
 	}
 	if !strings.Contains(row.String(), "ValidateOrder") {
 		t.Fatalf("bar should contain the activity name, got %q", row.String())
+	}
+}
+
+func TestTimelineMouseScrollsHorizontally(t *testing.T) {
+	start := time.Date(2026, 8, 23, 12, 0, 0, 0, time.UTC)
+	end := start.Add(time.Minute)
+	tv := NewTimelineView()
+	tv.SetNodes(temporal.BuildEventTree([]temporal.EnhancedHistoryEvent{
+		{ID: 1, Type: "WorkflowExecutionStarted", Time: start},
+		{ID: 5, Type: "ActivityTaskScheduled", Time: start, ActivityType: "First"},
+		{ID: 6, Type: "ActivityTaskCompleted", Time: end, ScheduledEventID: 5},
+	}))
+	tv.SetRect(0, 0, 80, 10)
+	tv.zoomLevel = 2
+
+	handler := tv.MouseHandler()
+	event := tcell.NewEventMouse(10, 4, tcell.WheelRight, tcell.ModNone)
+	consumed, _ := handler(tview.MouseScrollRight, event, func(tview.Primitive) {})
+	if !consumed {
+		t.Fatal("horizontal wheel should be consumed")
+	}
+	if tv.scrollX != 5 {
+		t.Fatalf("scrollX=%d", tv.scrollX)
+	}
+
+	event = tcell.NewEventMouse(10, 4, tcell.WheelDown, tcell.ModShift)
+	consumed, _ = handler(tview.MouseScrollDown, event, func(tview.Primitive) {})
+	if !consumed || tv.scrollX != 10 {
+		t.Fatalf("shift+wheel should scroll horizontally, consumed=%v scrollX=%d", consumed, tv.scrollX)
 	}
 }
 

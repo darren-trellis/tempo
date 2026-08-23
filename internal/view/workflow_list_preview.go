@@ -410,6 +410,7 @@ func (wl *WorkflowList) setupPreview() {
 		wl.updatePreviewSelection(row)
 	})
 
+	bindTableHorizontalScroll(wl.eventTable)
 	wl.eventTable.SetInputCapture(wl.handlePreviewKeys)
 	wl.eventDetail.SetInputCapture(wl.capturePreviewTextView(wl.eventDetail))
 	wl.workflowDetail.SetInputCapture(wl.capturePreviewTextView(wl.workflowDetail))

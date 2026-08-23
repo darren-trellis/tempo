@@ -139,6 +139,7 @@ func (wl *WorkflowList) setup() {
 	wl.table.SetBorder(false)
 	wl.table.SetBackgroundColor(theme.Bg())
 	applyWorkflowColumnHeaders(wl.table, wl.columnLayout())
+	bindTableHorizontalScroll(wl.table)
 	wl.setupPreview()
 
 	wl.workflowsPanel = components.NewPanel().SetTitle(fmt.Sprintf("%s Workflows", theme.IconWorkflow))

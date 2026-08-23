@@ -637,6 +637,30 @@ func (tv *TimelineView) InputHandler() func(event *tcell.EventKey, setFocus func
 	})
 }
 
+func (tv *TimelineView) MouseHandler() func(tview.MouseAction, *tcell.EventMouse, func(tview.Primitive)) (bool, tview.Primitive) {
+	return tv.WrapMouseHandler(func(action tview.MouseAction, event *tcell.EventMouse, setFocus func(tview.Primitive)) (bool, tview.Primitive) {
+		if event == nil {
+			return false, nil
+		}
+		x, y := event.Position()
+		if !tv.InRect(x, y) {
+			return false, nil
+		}
+		if delta := horizontalMouseDelta(action, event); delta != 0 {
+			tv.scroll(delta * 5)
+			return true, nil
+		}
+		switch action {
+		case tview.MouseLeftDown, tview.MouseLeftClick:
+			if setFocus != nil {
+				setFocus(tv)
+			}
+			return true, nil
+		}
+		return false, nil
+	})
+}
+
 func timelineLaneScheduledID(lane TimelineLane) int64 {
 	if lane.Node == nil {
 		return 0

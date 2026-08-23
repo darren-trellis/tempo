@@ -83,6 +83,56 @@ func TestWorkflowListMouseHandlerOutsideRect(t *testing.T) {
 	}
 }
 
+func TestHorizontalMouseDelta(t *testing.T) {
+	if got := horizontalMouseDelta(tview.MouseScrollLeft, nil); got != -1 {
+		t.Fatalf("left=%d", got)
+	}
+	if got := horizontalMouseDelta(tview.MouseScrollRight, nil); got != 1 {
+		t.Fatalf("right=%d", got)
+	}
+	if got := horizontalMouseDelta(tview.MouseScrollUp, tcell.NewEventMouse(0, 0, tcell.WheelUp, tcell.ModNone)); got != 0 {
+		t.Fatalf("vertical up should stay vertical, got %d", got)
+	}
+	if got := horizontalMouseDelta(tview.MouseScrollDown, tcell.NewEventMouse(0, 0, tcell.WheelDown, tcell.ModShift)); got != 1 {
+		t.Fatalf("shift+down should scroll right, got %d", got)
+	}
+}
+
+func TestScrollTableColumns(t *testing.T) {
+	table := components.NewTable()
+	table.SetHeaders("A", "B", "C")
+	table.AddRow("1", "2", "3")
+	table.SetOffset(0, 1)
+	scrollTableColumns(table, -1)
+	if _, col := table.GetOffset(); col != 0 {
+		t.Fatalf("col=%d", col)
+	}
+	scrollTableColumns(table, -1)
+	if _, col := table.GetOffset(); col != 0 {
+		t.Fatalf("should clamp left, col=%d", col)
+	}
+	scrollTableColumns(table, 10)
+	if _, col := table.GetOffset(); col != 2 {
+		t.Fatalf("should clamp to last column, col=%d", col)
+	}
+}
+
+func TestBindTableHorizontalScroll(t *testing.T) {
+	table := components.NewTable()
+	table.SetHeaders("A", "B", "C")
+	table.AddRow("1", "2", "3")
+	bindTableHorizontalScroll(table)
+	handler := table.MouseHandler()
+	event := tcell.NewEventMouse(0, 1, tcell.WheelRight, tcell.ModNone)
+	consumed, _ := handler(tview.MouseScrollRight, event, func(tview.Primitive) {})
+	if !consumed {
+		t.Fatal("horizontal wheel should be consumed")
+	}
+	if _, col := table.GetOffset(); col != 1 {
+		t.Fatalf("right scroll col=%d", col)
+	}
+}
+
 func TestBindTableDoubleClick(t *testing.T) {
 	table := components.NewTable()
 	selected := false
