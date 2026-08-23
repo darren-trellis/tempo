@@ -6,6 +6,19 @@ import (
 	"github.com/galaxy-io/tempo/internal/temporal"
 )
 
+func TestWorkflowIOHints(t *testing.T) {
+	hints := workflowIOHints(false)
+	if len(hints) != 6 {
+		t.Fatalf("want all io hints, got %d", len(hints))
+	}
+	if hints[2].Description != "Maximize" {
+		t.Fatalf("restore hint: %+v", hints[2])
+	}
+	if got := workflowIOHints(true)[2].Description; got != "Minimize" {
+		t.Fatalf("maximize hint: %q", got)
+	}
+}
+
 func TestWorkflowIOFromEvents(t *testing.T) {
 	input, output := workflowIOFromEvents([]temporal.EnhancedHistoryEvent{
 		{Type: "WorkflowExecutionStarted", Input: `{"id":1}`},

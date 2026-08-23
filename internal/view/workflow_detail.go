@@ -1823,7 +1823,7 @@ func (wd *WorkflowDetail) showIOModal() {
 	if wd.workflow == nil {
 		return
 	}
-	showWorkflowIO(wd.app, wd.workflow.Type, wd.workflow.Input, wd.workflow.Output, func() {
+	showWorkflowIO(wd.app, wd, wd.workflow.Type, wd.workflow.Input, wd.workflow.Output, func() {
 		wd.setFocusPane(detailFocusEvents)
 	})
 }

@@ -3,7 +3,6 @@ package view
 import (
 	"github.com/atterpac/jig/components"
 	"github.com/gdamore/tcell/v2"
-	"github.com/rivo/tview"
 )
 
 type resizableModal struct {
@@ -24,15 +23,7 @@ func (m *resizableModal) Draw(screen tcell.Screen) {
 		m.shadowedModal.Draw(screen)
 		return
 	}
-	drawMaximizedOverlay(screen, m)
-}
-
-func drawMaximizedOverlay(screen tcell.Screen, current tview.Primitive) {
-	m, ok := current.(*resizableModal)
-	if !ok || !m.maximized {
-		return
-	}
-	w, h := screen.Size()
-	m.GetPanel().SetRect(0, 0, w, h)
+	x, y, w, h := m.GetRect()
+	m.GetPanel().SetRect(x, y, w, h)
 	m.GetPanel().Draw(screen)
 }

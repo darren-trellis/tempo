@@ -45,7 +45,22 @@ func formatIOContent(label, content string) string {
 	return highlightFormattedJSONWorkflow(formatJSONPretty(content))
 }
 
-func showWorkflowIO(app *App, workflowType, input, output string, onClose func()) {
+func workflowIOHints(maximized bool) []components.KeyHint {
+	maxHint := "Maximize"
+	if maximized {
+		maxHint = "Minimize"
+	}
+	return []components.KeyHint{
+		{Key: "tab/h/l/←/→", Description: "Switch"},
+		{Key: "j/k", Description: "Scroll"},
+		{Key: "m", Description: maxHint},
+		{Key: "e", Description: "Editor"},
+		{Key: "y", Description: "Copy"},
+		{Key: "esc", Description: "Close"},
+	}
+}
+
+func showWorkflowIO(app *App, background tview.Primitive, workflowType, input, output string, onClose func()) {
 	if app == nil || app.JigApp() == nil {
 		return
 	}
@@ -57,13 +72,13 @@ func showWorkflowIO(app *App, workflowType, input, output string, onClose func()
 		}
 	}
 
-	modal := newResizableModal(components.ModalConfig{
+	modal := newOverlayModal(components.ModalConfig{
 		Title:     fmt.Sprintf("%s Input/Output: %s", theme.IconWorkflow, truncateStr(workflowType, 30)),
 		Width:     0,
 		Height:    0,
 		MinWidth:  120,
 		MinHeight: 35,
-	})
+	}, background)
 
 	inputView := tview.NewTextView().
 		SetDynamicColors(true).
@@ -93,18 +108,11 @@ func showWorkflowIO(app *App, workflowType, input, output string, onClose func()
 
 	modal.SetContent(flex)
 	applyIOHints := func() {
-		maxHint := "Maximize"
-		if modal.maximized {
-			maxHint = "Minimize"
+		hints := workflowIOHints(modal.maximized)
+		modal.SetHints(hints)
+		if app.JigApp().Menu() != nil {
+			app.JigApp().Menu().SetHints(hints)
 		}
-		modal.SetHints([]components.KeyHint{
-			{Key: "tab/h/l/←/→", Description: "Switch"},
-			{Key: "j/k", Description: "Scroll"},
-			{Key: "m", Description: maxHint},
-			{Key: "e", Description: "Editor"},
-			{Key: "y", Description: "Copy"},
-			{Key: "esc", Description: "Close"},
-		})
 	}
 	applyIOHints()
 	modal.SetOnCancel(closeModal)

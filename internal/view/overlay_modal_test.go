@@ -38,4 +38,35 @@ func TestOverlayModalHints(t *testing.T) {
 	if len(hints) != 1 || hints[0].Key != "enter" || hints[0].Description != "Save" {
 		t.Fatalf("hints=%+v", hints)
 	}
+	if bar := modal.GetHintBar(); bar != nil && len(bar.Hints) != 0 {
+		t.Fatalf("overlay hints should stay in the footer, got in-modal %+v", bar.Hints)
+	}
+}
+
+func TestOverlayModalMaximize(t *testing.T) {
+	modal := newOverlayModal(components.ModalConfig{
+		Title:     "IO",
+		MinWidth:  20,
+		MinHeight: 10,
+	}, tview.NewTextView().SetText("KEEP"))
+	modal.SetContent(tview.NewBox())
+	modal.SetRect(0, 0, 80, 24)
+
+	screen := tcell.NewSimulationScreen("UTF-8")
+	if err := screen.Init(); err != nil {
+		t.Fatal(err)
+	}
+	screen.SetSize(80, 24)
+	modal.Draw(screen)
+	_, _, restW, restH := modal.GetPanel().GetRect()
+
+	modal.toggleMaximize()
+	modal.Draw(screen)
+	_, _, maxW, maxH := modal.GetPanel().GetRect()
+	if maxW != 80 || maxH != 24 {
+		t.Fatalf("maximize should fill the page area, got %dx%d", maxW, maxH)
+	}
+	if maxW <= restW || maxH <= restH {
+		t.Fatalf("maximize should grow the panel: rest=%dx%d max=%dx%d", restW, restH, maxW, maxH)
+	}
 }

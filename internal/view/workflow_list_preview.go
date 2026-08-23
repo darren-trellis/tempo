@@ -123,7 +123,7 @@ func (wl *WorkflowList) showPreviewIO() bool {
 		restore = focusEvents
 	}
 	wl.keepDataOnStart = true
-	showWorkflowIO(wl.app, title, input, output, func() {
+	showWorkflowIO(wl.app, wl, title, input, output, func() {
 		wl.setFocusPane(restore)
 	})
 	return true
