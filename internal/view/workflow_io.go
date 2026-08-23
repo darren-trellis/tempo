@@ -130,14 +130,6 @@ func showWorkflowIO(app *App, workflowType, input, output string, onClose func()
 		}
 	}
 
-	scrollView := func(delta int) {
-		view := outputView
-		if focusedInput {
-			view = inputView
-		}
-		scrollTextView(view, delta)
-	}
-
 	inputHandler := func(event *tcell.EventKey) *tcell.EventKey {
 		if outputView.HasFocus() {
 			focusedInput = false
@@ -163,18 +155,15 @@ func showWorkflowIO(app *App, workflowType, input, output string, onClose func()
 				switchFocus()
 			}
 			return nil
-		case tcell.KeyDown:
-			scrollView(1)
+		}
+		view := outputView
+		if focusedInput {
+			view = inputView
+		}
+		if handleTextViewScroll(view, event) {
 			return nil
-		case tcell.KeyUp:
-			scrollView(-1)
-			return nil
-		case tcell.KeyPgDn:
-			scrollView(10)
-			return nil
-		case tcell.KeyPgUp:
-			scrollView(-10)
-			return nil
+		}
+		switch event.Key() {
 		case tcell.KeyRune:
 			switch event.Rune() {
 			case 'h':
@@ -185,26 +174,6 @@ func showWorkflowIO(app *App, workflowType, input, output string, onClose func()
 			case 'l':
 				if focusedInput {
 					switchFocus()
-				}
-				return nil
-			case 'j':
-				scrollView(1)
-				return nil
-			case 'k':
-				scrollView(-1)
-				return nil
-			case 'g':
-				if focusedInput {
-					inputView.ScrollTo(0, 0)
-				} else {
-					outputView.ScrollTo(0, 0)
-				}
-				return nil
-			case 'G':
-				if focusedInput {
-					inputView.ScrollToEnd()
-				} else {
-					outputView.ScrollToEnd()
 				}
 				return nil
 			case 'm':

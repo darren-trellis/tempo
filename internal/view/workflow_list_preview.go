@@ -383,9 +383,18 @@ func (wl *WorkflowList) setupPreview() {
 	})
 
 	wl.eventTable.SetInputCapture(wl.handlePreviewKeys)
-	wl.eventDetail.SetInputCapture(wl.handlePreviewKeys)
-	wl.workflowDetail.SetInputCapture(wl.handlePreviewKeys)
+	wl.eventDetail.SetInputCapture(wl.capturePreviewTextView(wl.eventDetail))
+	wl.workflowDetail.SetInputCapture(wl.capturePreviewTextView(wl.workflowDetail))
 	wl.previewTabs.SetInputCapture(wl.handlePreviewKeys)
+}
+
+func (wl *WorkflowList) capturePreviewTextView(view *tview.TextView) func(*tcell.EventKey) *tcell.EventKey {
+	return func(event *tcell.EventKey) *tcell.EventKey {
+		if handleTextViewScroll(view, event) {
+			return nil
+		}
+		return wl.handlePreviewKeys(event)
+	}
 }
 
 func (wl *WorkflowList) handlePreviewKeys(event *tcell.EventKey) *tcell.EventKey {

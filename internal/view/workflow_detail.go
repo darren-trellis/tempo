@@ -320,22 +320,18 @@ func formatWorkflowInfo(w temporal.Workflow) string {
 		durationStr = time.Since(w.StartTime).Round(time.Second).String()
 	}
 
-	return fmt.Sprintf(`
-[%s::b]ID[-:-:-]           [%s]%s[-]
-[%s::b]Type[-:-:-]         [%s]%s[-]
-[%s::b]Status[-:-:-]       [%s]%s %s[-]
-[%s::b]Started[-:-:-]      [%s]%s[-]
-[%s::b]Duration[-:-:-]     [%s]%s[-]
-[%s::b]Task Queue[-:-:-]   [%s]%s[-]
-[%s::b]Run ID[-:-:-]       [%s]%s[-]`,
-		theme.TagFgDim(), theme.TagFg(), w.ID,
-		theme.TagFgDim(), theme.TagFg(), w.Type,
-		theme.TagFgDim(), statusHandle.ColorTag(), statusHandle.Icon(), w.Status,
-		theme.TagFgDim(), theme.TagFg(), formatRelativeTime(now, w.StartTime),
-		theme.TagFgDim(), theme.TagFg(), durationStr,
-		theme.TagFgDim(), theme.TagFg(), w.TaskQueue,
-		theme.TagFgDim(), theme.TagFgDim(), truncateStr(w.RunID, 25),
-	)
+	var b strings.Builder
+	fmt.Fprintf(&b, "\n[%s::b]ID[-:-:-]           [%s]%s[-]\n", theme.TagFgDim(), theme.TagFg(), w.ID)
+	if w.ParentID != nil && *w.ParentID != "" {
+		fmt.Fprintf(&b, "[%s::b]Parent[-:-:-]       [%s]%s[-]\n", theme.TagFgDim(), theme.TagFg(), *w.ParentID)
+	}
+	fmt.Fprintf(&b, "[%s::b]Type[-:-:-]         [%s]%s[-]\n", theme.TagFgDim(), theme.TagFg(), w.Type)
+	fmt.Fprintf(&b, "[%s::b]Status[-:-:-]       [%s]%s %s[-]\n", theme.TagFgDim(), statusHandle.ColorTag(), statusHandle.Icon(), w.Status)
+	fmt.Fprintf(&b, "[%s::b]Started[-:-:-]      [%s]%s[-]\n", theme.TagFgDim(), theme.TagFg(), formatRelativeTime(now, w.StartTime))
+	fmt.Fprintf(&b, "[%s::b]Duration[-:-:-]     [%s]%s[-]\n", theme.TagFgDim(), theme.TagFg(), durationStr)
+	fmt.Fprintf(&b, "[%s::b]Task Queue[-:-:-]   [%s]%s[-]\n", theme.TagFgDim(), theme.TagFg(), w.TaskQueue)
+	fmt.Fprintf(&b, "[%s::b]Run ID[-:-:-]       [%s]%s[-]", theme.TagFgDim(), theme.TagFgDim(), truncateStr(w.RunID, 25))
+	return b.String()
 }
 
 func (wd *WorkflowDetail) updateEventDetail(ev temporal.EnhancedHistoryEvent) {
@@ -1469,34 +1465,13 @@ func (wd *WorkflowDetail) showQueryResult(queryType, result string) {
 		case tcell.KeyEscape:
 			wd.closeModal()
 			return nil
-		case tcell.KeyDown:
-			row, col := resultView.GetScrollOffset()
-			resultView.ScrollTo(row+1, col)
+		}
+		if handleTextViewScroll(resultView, event) {
 			return nil
-		case tcell.KeyUp:
-			row, col := resultView.GetScrollOffset()
-			if row > 0 {
-				resultView.ScrollTo(row-1, col)
-			}
-			return nil
+		}
+		switch event.Key() {
 		case tcell.KeyRune:
 			switch event.Rune() {
-			case 'j':
-				row, col := resultView.GetScrollOffset()
-				resultView.ScrollTo(row+1, col)
-				return nil
-			case 'k':
-				row, col := resultView.GetScrollOffset()
-				if row > 0 {
-					resultView.ScrollTo(row-1, col)
-				}
-				return nil
-			case 'g':
-				resultView.ScrollTo(0, 0)
-				return nil
-			case 'G':
-				resultView.ScrollToEnd()
-				return nil
 			case 'y':
 				copyToClipboard(result)
 				// Show "Copied!" feedback
@@ -1703,46 +1678,13 @@ func (wd *WorkflowDetail) showEventDetailModal() {
 		case tcell.KeyEscape:
 			wd.closeEventDetailModal()
 			return nil
-		case tcell.KeyDown:
-			row, col := detailView.GetScrollOffset()
-			detailView.ScrollTo(row+1, col)
+		}
+		if handleTextViewScroll(detailView, event) {
 			return nil
-		case tcell.KeyUp:
-			row, col := detailView.GetScrollOffset()
-			if row > 0 {
-				detailView.ScrollTo(row-1, col)
-			}
-			return nil
-		case tcell.KeyPgDn:
-			row, col := detailView.GetScrollOffset()
-			detailView.ScrollTo(row+10, col)
-			return nil
-		case tcell.KeyPgUp:
-			row, col := detailView.GetScrollOffset()
-			if row > 10 {
-				detailView.ScrollTo(row-10, col)
-			} else {
-				detailView.ScrollTo(0, col)
-			}
-			return nil
+		}
+		switch event.Key() {
 		case tcell.KeyRune:
 			switch event.Rune() {
-			case 'j':
-				row, col := detailView.GetScrollOffset()
-				detailView.ScrollTo(row+1, col)
-				return nil
-			case 'k':
-				row, col := detailView.GetScrollOffset()
-				if row > 0 {
-					detailView.ScrollTo(row-1, col)
-				}
-				return nil
-			case 'g':
-				detailView.ScrollTo(0, 0)
-				return nil
-			case 'G':
-				detailView.ScrollToEnd()
-				return nil
 			case 'y':
 				// Copy the raw event diagnostics.
 				if data := formatWorkflowEventDataRaw(&ev); data != "" {

@@ -99,10 +99,10 @@ func (m *SplashModal) InputHandler() func(*tcell.EventKey, func(tview.Primitive)
 // HelpModal displays help information with view-specific keybindings.
 type HelpModal struct {
 	*components.Modal
-	viewName    string
-	viewHints   []KeyHint
-	content     *tview.TextView
-	closeFunc   func() // Direct close callback
+	viewName  string
+	viewHints []KeyHint
+	content   *tview.TextView
+	closeFunc func() // Direct close callback
 }
 
 func NewHelpModal() *HelpModal {
@@ -125,20 +125,8 @@ func (m *HelpModal) setup() {
 
 	// Only handle scrolling - jig App handles Escape automatically for modals
 	m.content.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
-		switch event.Key() {
-		case tcell.KeyRune:
-			switch event.Rune() {
-			case 'j':
-				row, col := m.content.GetScrollOffset()
-				m.content.ScrollTo(row+1, col)
-				return nil
-			case 'k':
-				row, col := m.content.GetScrollOffset()
-				if row > 0 {
-					m.content.ScrollTo(row-1, col)
-				}
-				return nil
-			}
+		if handleTextViewScroll(m.content, event) {
+			return nil
 		}
 		// Let all other keys (including Escape) bubble up to jig's auto-dismiss handler
 		return event

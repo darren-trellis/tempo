@@ -951,18 +951,13 @@ func (eh *EventHistory) showDetailModal() {
 		case tcell.KeyEscape:
 			eh.closeDetailModal()
 			return nil
+		}
+		if handleTextViewScroll(textView, event) {
+			return nil
+		}
+		switch event.Key() {
 		case tcell.KeyRune:
 			switch event.Rune() {
-			case 'j':
-				row, col := textView.GetScrollOffset()
-				textView.ScrollTo(row+1, col)
-				return nil
-			case 'k':
-				row, col := textView.GetScrollOffset()
-				if row > 0 {
-					textView.ScrollTo(row-1, col)
-				}
-				return nil
 			case 'y':
 				if err := copyToClipboard(data); err == nil {
 					// Brief feedback

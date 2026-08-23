@@ -123,24 +123,70 @@ func (wd *WorkflowDetail) setupPaneInput(view *tview.TextView) {
 			wd.setFocusPane(detailFocusEvents)
 			return nil
 		}
-		if event.Rune() == 'j' {
-			row, col := view.GetScrollOffset()
-			view.ScrollTo(row+1, col)
-			return nil
-		}
-		if event.Rune() == 'k' {
-			row, col := view.GetScrollOffset()
-			if row > 0 {
-				view.ScrollTo(row-1, col)
-			}
+		if handleTextViewScroll(view, event) {
 			return nil
 		}
 		return event
 	})
 }
 
+func textViewPageSize(view *tview.TextView) int {
+	_, _, _, height := view.GetInnerRect()
+	if height < 1 {
+		return 10
+	}
+	return height
+}
+
+func handleTextViewScroll(view *tview.TextView, event *tcell.EventKey) bool {
+	if view == nil || event == nil {
+		return false
+	}
+	switch event.Key() {
+	case tcell.KeyUp:
+		scrollTextView(view, -1)
+		return true
+	case tcell.KeyDown:
+		scrollTextView(view, 1)
+		return true
+	case tcell.KeyPgUp, tcell.KeyCtrlB:
+		scrollTextView(view, -textViewPageSize(view))
+		return true
+	case tcell.KeyPgDn, tcell.KeyCtrlF:
+		scrollTextView(view, textViewPageSize(view))
+		return true
+	case tcell.KeyHome:
+		view.ScrollToBeginning()
+		return true
+	case tcell.KeyEnd:
+		view.ScrollToEnd()
+		return true
+	}
+	switch event.Rune() {
+	case 'j':
+		scrollTextView(view, 1)
+		return true
+	case 'k':
+		scrollTextView(view, -1)
+		return true
+	case 'g':
+		view.ScrollToBeginning()
+		return true
+	case 'G':
+		view.ScrollToEnd()
+		return true
+	}
+	return false
+}
+
 func scrollTextView(view *tview.TextView, delta int) {
+	if view == nil {
+		return
+	}
 	row, col := view.GetScrollOffset()
+	if row < 0 {
+		row = 0
+	}
 	row += delta
 	if row < 0 {
 		row = 0
