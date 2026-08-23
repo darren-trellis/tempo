@@ -42,6 +42,8 @@ type WorkflowList struct {
 	timelineVisible       bool
 	highlightedActivityID int64
 	timelineSyncing       bool
+	workflowTreeMode      bool
+	workflowDepths        []int
 	focusPane             workflowFocusPane
 	previewKind           previewKind
 	previewEvents         []temporal.EnhancedHistoryEvent
@@ -178,6 +180,9 @@ func (wl *WorkflowList) setup() {
 			return nil
 		case 'z':
 			wl.toggleTimeline()
+			return nil
+		case 'b':
+			wl.toggleWorkflowTree()
 			return nil
 		case '[', 'h':
 			if wl.previewModeEnabled() {
@@ -379,6 +384,10 @@ func (wl *WorkflowList) Start() {
 			wl.toggleTimeline()
 			return true
 		}).
+		OnRune('b', func(e *tcell.EventKey) bool {
+			wl.toggleWorkflowTree()
+			return true
+		}).
 		OnRune('[', func(e *tcell.EventKey) bool {
 			if !wl.previewModeEnabled() {
 				return false
@@ -499,6 +508,7 @@ func (wl *WorkflowList) Hints() []KeyHint {
 				{Key: "h/l/←/→", Description: "View"},
 				{Key: "i", Description: "Input/Output"},
 				{Key: "z", Description: "Timeline"},
+				{Key: "b", Description: treeModeHint(wl.workflowTreeMode)},
 				{Key: "p", Description: "Preview"},
 				{Key: "e", Description: "Event Graph"},
 				{Key: "esc", Description: "Workflows"},
@@ -510,6 +520,7 @@ func (wl *WorkflowList) Hints() []KeyHint {
 				{Key: "h/l/←/→", Description: "View"},
 				{Key: "i", Description: "Input/Output"},
 				{Key: "z", Description: "Timeline"},
+				{Key: "b", Description: treeModeHint(wl.workflowTreeMode)},
 				{Key: "p", Description: "Preview"},
 				{Key: "esc", Description: "Workflows"},
 			}
@@ -520,6 +531,7 @@ func (wl *WorkflowList) Hints() []KeyHint {
 				{Key: "+/-", Description: "Zoom"},
 				{Key: "tab", Description: "Workflows"},
 				{Key: "z", Description: "Timeline"},
+				{Key: "b", Description: treeModeHint(wl.workflowTreeMode)},
 				{Key: "esc", Description: "Workflows"},
 			}
 		}
@@ -536,11 +548,15 @@ func (wl *WorkflowList) Hints() []KeyHint {
 			{Key: "h/l/←/→", Description: "View"},
 			{Key: "i", Description: "Input/Output"},
 			{Key: "z", Description: "Timeline"},
+			{Key: "b", Description: treeModeHint(wl.workflowTreeMode)},
 			{Key: "p", Description: "Preview"},
 		}
 	}
 	if !wl.previewModeEnabled() {
-		hints = append(hints, KeyHint{Key: "z", Description: "Timeline"})
+		hints = append(hints,
+			KeyHint{Key: "z", Description: "Timeline"},
+			KeyHint{Key: "b", Description: treeModeHint(wl.workflowTreeMode)},
+		)
 	}
 	hints = append(hints,
 		KeyHint{Key: "e", Description: "Event Graph"},

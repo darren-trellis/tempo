@@ -88,6 +88,12 @@ func (wl *WorkflowList) loadMockData() {
 			ParentID: ptr("order-processing-abc123"),
 		},
 		{
+			ID: "fulfillment-ghi000", RunID: "run-006-mno", Type: "FulfillmentWorkflow",
+			Status: "Running", Namespace: wl.namespace, TaskQueue: "fulfill-tasks",
+			StartTime: now.Add(-50 * time.Minute),
+			ParentID:  ptr("payment-xyz789"),
+		},
+		{
 			ID: "shipment-def456", RunID: "run-003-def", Type: "ShipmentWorkflow",
 			Status: "Failed", Namespace: wl.namespace, TaskQueue: "shipment-tasks",
 			StartTime: now.Add(-30 * time.Minute), EndTime: ptr(now.Add(-25 * time.Minute)),
@@ -126,10 +132,10 @@ func (wl *WorkflowList) populateTable() {
 	wl.SetMasterContent(wl.table)
 
 	now := time.Now()
-	for _, w := range wl.workflows {
+	for i, w := range wl.workflows {
 		cells := make([]components.TableCell, len(cols))
-		for i, col := range cols {
-			cells[i] = col.cell(now, w)
+		for j, col := range cols {
+			cells[j] = col.cell(now, w, wl.workflowDepth(i))
 		}
 		wl.table.AddStyledRow(cells)
 	}
@@ -156,6 +162,9 @@ func (wl *WorkflowList) updateStats() {
 		case "Failed":
 			failed++
 		}
+	}
+	if wl.app == nil || wl.app.statusBar == nil {
+		return
 	}
 	wl.app.SetWorkflowStats(WorkflowStats{
 		Running:   running,

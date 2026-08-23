@@ -17,24 +17,25 @@ func (wl *WorkflowList) applyFilter() {
 
 // applyFilterWithFallback filters locally, optionally falling back to server-side search.
 func (wl *WorkflowList) applyFilterWithFallback(serverFallback bool) {
+	var filtered []temporal.Workflow
 	if wl.filterText == "" {
-		wl.workflows = wl.allWorkflows
+		filtered = wl.allWorkflows
 	} else {
 		filter := strings.ToLower(wl.filterText)
-		wl.workflows = nil
 		for _, w := range wl.allWorkflows {
 			if strings.Contains(strings.ToLower(w.ID), filter) ||
 				strings.Contains(strings.ToLower(w.Type), filter) ||
 				strings.Contains(strings.ToLower(w.Status), filter) {
-				wl.workflows = append(wl.workflows, w)
+				filtered = append(filtered, w)
 			}
 		}
 
-		if len(wl.workflows) == 0 && serverFallback && wl.visibilityQuery == "" {
+		if len(filtered) == 0 && serverFallback && wl.visibilityQuery == "" {
 			wl.convertFilterToVisibilityQuery()
 			return
 		}
 	}
+	wl.applyWorkflowOrder(filtered)
 	wl.populateTable()
 	wl.updateStats()
 }

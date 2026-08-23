@@ -14,8 +14,8 @@ import (
 func (wl *WorkflowList) showVisibilityQuery() {
 	form := components.NewFormBuilder().
 		Text("query", "Query").
-			Value(wl.visibilityQuery).
-			Done().
+		Value(wl.visibilityQuery).
+		Done().
 		OnSubmit(func(values map[string]any) {
 			query := values["query"].(string)
 			wl.closeModal()
@@ -150,7 +150,7 @@ func (wl *WorkflowList) showDateRangePicker() {
 
 	form := components.NewFormBuilder().
 		Select("preset", "Time Range", presets).
-			Done().
+		Done().
 		OnSubmit(func(values map[string]any) {
 			preset := values["preset"].(string)
 			wl.closeModal()
@@ -290,8 +290,8 @@ func (wl *WorkflowList) showSaveFilter() {
 	currentQuery := wl.visibilityQuery
 	form := components.NewFormBuilder().
 		Text("name", "Filter Name").
-			Placeholder("Enter a name for this filter").
-			Done().
+		Placeholder("Enter a name for this filter").
+		Done().
 		OnSubmit(func(values map[string]any) {
 			// For now, just add to history (persistent save would require config storage)
 			wl.addToHistory(currentQuery)
@@ -345,6 +345,11 @@ func (wl *WorkflowList) updatePanelTitle() {
 		title = fmt.Sprintf("%s Workflows (%s)", theme.IconWorkflow, q)
 	} else if wl.filterText != "" {
 		title = fmt.Sprintf("%s Workflows (/%s)", theme.IconWorkflow, wl.filterText)
+	} else if wl.workflowTreeMode {
+		title = fmt.Sprintf("%s Workflows (Tree)", theme.IconWorkflow)
+	}
+	if wl.workflowTreeMode && (wl.visibilityQuery != "" || wl.filterText != "") {
+		title += " · Tree"
 	}
 	wl.SetMasterTitle(title)
 }

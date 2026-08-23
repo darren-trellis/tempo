@@ -73,8 +73,11 @@ func workflowColumnHeader(id string) (string, bool) {
 	}
 }
 
-func (c workflowColumn) cell(now time.Time, w temporal.Workflow) components.TableCell {
+func (c workflowColumn) cell(now time.Time, w temporal.Workflow, depth int) components.TableCell {
 	text, status := workflowColumnValue(c.id, now, w)
+	if c.id == config.WorkflowColumnWorkflowID && depth > 0 {
+		text = workflowTreePrefix(depth) + text
+	}
 	return components.TableCell{
 		Text:       fitWidth(text, c.width),
 		Status:     status,
