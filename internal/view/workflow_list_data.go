@@ -66,8 +66,7 @@ func (wl *WorkflowList) loadData() {
 			wl.previewRunID = ""
 			wl.allWorkflows = workflows
 			wl.applyFilter()
-			// Set focus to table after data loads
-			if len(wl.workflows) > 0 {
+			if len(wl.workflows) > 0 && wl.focusPane == focusWorkflows {
 				wl.app.JigApp().SetFocus(wl.table)
 			}
 		})

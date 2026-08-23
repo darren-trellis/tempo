@@ -133,6 +133,16 @@ func (wl *WorkflowList) setup() {
 	wl.applyPreviewLayout()
 
 	emptyInputCapture := func(event *tcell.EventKey) *tcell.EventKey {
+		if wl.previewModeEnabled() {
+			switch event.Key() {
+			case tcell.KeyLeft:
+				wl.cyclePreviewKind(-1)
+				return nil
+			case tcell.KeyRight:
+				wl.cyclePreviewKind(1)
+				return nil
+			}
+		}
 		switch event.Rune() {
 		case 'W':
 			wl.showSignalWithStart()
@@ -155,12 +165,12 @@ func (wl *WorkflowList) setup() {
 		case 'p':
 			wl.togglePreviewMode()
 			return nil
-		case '[':
+		case '[', 'h':
 			if wl.previewModeEnabled() {
 				wl.cyclePreviewKind(-1)
 				return nil
 			}
-		case ']':
+		case ']', 'l':
 			if wl.previewModeEnabled() {
 				wl.cyclePreviewKind(1)
 				return nil
@@ -359,6 +369,34 @@ func (wl *WorkflowList) Start() {
 			wl.cyclePreviewKind(1)
 			return true
 		}).
+		OnRune('h', func(e *tcell.EventKey) bool {
+			if !wl.previewModeEnabled() {
+				return false
+			}
+			wl.cyclePreviewKind(-1)
+			return true
+		}).
+		OnRune('l', func(e *tcell.EventKey) bool {
+			if !wl.previewModeEnabled() {
+				return false
+			}
+			wl.cyclePreviewKind(1)
+			return true
+		}).
+		On(tcell.KeyLeft, func(e *tcell.EventKey) bool {
+			if !wl.previewModeEnabled() {
+				return false
+			}
+			wl.cyclePreviewKind(-1)
+			return true
+		}).
+		On(tcell.KeyRight, func(e *tcell.EventKey) bool {
+			if !wl.previewModeEnabled() {
+				return false
+			}
+			wl.cyclePreviewKind(1)
+			return true
+		}).
 		OnRune('i', func(e *tcell.EventKey) bool {
 			return wl.showPreviewIO()
 		}).
@@ -430,7 +468,7 @@ func (wl *WorkflowList) Hints() []KeyHint {
 			return []KeyHint{
 				{Key: "j/k", Description: wl.previewKind.title()},
 				{Key: "tab", Description: "Details"},
-				{Key: "[/]", Description: "View"},
+				{Key: "h/l/←/→", Description: "View"},
 				{Key: "i", Description: "Input/Output"},
 				{Key: "p", Description: "Preview"},
 				{Key: "e", Description: "Event Graph"},
@@ -440,7 +478,7 @@ func (wl *WorkflowList) Hints() []KeyHint {
 			return []KeyHint{
 				{Key: "j/k", Description: "Scroll"},
 				{Key: "tab", Description: "Workflows"},
-				{Key: "[/]", Description: "View"},
+				{Key: "h/l/←/→", Description: "View"},
 				{Key: "i", Description: "Input/Output"},
 				{Key: "p", Description: "Preview"},
 				{Key: "esc", Description: "Workflows"},
@@ -456,7 +494,7 @@ func (wl *WorkflowList) Hints() []KeyHint {
 		hints = []KeyHint{
 			{Key: "enter", Description: wl.previewKind.title()},
 			{Key: "tab", Description: wl.previewKind.title()},
-			{Key: "[/]", Description: "View"},
+			{Key: "h/l/←/→", Description: "View"},
 			{Key: "i", Description: "Input/Output"},
 			{Key: "p", Description: "Preview"},
 		}

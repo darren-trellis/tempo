@@ -33,3 +33,27 @@ func TestShowPreviewIORequiresPreviewMode(t *testing.T) {
 		t.Fatal("input/output should be preview-mode only")
 	}
 }
+
+func TestPreviewActivityIOPayload(t *testing.T) {
+	wl := NewWorkflowList(&App{}, "default")
+	wl.previewMode = true
+	wl.previewKind = previewActivities
+	wl.previewActivities = []previewActivity{
+		{Type: "ValidateOrder", Input: `{"id":1}`, Result: `{"ok":true}`},
+		{Type: "Charge", Input: `{"amt":5}`, Failure: "timeout"},
+	}
+	wl.eventTable.AddRowWithColor(0, "Completed", "ValidateOrder", "12:00:00", "2s")
+	wl.eventTable.AddRowWithColor(0, "Failed", "Charge", "12:00:03", "1s")
+	wl.eventTable.SelectRow(0)
+
+	title, input, output, ok := wl.previewIOPayload()
+	if !ok || title != "ValidateOrder" || input != `{"id":1}` || output != `{"ok":true}` {
+		t.Fatalf("first activity io: title=%q input=%q output=%q ok=%v", title, input, output, ok)
+	}
+
+	wl.eventTable.SelectRow(1)
+	title, input, output, ok = wl.previewIOPayload()
+	if !ok || title != "Charge" || input != `{"amt":5}` || output != "timeout" {
+		t.Fatalf("failed activity io: title=%q input=%q output=%q ok=%v", title, input, output, ok)
+	}
+}
