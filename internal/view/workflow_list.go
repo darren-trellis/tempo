@@ -107,6 +107,7 @@ func NewWorkflowList(app *App, namespace string) *WorkflowList {
 		maxHistorySize: 50,
 		previewKind:    previewActivities,
 		previewCache:   newPreviewCache(previewCacheLimit(app)),
+		pollersVisible: true,
 	}
 	wl.setup()
 

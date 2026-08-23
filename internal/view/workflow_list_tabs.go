@@ -166,7 +166,6 @@ func (wl *WorkflowList) setListKind(kind listKind) {
 	if kind == listTaskQueues {
 		wl.ensureTaskQueues()
 		wl.focusPane = focusWorkflows
-		wl.pollersVisible = true
 	} else if wl.focusPane == focusPollers {
 		wl.focusPane = focusWorkflows
 	}

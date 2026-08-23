@@ -132,6 +132,19 @@ func TestTaskQueuesShowPollersAlongside(t *testing.T) {
 	if wl.mainFlex.GetItemCount() != 1 {
 		t.Fatalf("hidden pollers should leave queues full width, got %d panes", wl.mainFlex.GetItemCount())
 	}
+
+	wl.setListKind(listWorkflows)
+	wl.setListKind(listTaskQueues)
+	if wl.pollersVisible || wl.mainFlex.GetItemCount() != 1 {
+		t.Fatalf("hidden pollers should stay hidden after a tab switch, visible=%v panes=%d", wl.pollersVisible, wl.mainFlex.GetItemCount())
+	}
+
+	wl.setPollersVisible(true)
+	wl.setListKind(listWorkflows)
+	wl.setListKind(listTaskQueues)
+	if !wl.pollersVisible || wl.mainFlex.GetItemCount() != 2 {
+		t.Fatalf("visible pollers should stay open after a tab switch, visible=%v panes=%d", wl.pollersVisible, wl.mainFlex.GetItemCount())
+	}
 }
 
 func TestTaskQueueKeysSurviveModalRestart(t *testing.T) {
