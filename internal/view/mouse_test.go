@@ -28,6 +28,39 @@ func TestIgnoreMouseFocusOnlyConsumesInside(t *testing.T) {
 	}
 }
 
+func TestRouteModalMouseIgnoresNormalPages(t *testing.T) {
+	event := tcell.NewEventMouse(5, 5, tcell.Button1, tcell.ModNone)
+	if routeModalMouse(NewWorkflowList(&App{}, "default"), tview.MouseLeftClick, event, func(tview.Primitive) {}) {
+		t.Fatal("list clicks should not be treated as modal")
+	}
+}
+
+func TestRouteModalMouseConsumesBackdrop(t *testing.T) {
+	modal := components.NewModal(components.ModalConfig{Width: 20, Height: 10, Backdrop: true})
+	modal.SetRect(0, 0, 80, 24)
+	modal.GetPanel().SetRect(30, 7, 20, 10)
+
+	event := tcell.NewEventMouse(0, 0, tcell.Button1, tcell.ModNone)
+	if !routeModalMouse(modal, tview.MouseLeftClick, event, func(tview.Primitive) {}) {
+		t.Fatal("backdrop click should be consumed")
+	}
+}
+
+func TestRouteModalMouseFocusesPanel(t *testing.T) {
+	modal := components.NewModal(components.ModalConfig{Width: 20, Height: 10, Backdrop: true})
+	modal.SetRect(0, 0, 80, 24)
+	modal.GetPanel().SetRect(30, 7, 20, 10)
+
+	focused := false
+	event := tcell.NewEventMouse(35, 10, tcell.Button1, tcell.ModNone)
+	if !routeModalMouse(modal, tview.MouseLeftDown, event, func(tview.Primitive) { focused = true }) {
+		t.Fatal("click on modal panel should be consumed")
+	}
+	if !focused {
+		t.Fatal("click on modal panel should focus the modal")
+	}
+}
+
 func TestEnableAppMouse(t *testing.T) {
 	app := tview.NewApplication()
 	box := tview.NewBox()

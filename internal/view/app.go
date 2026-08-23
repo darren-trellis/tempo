@@ -112,6 +112,12 @@ func (a *App) buildApp() {
 
 	tviewApp := a.app.GetApplication()
 	enableAppMouse(tviewApp, a.menu, a.statusBar, a.app.Crumbs())
+	bindModalMouse(tviewApp, func() tview.Primitive {
+		if a.app == nil || a.app.Pages() == nil {
+			return nil
+		}
+		return a.app.Pages().Current()
+	})
 
 	// Create toast manager for notifications
 	a.toasts = components.NewToastManager(tviewApp)
