@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/atterpac/jig/components"
@@ -34,9 +35,12 @@ type TaskQueueView struct {
 	pollers        []temporal.Poller
 	selectedQueue  string
 	loading        bool
-	suppressSelect bool   // Prevent recursive selection handling
-	searchText     string // Current search filter text
-	baseTitle      string // Base title without search suffix
+	suppressSelect bool
+	searchText     string
+	baseTitle      string
+	cache          *taskQueueCache
+	pollerGen      uint64
+	pollerTimer    *time.Timer
 }
 
 // NewTaskQueueView creates a new task queue view.
@@ -48,6 +52,7 @@ func NewTaskQueueView(app *App) *TaskQueueView {
 		pollerTable: components.NewTable(),
 		queues:      []taskQueueEntry{},
 		pollers:     []temporal.Poller{},
+		cache:       newTaskQueueCache(previewCacheLimit(app)),
 	}
 	tq.setup()
 
@@ -203,9 +208,12 @@ func (tq *TaskQueueView) loadData() {
 
 			tq.applyFilter(tq.searchText)
 
-			// Load details for first queue
 			if len(tq.queues) > 0 && tq.queues[0].Name != "(no task queues found)" {
-				tq.loadPollers(0)
+				row := tq.queueTable.SelectedRow()
+				if row < 0 || row >= len(tq.queues) {
+					row = 0
+				}
+				tq.loadPollers(row)
 			}
 		})
 	}()
@@ -286,13 +294,34 @@ func (tq *TaskQueueView) populateQueueTable() {
 	}
 }
 
+func (tq *TaskQueueView) namespace() string {
+	if tq.app == nil {
+		return ""
+	}
+	return tq.app.CurrentNamespace()
+}
+
 func (tq *TaskQueueView) loadPollers(queueIndex int) {
+	tq.schedulePollers(queueIndex, false)
+}
+
+func (tq *TaskQueueView) schedulePollers(queueIndex int, force bool) {
 	if queueIndex < 0 || queueIndex >= len(tq.queues) {
 		return
 	}
 
 	queue := tq.queues[queueIndex]
+	if queue.Name == "" || queue.Name == "(no task queues found)" {
+		return
+	}
 	tq.selectedQueue = queue.Name
+
+	if !force {
+		if entry, ok := tq.cache.get(tq.namespace(), queue.Name); ok {
+			tq.applyPollerCache(queue.Name, entry)
+			return
+		}
+	}
 
 	provider := tq.app.Provider()
 	if provider == nil {
@@ -300,46 +329,87 @@ func (tq *TaskQueueView) loadPollers(queueIndex int) {
 		return
 	}
 
-	// Load pollers from provider
 	tq.pollerTable.ClearRows()
 	tq.pollerTable.SetHeaders("IDENTITY", "TYPE", "LAST ACCESS")
 
-	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		defer cancel()
-
-		info, pollers, err := provider.DescribeTaskQueue(ctx, tq.app.CurrentNamespace(), queue.Name)
-
-		tq.app.JigApp().QueueUpdateDraw(func() {
-			if err != nil {
-				tq.showPollerError(err)
-				return
-			}
-
-			// Update queue info if we got real data
-			if info != nil {
-				tq.updateQueueInfo(queueIndex, info)
-			}
-
-			tq.pollers = pollers
-			tq.populatePollerTable("")
-		})
-	}()
+	gen := atomic.AddUint64(&tq.pollerGen, 1)
+	if tq.pollerTimer != nil {
+		tq.pollerTimer.Stop()
+	}
+	tq.pollerTimer = time.AfterFunc(200*time.Millisecond, func() {
+		tq.fetchPollers(gen, queue)
+	})
 }
 
-func (tq *TaskQueueView) updateQueueInfo(queueIndex int, info *temporal.TaskQueueInfo) {
-	if queueIndex < 0 || queueIndex >= len(tq.queues) {
+func (tq *TaskQueueView) fetchPollers(gen uint64, queue taskQueueEntry) {
+	if atomic.LoadUint64(&tq.pollerGen) != gen {
 		return
 	}
-	// Update the queue entry with real data
-	tq.queues[queueIndex].PollerCount = info.PollerCount
-	tq.queues[queueIndex].Backlog = info.Backlog
-	// Suppress selection events during table refresh to avoid recursive loop
+	if tq.app == nil {
+		return
+	}
+	provider := tq.app.Provider()
+	if provider == nil {
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	info, pollers, err := provider.DescribeTaskQueue(ctx, tq.namespace(), queue.Name)
+	if atomic.LoadUint64(&tq.pollerGen) != gen {
+		return
+	}
+
+	apply := func() {
+		if err != nil {
+			if tq.selectedQueue == queue.Name {
+				tq.showPollerError(err)
+			}
+			return
+		}
+		entry := taskQueueCacheEntry{pollers: pollers}
+		if info != nil {
+			entry.pollerCount = info.PollerCount
+			entry.backlog = info.Backlog
+		}
+		tq.cache.put(tq.namespace(), queue.Name, entry)
+		if tq.selectedQueue != queue.Name {
+			return
+		}
+		tq.applyPollerCache(queue.Name, entry)
+	}
+	if tq.app.JigApp() != nil {
+		tq.app.JigApp().QueueUpdateDraw(apply)
+		return
+	}
+	apply()
+}
+
+func (tq *TaskQueueView) applyPollerCache(queueName string, entry taskQueueCacheEntry) {
+	tq.pollers = copyPollers(entry.pollers)
+	tq.updateQueueStats(queueName, entry.pollerCount, entry.backlog)
+	tq.populatePollerTable("")
+}
+
+func (tq *TaskQueueView) updateQueueStats(name string, pollerCount, backlog int) {
+	for i := range tq.queues {
+		if tq.queues[i].Name == name {
+			tq.queues[i].PollerCount = pollerCount
+			tq.queues[i].Backlog = backlog
+		}
+	}
+	for i := range tq.allQueues {
+		if tq.allQueues[i].Name == name {
+			tq.allQueues[i].PollerCount = pollerCount
+			tq.allQueues[i].Backlog = backlog
+		}
+	}
+	row := tq.queueTable.SelectedRow()
 	tq.suppressSelect = true
-	// Refresh the queue table display
 	tq.populateQueueTable()
-	// Reselect the current row
-	tq.queueTable.SelectRow(queueIndex)
+	if row >= 0 && row < len(tq.queues) {
+		tq.queueTable.SelectRow(row)
+	}
 	tq.suppressSelect = false
 }
 
@@ -352,7 +422,12 @@ func (tq *TaskQueueView) loadMockPollers(queue taskQueueEntry) {
 		{Identity: "worker-2@host-002", LastAccessTime: now.Add(-2 * time.Second), TaskQueueType: "Activity"},
 		{Identity: "worker-3@host-003", LastAccessTime: now.Add(-1 * time.Second), TaskQueueType: "Activity"},
 	}
-	tq.populatePollerTable("")
+	entry := taskQueueCacheEntry{
+		pollers:     tq.pollers,
+		pollerCount: len(tq.pollers),
+	}
+	tq.cache.put(tq.namespace(), queue.Name, entry)
+	tq.applyPollerCache(queue.Name, entry)
 }
 
 func (tq *TaskQueueView) populatePollerTable(queueType string) {
@@ -393,7 +468,7 @@ func (tq *TaskQueueView) showPollerError(err error) {
 func (tq *TaskQueueView) refreshCurrentQueue() {
 	row := tq.queueTable.SelectedRow()
 	if row >= 0 && row < len(tq.queues) {
-		tq.loadPollers(row)
+		tq.schedulePollers(row, true)
 	}
 }
 
@@ -404,11 +479,22 @@ func (tq *TaskQueueView) Name() string {
 
 // Start is called when the view becomes active.
 func (tq *TaskQueueView) Start() {
+	if len(tq.allQueues) > 0 {
+		tq.applyFilter(tq.searchText)
+		row := tq.queueTable.SelectedRow()
+		if row >= 0 && row < len(tq.queues) {
+			tq.schedulePollers(row, false)
+		}
+		return
+	}
 	tq.loadData()
 }
 
 // Stop is called when the view is deactivated.
 func (tq *TaskQueueView) Stop() {
+	if tq.pollerTimer != nil {
+		tq.pollerTimer.Stop()
+	}
 	tq.queueTable.SetInputCapture(nil)
 	tq.pollerTable.SetInputCapture(nil)
 }
