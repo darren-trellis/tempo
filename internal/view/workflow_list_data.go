@@ -85,6 +85,7 @@ func (wl *WorkflowList) loadMockData() {
 			ID: "payment-xyz789", RunID: "run-002-abc", Type: "PaymentWorkflow",
 			Status: "Completed", Namespace: wl.namespace, TaskQueue: "payment-tasks",
 			StartTime: now.Add(-1 * time.Hour), EndTime: ptr(now.Add(-55 * time.Minute)),
+			ParentID: ptr("order-processing-abc123"),
 		},
 		{
 			ID: "shipment-def456", RunID: "run-003-def", Type: "ShipmentWorkflow",

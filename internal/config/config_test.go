@@ -24,6 +24,24 @@ func TestFirstNonEmpty(t *testing.T) {
 	}
 }
 
+func TestDefaultWorkflowColumnsIncludeParent(t *testing.T) {
+	found := false
+	for _, col := range DefaultWorkflowColumns() {
+		if col.ID == WorkflowColumnParentID {
+			found = true
+			if col.Width != 36 {
+				t.Fatalf("parent width=%d", col.Width)
+			}
+		}
+	}
+	if !found {
+		t.Fatal("default columns should include parent_id")
+	}
+	if !knownWorkflowColumn(WorkflowColumnParentID) {
+		t.Fatal("parent_id should be a known column")
+	}
+}
+
 func TestResolveWorkflowColumnsDefaults(t *testing.T) {
 	got := ResolveWorkflowColumns(nil)
 	want := DefaultWorkflowColumns()

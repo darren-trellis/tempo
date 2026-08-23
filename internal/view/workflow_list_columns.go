@@ -52,6 +52,8 @@ func workflowColumnHeader(id string) (string, bool) {
 	switch id {
 	case config.WorkflowColumnWorkflowID:
 		return "WORKFLOW ID", true
+	case config.WorkflowColumnParentID:
+		return "PARENT ID", true
 	case config.WorkflowColumnStatus:
 		return "STATUS", true
 	case config.WorkflowColumnType:
@@ -86,6 +88,11 @@ func workflowColumnValue(id string, now time.Time, w temporal.Workflow) (string,
 	switch id {
 	case config.WorkflowColumnWorkflowID:
 		return w.ID, nil
+	case config.WorkflowColumnParentID:
+		if w.ParentID != nil {
+			return *w.ParentID, nil
+		}
+		return "", nil
 	case config.WorkflowColumnStatus:
 		status := temporal.GetWorkflowStatus(w.Status)
 		text := w.Status

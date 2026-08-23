@@ -569,6 +569,7 @@ func ValidateTheme(name string) bool {
 
 const (
 	WorkflowColumnWorkflowID = "workflow_id"
+	WorkflowColumnParentID   = "parent_id"
 	WorkflowColumnStatus     = "status"
 	WorkflowColumnType       = "type"
 	WorkflowColumnStarted    = "started"
@@ -591,6 +592,7 @@ type WorkflowColumnConfig struct {
 func defaultWorkflowColumns() []WorkflowColumnConfig {
 	return []WorkflowColumnConfig{
 		{ID: WorkflowColumnWorkflowID, Width: 36},
+		{ID: WorkflowColumnParentID, Width: 36},
 		{ID: WorkflowColumnStatus, Width: 12},
 		{ID: WorkflowColumnType, Width: 24},
 		{ID: WorkflowColumnStarted, Width: 11},
