@@ -110,6 +110,48 @@ func TestTimelineToggleLayout(t *testing.T) {
 	}
 }
 
+func TestTimelineSizeMatchesWorkflowsPane(t *testing.T) {
+	wl := NewWorkflowList(&App{}, "default")
+	wl.togglePreviewMode()
+	wl.toggleTimeline()
+	wl.SetRect(0, 0, 100, 40)
+
+	screen := tcell.NewSimulationScreen("UTF-8")
+	if err := screen.Init(); err != nil {
+		t.Fatal(err)
+	}
+	screen.SetSize(100, 40)
+	wl.Draw(screen)
+
+	_, _, fullW, _ := wl.timelinePanel.GetRect()
+	_, _, listW, _ := wl.GetRect()
+	if fullW != listW {
+		t.Fatalf("maximized timeline width=%d list=%d", fullW, listW)
+	}
+	if desc := hintDescription(wl.Hints(), "m"); desc != "" && desc != "Minimize" {
+		t.Fatalf("maximized hint: %q", desc)
+	}
+
+	wl.toggleTimelineSize()
+	wl.Draw(screen)
+	_, _, tw, _ := wl.timelinePanel.GetRect()
+	_, _, ww, _ := wl.workflowsPanel.GetRect()
+	if tw != ww {
+		t.Fatalf("narrow timeline width=%d workflows=%d", tw, ww)
+	}
+	if tw >= fullW {
+		t.Fatalf("narrow timeline should be narrower than full width, %d >= %d", tw, fullW)
+	}
+	if wl.GetItemCount() != 1 {
+		t.Fatalf("docked timeline should live under workflows, items=%d", wl.GetItemCount())
+	}
+
+	wl.focusPane = focusTimeline
+	if desc := hintDescription(wl.Hints(), "m"); desc != "Maximize" {
+		t.Fatalf("narrow hint: %q", desc)
+	}
+}
+
 func TestTimelineHighlightsSelectedActivity(t *testing.T) {
 	wl := NewWorkflowList(&App{}, "default")
 	wl.togglePreviewMode()

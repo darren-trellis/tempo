@@ -183,6 +183,13 @@ func (wl *WorkflowList) MouseHandler() func(tview.MouseAction, *tcell.EventMouse
 			return false, nil
 		}
 
+		if wl.timelineVisible && wl.timelinePanel != nil && timelineSizeButtonHit(wl.timelinePanel, x, y) {
+			if action == tview.MouseLeftDown || action == tview.MouseLeftClick {
+				wl.toggleTimelineSize()
+				return true, nil
+			}
+		}
+
 		if kind, ok := wl.previewTabAt(x, y); ok {
 			if action == tview.MouseLeftDown || action == tview.MouseLeftClick {
 				wl.setPreviewKind(kind)
@@ -225,15 +232,6 @@ func (wl *WorkflowList) applyPreviewLayout() {
 		wl.focusPane = focusWorkflows
 	}
 
-	if wl.mainFlex != nil {
-		wl.mainFlex.Clear()
-		if on {
-			wl.mainFlex.AddItem(wl.workflowsPanel, 0, 11, true)
-			wl.mainFlex.AddItem(wl.rightFlex, 0, 9, false)
-		} else if wl.workflowsPanel != nil {
-			wl.mainFlex.AddItem(wl.workflowsPanel, 0, 1, true)
-		}
-	}
 	wl.applyMainLayout()
 
 	if on {

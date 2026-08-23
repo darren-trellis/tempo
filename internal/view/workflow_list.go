@@ -38,8 +38,9 @@ type WorkflowList struct {
 	eventsPanel           *components.Panel
 	workflowDetail        *tview.TextView
 	timelineView          *TimelineView
-	timelinePanel         *components.Panel
+	timelinePanel         *timelineFrame
 	timelineVisible       bool
+	timelineNarrow        bool
 	highlightedActivityID int64
 	timelineSyncing       bool
 	workflowTreeMode      bool
@@ -473,6 +474,7 @@ func (wl *WorkflowList) Hints() []KeyHint {
 				{Key: "j/k", Description: "Lane"},
 				{Key: "h/l", Description: "Scroll"},
 				{Key: "+/-", Description: "Zoom"},
+				{Key: "m", Description: timelineSizeHint(wl.timelineNarrow)},
 				{Key: "tab", Description: "Workflows"},
 				{Key: "z", Description: "Timeline"},
 				{Key: "b", Description: treeModeHint(wl.workflowTreeMode)},
