@@ -1965,6 +1965,7 @@ func (wd *WorkflowDetail) showIOModal() {
 			{Key: "tab/h/l", Description: "Switch"},
 			{Key: "j/k", Description: "Scroll"},
 			{Key: "m", Description: maxHint},
+			{Key: "e", Description: "Editor"},
 			{Key: "y", Description: "Copy"},
 			{Key: "esc", Description: "Close"},
 		})
@@ -2068,6 +2069,13 @@ func (wd *WorkflowDetail) showIOModal() {
 			case 'm':
 				modal.toggleMaximize()
 				applyIOHints()
+				return nil
+			case 'e':
+				if focusedInput {
+					openInEditor(wd.app, "input", wd.workflow.Input)
+				} else {
+					openInEditor(wd.app, "output", wd.workflow.Output)
+				}
 				return nil
 			case 'y':
 				// Copy the content of the focused pane
