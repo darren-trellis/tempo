@@ -89,3 +89,41 @@ func TestTimelineDrawsNameInsideBar(t *testing.T) {
 		t.Fatalf("bar should contain the activity name, got %q", row.String())
 	}
 }
+
+func TestTimelineScrollStopsAtLastBar(t *testing.T) {
+	start := time.Date(2026, 8, 23, 12, 0, 0, 0, time.UTC)
+	end := start.Add(time.Minute)
+	tv := NewTimelineView()
+	tv.SetNodes(temporal.BuildEventTree([]temporal.EnhancedHistoryEvent{
+		{ID: 1, Type: "WorkflowExecutionStarted", Time: start},
+		{ID: 5, Type: "ActivityTaskScheduled", Time: start, ActivityType: "First"},
+		{ID: 6, Type: "ActivityTaskCompleted", Time: end, ScheduledEventID: 5},
+	}))
+	tv.SetRect(0, 0, 80, 10)
+
+	tv.scroll(20)
+	if tv.scrollX != 0 {
+		t.Fatalf("unzoomed timeline should not scroll, scrollX=%d", tv.scrollX)
+	}
+
+	tv.zoomLevel = 2
+	tv.scroll(10_000)
+	if want := tv.maxScrollX(); tv.scrollX != want || want <= 0 {
+		t.Fatalf("scrollX=%d max=%d", tv.scrollX, want)
+	}
+	if tv.contentWidth(80)-tv.scrollX != 80 {
+		t.Fatalf("fully scrolled view should end at the last bar, content=%d scroll=%d", tv.contentWidth(80), tv.scrollX)
+	}
+
+	tv.scroll(-10_000)
+	if tv.scrollX != 0 {
+		t.Fatalf("left scroll should stop at 0, scrollX=%d", tv.scrollX)
+	}
+
+	tv.scrollX = 10_000
+	tv.zoomLevel = 1
+	tv.clampScrollX()
+	if tv.scrollX != 0 {
+		t.Fatalf("zooming out should pull scroll back, scrollX=%d", tv.scrollX)
+	}
+}

@@ -749,15 +749,64 @@ func (tv *TimelineView) selectLast() {
 	}
 }
 
-// scroll horizontally scrolls the timeline.
-func (tv *TimelineView) scroll(delta int) {
-	tv.scrollX += delta
+func (tv *TimelineView) laneBarEnd(width int, lane TimelineLane, timeRange time.Duration) int {
+	if width <= 0 || timeRange <= 0 {
+		return 0
+	}
+	var barEnd int
+	if lane.EndTime != nil {
+		endOffset := lane.EndTime.Sub(tv.startTime)
+		barEnd = int(float64(width) * float64(endOffset) / float64(timeRange))
+	} else {
+		barEnd = width
+	}
+	if barEnd < 1 {
+		barEnd = 1
+	}
+	zoom := tv.zoomLevel
+	if zoom < 0.1 {
+		zoom = 0.1
+	}
+	return int(float64(barEnd) * zoom)
+}
+
+func (tv *TimelineView) contentWidth(width int) int {
+	timeRange := tv.endTime.Sub(tv.startTime)
+	if timeRange <= 0 {
+		timeRange = time.Minute
+	}
+	end := 0
+	for _, lane := range tv.lanes {
+		if barEnd := tv.laneBarEnd(width, lane, timeRange); barEnd > end {
+			end = barEnd
+		}
+	}
+	return end
+}
+
+func (tv *TimelineView) maxScrollX() int {
+	_, _, width, _ := tv.GetInnerRect()
+	max := tv.contentWidth(width) - width
+	if max < 0 {
+		return 0
+	}
+	return max
+}
+
+func (tv *TimelineView) clampScrollX() {
 	if tv.scrollX < 0 {
 		tv.scrollX = 0
 	}
+	if max := tv.maxScrollX(); tv.scrollX > max {
+		tv.scrollX = max
+	}
 }
 
-// zoom adjusts the zoom level.
+func (tv *TimelineView) scroll(delta int) {
+	tv.scrollX += delta
+	tv.clampScrollX()
+}
+
 func (tv *TimelineView) zoom(factor float64) {
 	tv.zoomLevel *= factor
 	if tv.zoomLevel < 0.5 {
@@ -766,6 +815,7 @@ func (tv *TimelineView) zoom(factor float64) {
 	if tv.zoomLevel > 5.0 {
 		tv.zoomLevel = 5.0
 	}
+	tv.clampScrollX()
 }
 
 // resetView resets zoom and scroll.
