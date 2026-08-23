@@ -172,6 +172,10 @@ func (wl *WorkflowList) paneAt(x, y int) (workflowFocusPane, bool) {
 			if wl.workflowDetail != nil && wl.workflowDetail.InRect(x, y) {
 				return focusEventDetail, true
 			}
+		} else if wl.previewKind == previewHierarchy {
+			if wl.hierarchyView != nil && wl.hierarchyView.InRect(x, y) {
+				return focusEvents, true
+			}
 		} else {
 			if wl.eventDetailPanel != nil && wl.eventDetailPanel.InRect(x, y) {
 				return focusEventDetail, true
@@ -292,9 +296,10 @@ func (wl *WorkflowList) cyclePreviewKind(delta int) {
 	if !wl.previewModeEnabled() {
 		return
 	}
-	next := (int(wl.previewKind) + delta) % 3
+	n := len(previewTabOrder)
+	next := (int(wl.previewKind) + delta) % n
 	if next < 0 {
-		next += 3
+		next += n
 	}
 	wl.setPreviewKind(previewKind(next))
 }
@@ -321,6 +326,9 @@ func (wl *WorkflowList) handlePreviewTabKey(event *tcell.EventKey) bool {
 		return true
 	case '3':
 		wl.setPreviewKind(previewEvents)
+		return true
+	case '4':
+		wl.setPreviewKind(previewHierarchy)
 		return true
 	}
 	return false
@@ -362,8 +370,13 @@ func (wl *WorkflowList) applyPreviewPage() {
 		if wl.previewPanel != nil {
 			wl.rightFlex.AddItem(wl.previewPanel, 0, 3, false)
 		}
-		if wl.previewKind != previewDetails && wl.eventDetailPanel != nil {
+		if wl.previewShowsSidePane() && wl.eventDetailPanel != nil {
 			wl.rightFlex.AddItem(wl.eventDetailPanel, 0, 2, false)
+		}
+	}
+	if wl.previewKind == previewHierarchy {
+		if w, ok := wl.selectedWorkflow(); ok {
+			wl.renderPreviewHierarchy(w)
 		}
 	}
 	wl.syncPreviewChrome()
@@ -429,12 +442,22 @@ func (wl *WorkflowList) setupPreview() {
 		}
 	})
 
+	wl.hierarchyView = NewWorkflowGraphView(wl.app, wl.namespace, nil)
+	wl.hierarchyView.SetEmbedded(true)
+	wl.hierarchyView.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		if wl.hierarchyView.handleGraphKeys(event) {
+			return nil
+		}
+		return wl.handlePreviewKeys(event)
+	})
+
 	wl.previewTabs = components.NewTabs().
 		SetShowIcons(true).
 		SetShowBadges(false).
 		AddTabWithIcon(previewDetails.title(), previewDetails.icon(), wl.workflowDetailScroll).
 		AddTabWithIcon(previewActivities.title(), previewActivities.icon(), wl.eventTable).
 		AddTabWithIcon(previewEvents.title(), previewEvents.icon(), wl.eventTable).
+		AddTabWithIcon(previewHierarchy.title(), previewHierarchy.icon(), wl.hierarchyView).
 		SetOnChange(func(index int, name string) {
 			if index >= 0 && index < len(previewTabOrder) {
 				wl.setPreviewKind(previewTabOrder[index])
@@ -494,12 +517,15 @@ func (wl *WorkflowList) handlePreviewKeys(event *tcell.EventKey) *tcell.EventKey
 		wl.toggleTimeline()
 		return nil
 	case 'i':
-		if wl.previewKind == previewDetails {
+		if !wl.previewShowsIO() {
 			return event
 		}
 		if wl.showPreviewIO() {
 			return nil
 		}
+	case 'o':
+		wl.showWorkflowGraph()
+		return nil
 	case 'e':
 		if wl.app != nil && wl.previewWorkflowID != "" {
 			wl.app.NavigateToEvents(wl.previewWorkflowID, wl.previewRunID)
@@ -542,10 +568,12 @@ func (wl *WorkflowList) previewFocusOrder() []workflowFocusPane {
 	}
 	order := []workflowFocusPane{focusWorkflows}
 	if wl.previewModeEnabled() {
-		if wl.previewKind == previewDetails {
-			order = append(order, focusEventDetail)
-		} else {
+		if wl.previewShowsSidePane() {
 			order = append(order, focusEvents, focusEventDetail)
+		} else if wl.previewKind == previewHierarchy {
+			order = append(order, focusEvents)
+		} else {
+			order = append(order, focusEventDetail)
 		}
 	}
 	if wl.timelineVisible {
@@ -588,7 +616,11 @@ func (wl *WorkflowList) setFocusPane(pane workflowFocusPane) {
 			wl.app.JigApp().SetFocus(wl.taskQueues.pollerTable)
 		}
 	case focusEvents:
-		wl.app.JigApp().SetFocus(wl.eventTable)
+		if wl.previewKind == previewHierarchy && wl.hierarchyView != nil {
+			wl.app.JigApp().SetFocus(wl.hierarchyView)
+		} else {
+			wl.app.JigApp().SetFocus(wl.eventTable)
+		}
 	case focusEventDetail:
 		if wl.previewKind == previewDetails {
 			wl.app.JigApp().SetFocus(wl.workflowDetail)
@@ -616,7 +648,7 @@ func (wl *WorkflowList) applyFocusStyles() {
 		wl.previewPanel.SetFocused(wl.focusPane == focusEvents || (wl.previewKind == previewDetails && wl.focusPane == focusEventDetail))
 	}
 	if wl.eventDetailPanel != nil {
-		wl.eventDetailPanel.SetFocused(wl.previewKind != previewDetails && wl.focusPane == focusEventDetail)
+		wl.eventDetailPanel.SetFocused(wl.previewShowsSidePane() && wl.focusPane == focusEventDetail)
 	}
 	if wl.eventsPanel != nil {
 		wl.eventsPanel.SetFocused(wl.focusPane == focusEvents)
@@ -637,7 +669,7 @@ func (wl *WorkflowList) applyFocusStyles() {
 		wl.table.SetSelectable(wl.focusPane == focusWorkflows, false)
 	}
 	if wl.eventTable != nil {
-		wl.eventTable.SetSelectable(wl.focusPane == focusEvents, false)
+		wl.eventTable.SetSelectable(wl.focusPane == focusEvents && wl.previewKind != previewHierarchy, false)
 	}
 	if wl.workflowDetail != nil {
 		wl.workflowDetail.SetSelectable(wl.previewKind == previewDetails && wl.focusPane == focusEventDetail, false)
@@ -651,6 +683,8 @@ func (wl *WorkflowList) syncFocusFromPrimitives() {
 		pane = focusEventDetail
 	case wl.eventDetail != nil && wl.eventDetail.HasFocus():
 		pane = focusEventDetail
+	case wl.hierarchyView != nil && wl.hierarchyView.HasFocus():
+		pane = focusEvents
 	case wl.eventTable != nil && wl.eventTable.HasFocus():
 		pane = focusEvents
 	case wl.timelineView != nil && wl.timelineView.HasFocus():
@@ -744,6 +778,9 @@ func (wl *WorkflowList) setPreviewStatus(message string) {
 		wl.setPreviewDetailStatus(message)
 		return
 	}
+	if wl.previewKind == previewHierarchy {
+		return
+	}
 	wl.eventTable.ClearRows()
 	if wl.previewKind == previewActivities {
 		wl.eventTable.SetHeaders("STATUS", "NAME", "STARTED", "DURATION")
@@ -782,6 +819,8 @@ func (wl *WorkflowList) schedulePreview(w temporal.Workflow, force bool) {
 	wl.previewRunID = w.RunID
 	if wl.previewKind == previewDetails {
 		wl.renderPreviewDetails(w)
+	} else if wl.previewKind == previewHierarchy {
+		wl.renderPreviewHierarchy(w)
 	} else {
 		wl.setPreviewStatus("Loading...")
 	}
@@ -856,9 +895,18 @@ func (wl *WorkflowList) renderPreview(w temporal.Workflow) {
 		wl.renderPreviewDetails(w)
 	case previewEvents:
 		wl.renderPreviewEvents(w)
+	case previewHierarchy:
+		wl.renderPreviewHierarchy(w)
 	default:
 		wl.renderPreviewActivities(w)
 	}
+}
+
+func (wl *WorkflowList) renderPreviewHierarchy(w temporal.Workflow) {
+	if wl.hierarchyView == nil {
+		return
+	}
+	wl.hierarchyView.ShowWorkflow(wl.namespace, w)
 }
 
 func (wl *WorkflowList) renderPreviewDetails(w temporal.Workflow) {

@@ -55,6 +55,7 @@ type WorkflowList struct {
 	workflowDepths        []int
 	focusPane             workflowFocusPane
 	previewKind           previewKind
+	hierarchyView         *WorkflowGraphView
 	previewEvents         []temporal.EnhancedHistoryEvent
 	previewActivities     []previewActivity
 	previewWorkflowID     string
@@ -247,6 +248,9 @@ func (wl *WorkflowList) RefreshTheme() {
 	}
 	if wl.taskQueues != nil {
 		wl.taskQueues.RefreshTheme()
+	}
+	if wl.hierarchyView != nil {
+		wl.hierarchyView.RefreshTheme()
 	}
 	wl.populateTable()
 	wl.applyFocusStyles()
@@ -542,13 +546,30 @@ func (wl *WorkflowList) Hints() []KeyHint {
 }
 
 func (wl *WorkflowList) previewIOHint() []KeyHint {
-	if !wl.previewModeEnabled() || wl.previewKind == previewDetails {
+	if !wl.previewModeEnabled() || !wl.previewShowsIO() {
 		return nil
 	}
 	return []KeyHint{{Key: "i", Description: "Input/Output"}}
 }
 
+func (wl *WorkflowList) previewShowsSidePane() bool {
+	return wl.previewKind == previewActivities || wl.previewKind == previewEvents
+}
+
+func (wl *WorkflowList) previewShowsIO() bool {
+	return wl.previewShowsSidePane()
+}
+
 func (wl *WorkflowList) previewListHints() []KeyHint {
+	if wl.previewKind == previewHierarchy {
+		return []KeyHint{
+			{Key: "h/l", Description: "Collapse/Expand"},
+			{Key: "c", Description: "Center Graph"},
+			{Key: "+/-", Description: "Depth"},
+			{Key: "z", Description: "Timeline"},
+			{Key: "p", Description: "Preview"},
+		}
+	}
 	hints := wl.previewIOHint()
 	return append(hints,
 		KeyHint{Key: "z", Description: "Timeline"},
@@ -613,7 +634,7 @@ func (wl *WorkflowList) workflowPaneHints() []KeyHint {
 	return append(hints,
 		KeyHint{Key: "L", Description: "Load Filter"},
 		KeyHint{Key: "d", Description: "Diff"},
-		KeyHint{Key: "o", Description: "Overview"},
+		KeyHint{Key: "o", Description: "Hierarchy"},
 		KeyHint{Key: "v", Description: "Select Mode"},
 		KeyHint{Key: "N", Description: "Start"},
 		KeyHint{Key: "W", Description: "Signal+Start"},
@@ -663,6 +684,10 @@ func (wl *WorkflowList) Focus(delegate func(p tview.Primitive)) {
 	}
 	switch wl.focusPane {
 	case focusEvents:
+		if wl.previewKind == previewHierarchy && wl.hierarchyView != nil {
+			delegate(wl.hierarchyView)
+			return
+		}
 		delegate(wl.eventTable)
 	case focusEventDetail:
 		if wl.previewKind == previewDetails && wl.workflowDetail != nil {

@@ -15,9 +15,10 @@ const (
 	previewDetails previewKind = iota
 	previewActivities
 	previewEvents
+	previewHierarchy
 )
 
-var previewTabOrder = []previewKind{previewDetails, previewActivities, previewEvents}
+var previewTabOrder = []previewKind{previewDetails, previewActivities, previewEvents, previewHierarchy}
 
 type previewActivity struct {
 	ScheduledID int64
@@ -40,6 +41,8 @@ func (k previewKind) title() string {
 		return "Events"
 	case previewDetails:
 		return "Details"
+	case previewHierarchy:
+		return "Hierarchy"
 	default:
 		return "Activities"
 	}
@@ -51,6 +54,8 @@ func (k previewKind) icon() string {
 		return theme.IconEvent
 	case previewDetails:
 		return theme.IconWorkflow
+	case previewHierarchy:
+		return theme.IconNamespace
 	default:
 		return theme.IconActivity
 	}

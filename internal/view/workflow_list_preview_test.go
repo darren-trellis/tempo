@@ -73,6 +73,44 @@ func TestWorkflowTableKeepsHorizontalScrollKeys(t *testing.T) {
 	}
 }
 
+func TestPreviewHierarchyTab(t *testing.T) {
+	if previewHierarchy.title() != "Hierarchy" {
+		t.Fatalf("hierarchy title: %q", previewHierarchy.title())
+	}
+
+	wl := NewWorkflowList(&App{}, "default")
+	wl.showWorkflowGraph()
+	if !wl.previewModeEnabled() {
+		t.Fatal("o should enable preview")
+	}
+	if wl.previewKind != previewHierarchy {
+		t.Fatalf("o should open hierarchy, got %d", wl.previewKind)
+	}
+	if wl.rightFlex.GetItemCount() != 1 {
+		t.Fatalf("hierarchy should hide the sibling pane, got %d items", wl.rightFlex.GetItemCount())
+	}
+	if wl.focusPane != focusEvents {
+		t.Fatalf("o should focus hierarchy, got %d", wl.focusPane)
+	}
+	if desc := hintDescription(wl.Hints(), "h/l"); desc != "Collapse/Expand" {
+		t.Fatalf("hierarchy hints: %q", desc)
+	}
+	if desc := hintDescription(wl.Hints(), "c"); desc != "Center Graph" {
+		t.Fatalf("center hint: %q", desc)
+	}
+	if desc := hintDescription(wl.Hints(), "i"); desc != "" {
+		t.Fatalf("hierarchy should not show io, got %q", desc)
+	}
+
+	wl.setPreviewKind(previewActivities)
+	if ev := wl.handlePreviewKeys(tcell.NewEventKey(tcell.KeyRune, 'o', 0)); ev != nil {
+		t.Fatal("o should switch preview to hierarchy")
+	}
+	if wl.previewKind != previewHierarchy {
+		t.Fatalf("o should switch to hierarchy, got %d", wl.previewKind)
+	}
+}
+
 func TestPreviewHintsArePaneSpecific(t *testing.T) {
 	wl := NewWorkflowList(&App{}, "default")
 	wl.togglePreviewMode()

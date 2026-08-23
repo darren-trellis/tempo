@@ -78,6 +78,12 @@ func TestPreviewTabKeys(t *testing.T) {
 	if wl.previewKind != previewEvents {
 		t.Fatalf("3 should select events, got %d", wl.previewKind)
 	}
+	if ev := wl.handlePreviewKeys(tcell.NewEventKey(tcell.KeyRune, '4', 0)); ev != nil {
+		t.Fatal("4 should select hierarchy")
+	}
+	if wl.previewKind != previewHierarchy {
+		t.Fatalf("4 should select hierarchy, got %d", wl.previewKind)
+	}
 }
 
 func TestPreviewKindCycle(t *testing.T) {
@@ -108,6 +114,14 @@ func TestPreviewKindCycle(t *testing.T) {
 	}
 
 	wl.cyclePreviewKind(1)
+	if wl.previewKind != previewHierarchy || wl.previewTabs.GetActive() != int(previewHierarchy) {
+		t.Fatalf("next kind: %d tab %d", wl.previewKind, wl.previewTabs.GetActive())
+	}
+	if wl.rightFlex.GetItemCount() != 1 {
+		t.Fatalf("hierarchy should hide the sibling pane, got %d items", wl.rightFlex.GetItemCount())
+	}
+
+	wl.cyclePreviewKind(1)
 	if wl.previewKind != previewDetails || wl.previewTabs.GetActive() != int(previewDetails) {
 		t.Fatalf("next kind: %d tab %d", wl.previewKind, wl.previewTabs.GetActive())
 	}
@@ -131,6 +145,10 @@ func TestPreviewTabHit(t *testing.T) {
 	eventsX := previewTabWidth(previewDetails) + 1 + previewTabWidth(previewActivities) + 2
 	if kind, ok := previewTabAtX(0, eventsX); !ok || kind != previewEvents {
 		t.Fatalf("events tab: kind=%d ok=%v", kind, ok)
+	}
+	hierarchyX := eventsX + previewTabWidth(previewEvents) + 1
+	if kind, ok := previewTabAtX(0, hierarchyX+2); !ok || kind != previewHierarchy {
+		t.Fatalf("hierarchy tab: kind=%d ok=%v", kind, ok)
 	}
 }
 

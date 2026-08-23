@@ -120,7 +120,7 @@ func (wl *WorkflowList) setupTimeline() {
 			wl.togglePreviewMode()
 			return nil
 		case 'i':
-			if wl.previewKind != previewDetails && wl.showPreviewIO() {
+			if wl.previewShowsIO() && wl.showPreviewIO() {
 				return nil
 			}
 		}

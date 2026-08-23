@@ -13,8 +13,8 @@ import (
 )
 
 // WorkflowGraphView displays workflow relationships in a dual-pane layout.
-// Left pane: GraphTree showing hierarchical tree of workflows
-// Right pane: NodeGraph showing 2D visualization of relationships
+// Top pane: GraphTree showing hierarchical tree of workflows
+// Bottom pane: NodeGraph showing 2D visualization of relationships
 type WorkflowGraphView struct {
 	*components.Split
 	app       *App
@@ -29,6 +29,7 @@ type WorkflowGraphView struct {
 	relationships *temporal.WorkflowRelationships
 	depthLimit    int
 	loading       bool
+	embedded      bool
 }
 
 // NewWorkflowGraphView creates a new workflow graph view.
@@ -63,21 +64,40 @@ func (wg *WorkflowGraphView) setup() {
 
 	// Wrap in panels with titles
 	treePanel := components.NewPanel().
-		SetTitle(fmt.Sprintf("%s Hierarchy", theme.IconNamespace)).
+		SetTitle(fmt.Sprintf("%s Tree", theme.IconNamespace)).
 		SetContent(wg.tree)
 
 	graphPanel := components.NewPanel().
-		SetTitle(fmt.Sprintf("%s Graph View", theme.IconGrid)).
+		SetTitle(fmt.Sprintf("%s Graph", theme.IconGrid)).
 		SetContent(wg.graph)
 
-	// Create split layout
 	wg.Split = components.NewSplit().
-		SetDirection(components.SplitHorizontal).
-		SetRatio(0.4).
-		SetLeft(treePanel).
-		SetRight(graphPanel).
+		SetDirection(components.SplitVertical).
+		SetRatio(0.5).
+		SetTop(treePanel).
+		SetBottom(graphPanel).
 		SetResizable(true).
 		SetShowDivider(true)
+}
+
+func (wg *WorkflowGraphView) SetEmbedded(embedded bool) {
+	if wg == nil {
+		return
+	}
+	wg.embedded = embedded
+}
+
+func (wg *WorkflowGraphView) ShowWorkflow(namespace string, workflow temporal.Workflow) {
+	if wg == nil || workflow.ID == "" {
+		return
+	}
+	wg.namespace = namespace
+	if wg.workflow != nil && wg.workflow.ID == workflow.ID && wg.workflow.RunID == workflow.RunID && wg.relationships != nil {
+		return
+	}
+	wf := workflow
+	wg.workflow = &wf
+	wg.loadData()
 }
 
 // RefreshTheme updates colors after a theme change.
@@ -121,34 +141,44 @@ func (wg *WorkflowGraphView) Focus(delegate func(p tview.Primitive)) {
 	wg.Split.Focus(delegate)
 }
 
+func (wg *WorkflowGraphView) handleGraphKeys(event *tcell.EventKey) bool {
+	if event == nil {
+		return false
+	}
+	switch event.Rune() {
+	case '+':
+		wg.adjustDepth(1)
+		return true
+	case '-':
+		wg.adjustDepth(-1)
+		return true
+	case 'r':
+		wg.loadData()
+		return true
+	case 'c':
+		if node := wg.tree.GetSelected(); node != nil {
+			wg.graph.SetFocus(node.ID)
+		}
+		return true
+	}
+	return false
+}
+
 func (wg *WorkflowGraphView) handleInput(event *tcell.EventKey) *tcell.EventKey {
+	if wg.embedded {
+		return event
+	}
 	switch event.Key() {
 	case tcell.KeyEscape:
-		// Go back to previous view
 		wg.app.JigApp().Pages().Pop()
 		return nil
-	case tcell.KeyRune:
-		switch event.Rune() {
-		case '+':
-			wg.adjustDepth(1)
-			return nil
-		case '-':
-			wg.adjustDepth(-1)
-			return nil
-		case 'r':
-			wg.loadData()
-			return nil
-		case 'c':
-			// Center graph on current selection
-			if node := wg.tree.GetSelected(); node != nil {
-				wg.graph.SetFocus(node.ID)
-			}
-			return nil
-		case 'q':
-			// Also allow q to go back (vim-style)
-			wg.app.JigApp().Pages().Pop()
-			return nil
-		}
+	}
+	if wg.handleGraphKeys(event) {
+		return nil
+	}
+	if event.Rune() == 'q' {
+		wg.app.JigApp().Pages().Pop()
+		return nil
 	}
 	return event
 }
@@ -169,7 +199,7 @@ func (wg *WorkflowGraphView) adjustDepth(delta int) {
 }
 
 func (wg *WorkflowGraphView) loadData() {
-	if wg.loading {
+	if wg.loading || wg.workflow == nil {
 		return
 	}
 	wg.loading = true
@@ -183,10 +213,14 @@ func (wg *WorkflowGraphView) loadData() {
 
 		provider := wg.app.Provider()
 		if provider == nil {
-			wg.app.JigApp().QueueUpdateDraw(func() {
-				wg.app.ToastError("No provider available")
+			if wg.app != nil && wg.app.JigApp() != nil {
+				wg.app.JigApp().QueueUpdateDraw(func() {
+					wg.app.ToastError("No provider available")
+					wg.loading = false
+				})
+			} else {
 				wg.loading = false
-			})
+			}
 			return
 		}
 
@@ -198,25 +232,38 @@ func (wg *WorkflowGraphView) loadData() {
 			wg.depthLimit,
 		)
 		if err != nil {
-			wg.app.JigApp().QueueUpdateDraw(func() {
-				wg.app.ToastError(fmt.Sprintf("Failed to load relationships: %v", err))
+			if wg.app != nil && wg.app.JigApp() != nil {
+				wg.app.JigApp().QueueUpdateDraw(func() {
+					wg.app.ToastError(fmt.Sprintf("Failed to load relationships: %v", err))
+					wg.loading = false
+				})
+			} else {
 				wg.loading = false
-			})
+			}
 			return
 		}
 
-		wg.app.JigApp().QueueUpdateDraw(func() {
+		if wg.app != nil && wg.app.JigApp() != nil {
+			wg.app.JigApp().QueueUpdateDraw(func() {
+				wg.relationships = relationships
+				wg.buildTreeData()
+				wg.buildGraphData()
+				wg.loading = false
+			})
+		} else {
 			wg.relationships = relationships
 			wg.buildTreeData()
 			wg.buildGraphData()
 			wg.loading = false
-		})
+		}
 	}()
 }
 
 // showInitialState displays the current workflow immediately while loading relationships.
 func (wg *WorkflowGraphView) showInitialState() {
-	// Create minimal tree with just the current workflow
+	if wg.workflow == nil {
+		return
+	}
 	wg.treeData = components.NewGraphTreeData()
 	currentNode := &components.GraphTreeNode{
 		ID:        wg.workflow.ID,

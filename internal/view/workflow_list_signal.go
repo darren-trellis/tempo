@@ -133,13 +133,13 @@ func (wl *WorkflowList) startDiff() {
 	wl.app.NavigateToWorkflowDiff(&wf, nil)
 }
 
-// showWorkflowGraph opens the workflow relationship graph view for the selected workflow.
+// showWorkflowGraph opens the Hierarchy preview tab for the selected workflow.
 func (wl *WorkflowList) showWorkflowGraph() {
-	row := wl.table.SelectedRow()
-	if row < 0 || row >= len(wl.workflows) {
-		return
+	wl.previewKind = previewHierarchy
+	if !wl.previewModeEnabled() {
+		wl.togglePreviewMode()
+	} else {
+		wl.setPreviewKind(previewHierarchy)
 	}
-
-	wf := wl.workflows[row]
-	wl.app.NavigateToWorkflowGraph(&wf)
+	wl.setFocusPane(focusEvents)
 }
