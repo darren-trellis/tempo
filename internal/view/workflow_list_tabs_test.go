@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/gdamore/tcell/v2"
+	"github.com/rivo/tview"
 )
 
 func TestWorkflowListTitleListMode(t *testing.T) {
@@ -54,6 +55,32 @@ func TestWorkflowListTaskQueueTab(t *testing.T) {
 	}
 	if wl.workflowTab.Name != "Workflows (List)" {
 		t.Fatalf("workflows tab title: %q", wl.workflowTab.Name)
+	}
+}
+
+func TestEmptyWorkflowsStillSwitchListTabs(t *testing.T) {
+	wl := NewWorkflowList(&App{}, "default")
+	wl.keepDataOnStart = true
+	wl.Start()
+	wl.allWorkflows = nil
+	wl.workflows = nil
+	wl.populateTable()
+
+	if wl.workflowTab == nil || wl.workflowTab.Content != wl.tableScroll {
+		t.Fatal("empty workflows should keep the table mounted so tab keys still work")
+	}
+
+	var focused tview.Primitive
+	wl.Focus(func(p tview.Primitive) { focused = p })
+	if focused != wl.table {
+		t.Fatal("empty workflows should keep focus on the table")
+	}
+
+	if ev := wl.table.GetInputCapture()(tcell.NewEventKey(tcell.KeyRune, ']', 0)); ev != nil {
+		t.Fatal("] should switch tabs when the workflows list is empty")
+	}
+	if !wl.taskQueuesActive() {
+		t.Fatal("] should open task queues when the workflows list is empty")
 	}
 }
 

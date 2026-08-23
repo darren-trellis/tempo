@@ -66,7 +66,7 @@ func (wl *WorkflowList) loadData() {
 			wl.previewRunID = ""
 			wl.allWorkflows = workflows
 			wl.applyFilter()
-			if len(wl.workflows) > 0 && wl.shouldFocusWorkflowTable() {
+			if wl.shouldFocusWorkflowTable() {
 				wl.app.JigApp().SetFocus(wl.table)
 			}
 		})
@@ -121,10 +121,11 @@ func (wl *WorkflowList) populateTable() {
 
 	if len(wl.workflows) == 0 {
 		if len(wl.allWorkflows) == 0 {
-			wl.SetMasterContent(wl.emptyState)
+			wl.table.ConfigureEmpty(theme.IconInfo, "No Workflows", "No workflows found in this namespace")
 		} else {
-			wl.SetMasterContent(wl.noResultsState)
+			wl.table.ConfigureEmpty(theme.IconSearch, "No Results", "No workflows match the current filter")
 		}
+		wl.SetMasterContent(wl.table)
 		wl.clearPreview()
 		return
 	}

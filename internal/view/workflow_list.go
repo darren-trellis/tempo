@@ -65,8 +65,6 @@ type WorkflowList struct {
 	previewTimer          *time.Timer
 	previewMode           bool
 	previewCache          *previewCache
-	emptyState            *components.EmptyState
-	noResultsState        *components.EmptyState
 	allWorkflows          []temporal.Workflow // Full unfiltered list
 	workflows             []temporal.Workflow // Filtered list for display
 	filterText            string
@@ -170,50 +168,7 @@ func (wl *WorkflowList) setup() {
 
 	wl.applyPreviewLayout()
 
-	emptyInputCapture := func(event *tcell.EventKey) *tcell.EventKey {
-		if wl.handleFocusCycleKey(event) || wl.handleListTabKey(event) || wl.handlePreviewTabKey(event) {
-			return nil
-		}
-		switch event.Rune() {
-		case 'W':
-			wl.showSignalWithStart()
-			return nil
-		case 'r':
-			wl.loadData()
-			return nil
-		case 's':
-			wl.app.NavigateToSchedules()
-			return nil
-		case 'a':
-			wl.toggleAutoRefresh()
-			return nil
-		case '|':
-			wl.showColumnEditor()
-			return nil
-		case 'p':
-			wl.togglePreviewMode()
-			return nil
-		case 'z':
-			wl.toggleTimeline()
-			return nil
-		case 'b':
-			wl.toggleWorkflowTree()
-			return nil
-		}
-		return event
-	}
-
-	wl.emptyState = components.NewEmptyState().
-		SetIcon(theme.IconInfo).
-		SetTitle("No Workflows").
-		SetMessage("No workflows found in this namespace")
-	wl.emptyState.SetInputCapture(emptyInputCapture)
-
-	wl.noResultsState = components.NewEmptyState().
-		SetIcon(theme.IconSearch).
-		SetTitle("No Results").
-		SetMessage("No workflows match the current filter")
-	wl.noResultsState.SetInputCapture(emptyInputCapture)
+	wl.table.ConfigureEmpty(theme.IconInfo, "No Workflows", "No workflows found in this namespace")
 
 	wl.clearPreview()
 
@@ -690,10 +645,6 @@ func (wl *WorkflowList) Focus(delegate func(p tview.Primitive)) {
 			return
 		}
 		delegate(wl.taskQueues.queueTable)
-		return
-	}
-	if len(wl.workflows) == 0 && len(wl.allWorkflows) == 0 {
-		delegate(wl.workflowsPanel)
 		return
 	}
 	switch wl.focusPane {
