@@ -267,7 +267,20 @@ func (wl *WorkflowList) showBatchDeleteConfirm() {
 		return
 	}
 
-	form := components.NewFormBuilder().
+	var form *components.Form
+	submit := func() {
+		if form == nil {
+			return
+		}
+		confirm, _ := form.GetValues()["confirm"].(string)
+		if confirm != "delete" {
+			return
+		}
+		wl.closeModal()
+		wl.executeBatchDelete(selected)
+	}
+
+	form = components.NewFormBuilder().
 		Text("confirm", "Type delete to confirm").
 		Placeholder("delete").
 		Validate(validators.Custom(func(value any) error {
@@ -278,12 +291,7 @@ func (wl *WorkflowList) showBatchDeleteConfirm() {
 		})).
 		Done().
 		OnSubmit(func(values map[string]any) {
-			confirm, _ := values["confirm"].(string)
-			if confirm != "delete" {
-				return
-			}
-			wl.closeModal()
-			wl.executeBatchDelete(selected)
+			submit()
 		}).
 		OnCancel(func() {
 			wl.closeModal()
@@ -312,8 +320,12 @@ This action cannot be undone.[-]
 	})
 	modal.SetContent(content)
 	modal.SetHints([]components.KeyHint{
-		{Key: "Ctrl+S", Description: "Delete"},
+		{Key: "Enter", Description: "Delete"},
 		{Key: "Esc", Description: "Cancel"},
+	})
+	modal.SetOnSubmit(submit)
+	modal.SetOnCancel(func() {
+		wl.closeModal()
 	})
 
 	wl.app.PushModal(modal)
