@@ -32,8 +32,8 @@ func TestResizableModalToggleMaximize(t *testing.T) {
 	if maxW <= restW || maxH <= restH {
 		t.Fatalf("maximize should grow the panel: rest=%dx%d max=%dx%d", restW, restH, maxW, maxH)
 	}
-	if maxW != 78 || maxH != 22 {
-		t.Fatalf("maximized size: got %dx%d", maxW, maxH)
+	if maxW != 80 || maxH != 24 {
+		t.Fatalf("maximized size should be full screen, got %dx%d", maxW, maxH)
 	}
 
 	modal.toggleMaximize()

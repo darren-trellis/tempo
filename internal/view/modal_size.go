@@ -3,19 +3,16 @@ package view
 import (
 	"github.com/atterpac/jig/components"
 	"github.com/gdamore/tcell/v2"
+	"github.com/rivo/tview"
 )
 
 type resizableModal struct {
 	*components.Modal
 	maximized bool
-	margin    int
 }
 
 func newResizableModal(cfg components.ModalConfig) *resizableModal {
-	return &resizableModal{
-		Modal:  components.NewModal(cfg),
-		margin: 1,
-	}
+	return &resizableModal{Modal: components.NewModal(cfg)}
 }
 
 func (m *resizableModal) toggleMaximize() {
@@ -23,15 +20,19 @@ func (m *resizableModal) toggleMaximize() {
 }
 
 func (m *resizableModal) Draw(screen tcell.Screen) {
-	m.Modal.Draw(screen)
 	if !m.maximized {
+		m.Modal.Draw(screen)
 		return
 	}
-	x, y, w, h := m.GetRect()
-	margin := m.margin
-	if w <= 2*margin || h <= 2*margin {
-		margin = 0
+	drawMaximizedOverlay(screen, m)
+}
+
+func drawMaximizedOverlay(screen tcell.Screen, current tview.Primitive) {
+	m, ok := current.(*resizableModal)
+	if !ok || !m.maximized {
+		return
 	}
-	m.GetPanel().SetRect(x+margin, y+margin, w-2*margin, h-2*margin)
+	w, h := screen.Size()
+	m.GetPanel().SetRect(0, 0, w, h)
 	m.GetPanel().Draw(screen)
 }

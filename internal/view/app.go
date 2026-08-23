@@ -125,6 +125,9 @@ func (a *App) buildApp() {
 
 	// Wire up toast rendering as an overlay
 	a.app.GetApplication().SetAfterDrawFunc(func(screen tcell.Screen) {
+		if a.app != nil && a.app.Pages() != nil {
+			drawMaximizedOverlay(screen, a.app.Pages().Current())
+		}
 		w, h := screen.Size()
 		a.toasts.Draw(screen, w, h)
 	})
