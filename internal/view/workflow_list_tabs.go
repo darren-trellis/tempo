@@ -29,7 +29,7 @@ func (wl *WorkflowList) setupListTabs() {
 		SetShowIcons(true).
 		SetShowBadges(false).
 		AddTabWithIcon("Workflows (List)", theme.IconWorkflow, wl.tableScroll).
-		AddTabWithIcon("Task Queues", theme.IconTaskQueue, wl.taskQueues).
+		AddTabWithIcon("Task Queues", theme.IconTaskQueue, wl.taskQueues.queueTable).
 		SetOnChange(func(index int, name string) {
 			if index == int(listTaskQueues) {
 				wl.setListKind(listTaskQueues)
@@ -86,16 +86,44 @@ func isJigTabsNavKey(event *tcell.EventKey) bool {
 }
 
 func (wl *WorkflowList) ensureTaskQueues() {
-	if wl.taskQueues != nil {
-		if wl.taskQueuesActive() {
-			wl.taskQueues.Start()
-		}
-		return
+	if wl.taskQueues == nil {
+		wl.taskQueues = NewTaskQueueView(wl.app)
 	}
-	wl.taskQueues = NewTaskQueueView(wl.app)
 	if wl.taskQueuesActive() {
 		wl.taskQueues.Start()
+		wl.bindTaskQueueKeys()
 	}
+}
+
+func (wl *WorkflowList) bindTaskQueueKeys() {
+	if wl.taskQueues == nil {
+		return
+	}
+	tq := wl.taskQueues
+	tq.queueTable.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		if wl.handleFocusCycleKey(event) || wl.handleListTabKey(event) {
+			return nil
+		}
+		switch event.Rune() {
+		case '/':
+			tq.showSearch()
+			return nil
+		case 'r':
+			tq.refreshCurrentQueue()
+			return nil
+		}
+		return event
+	})
+	tq.pollerTable.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		if wl.handleFocusCycleKey(event) || wl.handleListTabKey(event) {
+			return nil
+		}
+		if event.Rune() == 'r' {
+			tq.refreshCurrentQueue()
+			return nil
+		}
+		return event
+	})
 }
 
 func (wl *WorkflowList) taskQueuesActive() bool {
@@ -117,6 +145,8 @@ func (wl *WorkflowList) setListKind(kind listKind) {
 	if kind == listTaskQueues {
 		wl.ensureTaskQueues()
 		wl.focusPane = focusWorkflows
+	} else if wl.focusPane == focusPollers {
+		wl.focusPane = focusWorkflows
 	}
 	if wl.app != nil && wl.app.JigApp() != nil {
 		wl.app.updateCrumbs()
@@ -136,7 +166,7 @@ func (wl *WorkflowList) handleListTabKey(event *tcell.EventKey) bool {
 	if event == nil {
 		return false
 	}
-	if wl.previewModeEnabled() && !wl.taskQueuesActive() {
+	if wl.previewModeEnabled() && !wl.taskQueuesActive() && wl.focusPane != focusWorkflows {
 		return false
 	}
 	switch event.Rune() {

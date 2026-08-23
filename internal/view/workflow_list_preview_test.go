@@ -44,17 +44,32 @@ func TestWorkflowTableKeepsHorizontalScrollKeys(t *testing.T) {
 		t.Fatalf("end should jump to the next column, offset=%d", wl.tableScroll.offset)
 	}
 
-	if !wl.handlePreviewTabKey(tcell.NewEventKey(tcell.KeyRune, ']', 0)) {
-		t.Fatal("] should still switch preview tabs")
+	if wl.handlePreviewTabKey(tcell.NewEventKey(tcell.KeyRune, ']', 0)) {
+		t.Fatal("] should not switch preview tabs from the main window")
 	}
-	if wl.previewKind != previewEvents {
-		t.Fatalf("] should go to events, got %d", wl.previewKind)
+	if !wl.handleListTabKey(tcell.NewEventKey(tcell.KeyRune, ']', 0)) {
+		t.Fatal("] should switch list tabs from the main window")
 	}
+	if !wl.taskQueuesActive() {
+		t.Fatal("] should open task queues from the main window")
+	}
+	wl.setListKind(listWorkflows)
 	if desc := hintDescription(wl.Hints(), "h/l"); desc != "" {
 		t.Fatalf("obvious scroll keys should stay off the footer, got %q", desc)
 	}
+	if desc := hintDescription(wl.Hints(), "[/]/1-2"); desc != "View" {
+		t.Fatalf("main window should use [/]/1-2, got %q", desc)
+	}
+
+	wl.focusPane = focusEvents
 	if desc := hintDescription(wl.Hints(), "[/]/1-3"); desc != "View" {
-		t.Fatalf("preview tabs should use [/]/1-3, got %q", desc)
+		t.Fatalf("preview should use [/]/1-3, got %q", desc)
+	}
+	if !wl.handlePreviewTabKey(tcell.NewEventKey(tcell.KeyRune, ']', 0)) {
+		t.Fatal("] should switch preview tabs when preview is focused")
+	}
+	if wl.previewKind != previewEvents {
+		t.Fatalf("] should go to events, got %d", wl.previewKind)
 	}
 }
 

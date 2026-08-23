@@ -39,6 +39,7 @@ func TestPreviewActivitiesFromEvents(t *testing.T) {
 func TestPreviewTabKeys(t *testing.T) {
 	wl := NewWorkflowList(&App{}, "default")
 	wl.togglePreviewMode()
+	wl.focusPane = focusEvents
 
 	if ev := wl.handlePreviewKeys(tcell.NewEventKey(tcell.KeyRune, 'h', 0)); ev == nil {
 		t.Fatal("h should not switch preview tabs")

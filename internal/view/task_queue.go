@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/atterpac/jig/components"
-	"github.com/atterpac/jig/input"
 	"github.com/atterpac/jig/theme"
 	"github.com/galaxy-io/tempo/internal/temporal"
 	"github.com/gdamore/tcell/v2"
@@ -74,7 +73,6 @@ func (tq *TaskQueueView) setup() {
 	// Create panels with icons (blubber pattern)
 	tq.baseTitle = fmt.Sprintf("%s Task Queues", theme.IconTaskQueue)
 	tq.queuePanel = components.NewPanel().SetTitle(tq.baseTitle)
-	tq.queuePanel.SetContent(tq.queueTable)
 
 	tq.pollerPanel = components.NewPanel().SetTitle(fmt.Sprintf("%s Pollers", theme.IconActivity))
 	tq.pollerPanel.SetContent(tq.pollerTable)
@@ -90,9 +88,6 @@ func (tq *TaskQueueView) setup() {
 		}
 	})
 
-	// Two-column layout
-	tq.AddItem(tq.queuePanel, 0, 1, true)
-	tq.AddItem(tq.pollerPanel, 0, 1, false)
 }
 
 func (tq *TaskQueueView) setLoading(loading bool) {
@@ -409,45 +404,6 @@ func (tq *TaskQueueView) Name() string {
 
 // Start is called when the view becomes active.
 func (tq *TaskQueueView) Start() {
-	queueBindings := input.NewKeyBindings().
-		On(tcell.KeyTab, func(e *tcell.EventKey) bool {
-			tq.app.JigApp().SetFocus(tq.pollerTable)
-			return true
-		}).
-		OnRune('/', func(e *tcell.EventKey) bool {
-			tq.showSearch()
-			return true
-		}).
-		OnRune('r', func(e *tcell.EventKey) bool {
-			tq.refreshCurrentQueue()
-			return true
-		})
-
-	pollerBindings := input.NewKeyBindings().
-		On(tcell.KeyTab, func(e *tcell.EventKey) bool {
-			tq.app.JigApp().SetFocus(tq.queueTable)
-			return true
-		}).
-		OnRune('r', func(e *tcell.EventKey) bool {
-			tq.refreshCurrentQueue()
-			return true
-		})
-
-	tq.queueTable.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
-		if queueBindings.Handle(event) {
-			return nil
-		}
-		return event
-	})
-
-	tq.pollerTable.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
-		if pollerBindings.Handle(event) {
-			return nil
-		}
-		return event
-	})
-
-	// Load data when view becomes active
 	tq.loadData()
 }
 

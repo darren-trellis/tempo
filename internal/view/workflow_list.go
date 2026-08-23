@@ -18,6 +18,7 @@ const (
 	focusEvents
 	focusEventDetail
 	focusTimeline
+	focusPollers
 )
 
 // WorkflowList displays a list of workflows.
@@ -486,11 +487,15 @@ func (wl *WorkflowList) Stop() {
 // Hints returns keybinding hints for this view.
 func (wl *WorkflowList) Hints() []KeyHint {
 	if wl.taskQueuesActive() {
+		esc := "Workflows"
+		if wl.focusPane == focusPollers {
+			esc = "Queues"
+		}
 		return []KeyHint{
 			{Key: "[/]/1-2", Description: "View"},
 			{Key: "/", Description: "Search"},
 			{Key: "r", Description: "Refresh"},
-			{Key: "esc", Description: "Workflows"},
+			{Key: "esc", Description: esc},
 		}
 	}
 
@@ -576,7 +581,7 @@ func (wl *WorkflowList) workflowPaneHints() []KeyHint {
 	if wl.previewModeEnabled() {
 		hints = []KeyHint{
 			{Key: "enter", Description: wl.previewKind.title()},
-			{Key: "[/]/1-3", Description: "View"},
+			{Key: "[/]/1-2", Description: "View"},
 			{Key: "i", Description: "Input/Output"},
 		}
 		hints = append(hints,
@@ -623,6 +628,10 @@ func (wl *WorkflowList) workflowPaneHints() []KeyHint {
 
 // HandleEscape implements EscapeHandler to clear filter state before navigation.
 func (wl *WorkflowList) HandleEscape() bool {
+	if wl.taskQueuesActive() && wl.focusPane == focusPollers {
+		wl.setFocusPane(focusWorkflows)
+		return true
+	}
 	if wl.taskQueuesActive() {
 		wl.setListKind(listWorkflows)
 		return true
@@ -641,7 +650,11 @@ func (wl *WorkflowList) HandleEscape() bool {
 // Focus sets focus to the table.
 func (wl *WorkflowList) Focus(delegate func(p tview.Primitive)) {
 	if wl.taskQueuesActive() && wl.taskQueues != nil {
-		delegate(wl.taskQueues)
+		if wl.focusPane == focusPollers {
+			delegate(wl.taskQueues.pollerTable)
+			return
+		}
+		delegate(wl.taskQueues.queueTable)
 		return
 	}
 	if len(wl.workflows) == 0 && len(wl.allWorkflows) == 0 {

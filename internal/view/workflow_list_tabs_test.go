@@ -86,10 +86,44 @@ func TestWorkflowsTabDoesNotStealFocusCycle(t *testing.T) {
 func TestWorkflowListPreviewKeepsTabKeys(t *testing.T) {
 	wl := NewWorkflowList(&App{}, "default")
 	wl.togglePreviewMode()
+	if !wl.handleListTabKey(tcell.NewEventKey(tcell.KeyRune, ']', 0)) {
+		t.Fatal("] should switch list tabs when the main window is focused")
+	}
+	if !wl.taskQueuesActive() {
+		t.Fatal("] should open task queues from the main window")
+	}
+
+	wl.setListKind(listWorkflows)
+	wl.focusPane = focusEvents
 	if wl.handleListTabKey(tcell.NewEventKey(tcell.KeyRune, ']', 0)) {
-		t.Fatal("] should stay on preview tabs while preview is open")
+		t.Fatal("] should stay on preview tabs when preview is focused")
 	}
 	if !wl.handlePreviewTabKey(tcell.NewEventKey(tcell.KeyRune, ']', 0)) {
 		t.Fatal("] should still switch preview tabs")
+	}
+}
+
+func TestTaskQueuesShowPollersAlongside(t *testing.T) {
+	wl := NewWorkflowList(&App{}, "default")
+	if wl.mainFlex.GetItemCount() != 1 {
+		t.Fatalf("workflows-only layout: %d", wl.mainFlex.GetItemCount())
+	}
+	wl.setListKind(listTaskQueues)
+	if wl.mainFlex.GetItemCount() != 2 {
+		t.Fatalf("task queues should sit beside pollers, got %d panes", wl.mainFlex.GetItemCount())
+	}
+	if wl.taskQueues.GetItemCount() != 0 {
+		t.Fatal("pollers should not be nested inside the task queues tab")
+	}
+	if hintDescription(wl.Hints(), "esc") != "Workflows" {
+		t.Fatalf("queues esc: %q", hintDescription(wl.Hints(), "esc"))
+	}
+
+	wl.focusPane = focusPollers
+	if hintDescription(wl.Hints(), "esc") != "Queues" {
+		t.Fatalf("pollers esc: %q", hintDescription(wl.Hints(), "esc"))
+	}
+	if !wl.HandleEscape() || wl.focusPane != focusWorkflows || !wl.taskQueuesActive() {
+		t.Fatal("escape from pollers should return to queues")
 	}
 }
