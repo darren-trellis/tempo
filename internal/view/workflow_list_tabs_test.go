@@ -127,3 +127,30 @@ func TestTaskQueuesShowPollersAlongside(t *testing.T) {
 		t.Fatal("escape from pollers should return to queues")
 	}
 }
+
+func TestTaskQueueKeysSurviveModalRestart(t *testing.T) {
+	wl := NewWorkflowList(&App{}, "default")
+	wl.setListKind(listTaskQueues)
+	if !wl.taskQueuesActive() {
+		t.Fatal("task queues should be active")
+	}
+	if wl.shouldFocusWorkflowTable() {
+		t.Fatal("workflow table should not take focus on the task queues tab")
+	}
+
+	wl.taskQueues.Stop()
+	if wl.taskQueues.queueTable.GetInputCapture() != nil {
+		t.Fatal("stop should clear queue captures")
+	}
+
+	wl.Start()
+	if wl.taskQueues.queueTable.GetInputCapture() == nil {
+		t.Fatal("start should restore queue keybindings after a modal")
+	}
+	if wl.shouldFocusWorkflowTable() {
+		t.Fatal("start should keep focus on task queues")
+	}
+	if hintDescription(wl.Hints(), "[/]/1-2") != "View" {
+		t.Fatalf("hints after restart: %q", hintDescription(wl.Hints(), "[/]/1-2"))
+	}
+}

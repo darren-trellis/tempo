@@ -434,12 +434,27 @@ func (wl *WorkflowList) Start() {
 
 	if wl.taskQueuesActive() {
 		wl.ensureTaskQueues()
+		wl.restoreFocus()
+		return
 	}
 	if wl.keepDataOnStart {
 		wl.keepDataOnStart = false
+		wl.restoreFocus()
 		return
 	}
 	wl.loadData()
+}
+
+func (wl *WorkflowList) restoreFocus() {
+	if wl.app != nil && wl.app.JigApp() != nil {
+		wl.setFocusPane(wl.focusPane)
+		return
+	}
+	wl.applyFocusStyles()
+}
+
+func (wl *WorkflowList) shouldFocusWorkflowTable() bool {
+	return !wl.taskQueuesActive() && wl.focusPane == focusWorkflows
 }
 
 func (wl *WorkflowList) handleWorkflowScroll(event *tcell.EventKey) bool {
