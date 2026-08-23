@@ -30,3 +30,12 @@ func TestOverlayModalDrawsBackground(t *testing.T) {
 		t.Fatalf("background should remain visible, got %q", string(r))
 	}
 }
+
+func TestOverlayModalHints(t *testing.T) {
+	modal := newOverlayModal(components.ModalConfig{Title: "Columns", Width: 20, Height: 8}, tview.NewBox())
+	modal.SetHints([]components.KeyHint{{Key: "enter", Description: "Save"}})
+	hints := modal.Hints()
+	if len(hints) != 1 || hints[0].Key != "enter" || hints[0].Description != "Save" {
+		t.Fatalf("hints=%+v", hints)
+	}
+}

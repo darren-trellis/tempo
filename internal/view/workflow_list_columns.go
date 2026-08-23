@@ -306,7 +306,7 @@ func (wl *WorkflowList) showColumnEditor() {
 		})
 
 	table.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
-		if event.Key() == tcell.KeyCtrlS {
+		if event.Key() == tcell.KeyEnter {
 			save()
 			return nil
 		}
@@ -332,20 +332,25 @@ func (wl *WorkflowList) showColumnEditor() {
 		Height: 20,
 	}, wl)
 	modal.SetContent(table)
-	modal.SetHints([]components.KeyHint{
+	hints := []components.KeyHint{
 		{Key: "j/k", Description: "Select"},
 		{Key: "J/K", Description: "Reorder"},
 		{Key: "+/-", Description: "Width"},
 		{Key: "space", Description: "Hide"},
 		{Key: "r", Description: "Reset"},
-		{Key: "Ctrl+S", Description: "Save"},
-		{Key: "Esc", Description: "Cancel"},
-	})
+		{Key: "enter", Description: "Save"},
+		{Key: "esc", Description: "Cancel"},
+	}
+	modal.SetHints(hints)
+	modal.SetOnSubmit(save)
 	modal.SetOnCancel(func() {
 		wl.closeModal()
 	})
 
 	wl.app.JigApp().Pages().Push(modal)
+	if wl.app.JigApp().Menu() != nil {
+		wl.app.JigApp().Menu().SetHints(hints)
+	}
 	wl.app.JigApp().SetFocus(table)
 }
 
