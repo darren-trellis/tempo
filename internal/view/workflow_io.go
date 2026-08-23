@@ -95,10 +95,10 @@ func showWorkflowIO(app *App, workflowType, input, output string, onClose func()
 	applyIOHints := func() {
 		maxHint := "Maximize"
 		if modal.maximized {
-			maxHint = "Restore"
+			maxHint = "Minimize"
 		}
 		modal.SetHints([]components.KeyHint{
-			{Key: "tab/h/l", Description: "Switch"},
+			{Key: "tab/h/l/←/→", Description: "Switch"},
 			{Key: "j/k", Description: "Scroll"},
 			{Key: "m", Description: maxHint},
 			{Key: "e", Description: "Editor"},
@@ -152,6 +152,16 @@ func showWorkflowIO(app *App, workflowType, input, output string, onClose func()
 			return nil
 		case tcell.KeyTab, tcell.KeyBacktab:
 			switchFocus()
+			return nil
+		case tcell.KeyLeft:
+			if !focusedInput {
+				switchFocus()
+			}
+			return nil
+		case tcell.KeyRight:
+			if focusedInput {
+				switchFocus()
+			}
 			return nil
 		case tcell.KeyDown:
 			scrollView(1)
