@@ -57,6 +57,32 @@ func TestWorkflowListTaskQueueTab(t *testing.T) {
 	}
 }
 
+func TestWorkflowsTabDoesNotStealFocusCycle(t *testing.T) {
+	wl := NewWorkflowList(&App{}, "default")
+	capture := wl.listTabs.GetInputCapture()
+	if capture == nil {
+		t.Fatal("workflows tabs should capture keys")
+	}
+	if ev := capture(tcell.NewEventKey(tcell.KeyTab, 0, tcell.ModNone)); ev != nil {
+		t.Fatal("tab should be consumed")
+	}
+	if wl.taskQueuesActive() {
+		t.Fatal("tab should not switch to task queues")
+	}
+
+	wl.loadMockData()
+	wl.togglePreviewMode()
+	if ev := capture(tcell.NewEventKey(tcell.KeyTab, 0, tcell.ModNone)); ev != nil {
+		t.Fatal("tab should still be consumed in preview")
+	}
+	if wl.taskQueuesActive() {
+		t.Fatal("tab should cycle panes, not list tabs")
+	}
+	if wl.focusPane == focusWorkflows {
+		t.Fatal("tab should move focus out of the workflows pane")
+	}
+}
+
 func TestWorkflowListPreviewKeepsTabKeys(t *testing.T) {
 	wl := NewWorkflowList(&App{}, "default")
 	wl.togglePreviewMode()

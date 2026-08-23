@@ -160,7 +160,7 @@ func (wl *WorkflowList) setup() {
 	wl.applyPreviewLayout()
 
 	emptyInputCapture := func(event *tcell.EventKey) *tcell.EventKey {
-		if wl.handleListTabKey(event) || wl.handlePreviewTabKey(event) {
+		if wl.handleFocusCycleKey(event) || wl.handleListTabKey(event) || wl.handlePreviewTabKey(event) {
 			return nil
 		}
 		switch event.Rune() {
@@ -407,16 +407,10 @@ func (wl *WorkflowList) Start() {
 			return false
 		}).
 		On(tcell.KeyTab, func(e *tcell.EventKey) bool {
-			if !wl.previewModeEnabled() && !wl.timelineVisible {
-				return false
-			}
 			wl.cycleFocus(1)
 			return true
 		}).
 		On(tcell.KeyBacktab, func(e *tcell.EventKey) bool {
-			if !wl.previewModeEnabled() && !wl.timelineVisible {
-				return false
-			}
 			wl.cycleFocus(-1)
 			return true
 		})

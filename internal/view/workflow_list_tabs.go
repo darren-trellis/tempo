@@ -39,7 +39,50 @@ func (wl *WorkflowList) setupListTabs() {
 		})
 	wl.listTabs.SetActive(int(listWorkflows))
 	wl.workflowTab = wl.listTabs.GetActiveTab()
+	wl.listTabs.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		if wl.handleFocusCycleKey(event) {
+			return nil
+		}
+		if wl.handleListTabKey(event) {
+			return nil
+		}
+		if isJigTabsNavKey(event) {
+			return nil
+		}
+		return event
+	})
 	wl.workflowsPanel.SetContent(wl.listTabs)
+}
+
+func (wl *WorkflowList) handleFocusCycleKey(event *tcell.EventKey) bool {
+	if event == nil {
+		return false
+	}
+	switch event.Key() {
+	case tcell.KeyTab:
+		wl.cycleFocus(1)
+		return true
+	case tcell.KeyBacktab:
+		wl.cycleFocus(-1)
+		return true
+	}
+	return false
+}
+
+func isJigTabsNavKey(event *tcell.EventKey) bool {
+	if event == nil {
+		return false
+	}
+	switch event.Key() {
+	case tcell.KeyTab, tcell.KeyBacktab:
+		return true
+	case tcell.KeyRune:
+		switch event.Rune() {
+		case '1', '2', '3', '4', '5', '6', '7', '8', '9', 'H', 'L':
+			return true
+		}
+	}
+	return false
 }
 
 func (wl *WorkflowList) ensureTaskQueues() {
