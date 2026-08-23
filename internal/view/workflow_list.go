@@ -23,37 +23,41 @@ const (
 // WorkflowList displays a list of workflows.
 type WorkflowList struct {
 	*tview.Flex
-	app               *App
-	namespace         string
-	table             *components.Table
-	workflowsPanel    *components.Panel
-	rightFlex         *tview.Flex
-	eventTable        *components.Table
-	eventDetail       *tview.TextView
-	eventsPanel       *components.Panel
-	eventDetailPanel  *components.Panel
-	focusPane         workflowFocusPane
-	previewEvents     []temporal.EnhancedHistoryEvent
-	previewWorkflowID string
-	previewRunID      string
-	previewGen        uint64
-	previewTimer      *time.Timer
-	previewMode       bool
-	previewCache      *previewCache
-	emptyState        *components.EmptyState
-	noResultsState    *components.EmptyState
-	allWorkflows      []temporal.Workflow // Full unfiltered list
-	workflows         []temporal.Workflow // Filtered list for display
-	filterText        string
-	visibilityQuery   string // Temporal visibility query
-	loading           bool
-	autoRefresh       bool
-	refreshTicker     *time.Ticker
-	stopRefresh       chan struct{}
-	selectionMode     bool     // Multi-select mode active
-	searchHistory     []string // History of visibility queries
-	historyIndex      int      // Current position in history (-1 = not browsing)
-	maxHistorySize    int      // Maximum number of history entries
+	app                 *App
+	namespace           string
+	table               *components.Table
+	workflowsPanel      *components.Panel
+	rightFlex           *tview.Flex
+	eventTable          *components.Table
+	eventDetail         *tview.TextView
+	eventsPanel         *components.Panel
+	eventDetailPanel    *components.Panel
+	workflowDetail      *tview.TextView
+	workflowDetailPanel *components.Panel
+	focusPane           workflowFocusPane
+	previewKind         previewKind
+	previewEvents       []temporal.EnhancedHistoryEvent
+	previewActivities   []previewActivity
+	previewWorkflowID   string
+	previewRunID        string
+	previewGen          uint64
+	previewTimer        *time.Timer
+	previewMode         bool
+	previewCache        *previewCache
+	emptyState          *components.EmptyState
+	noResultsState      *components.EmptyState
+	allWorkflows        []temporal.Workflow // Full unfiltered list
+	workflows           []temporal.Workflow // Filtered list for display
+	filterText          string
+	visibilityQuery     string // Temporal visibility query
+	loading             bool
+	autoRefresh         bool
+	refreshTicker       *time.Ticker
+	stopRefresh         chan struct{}
+	selectionMode       bool     // Multi-select mode active
+	searchHistory       []string // History of visibility queries
+	historyIndex        int      // Current position in history (-1 = not browsing)
+	maxHistorySize      int      // Maximum number of history entries
 	// Server-side completion support
 	serverCompletions   []string            // Cached completions from server query
 	lastCompletionQuery string              // Last query sent to server (to avoid duplicates)
@@ -126,8 +130,6 @@ func (wl *WorkflowList) setup() {
 
 	wl.rightFlex = tview.NewFlex().SetDirection(tview.FlexRow)
 	wl.rightFlex.SetBackgroundColor(theme.Bg())
-	wl.rightFlex.AddItem(wl.eventsPanel, 0, 3, false)
-	wl.rightFlex.AddItem(wl.eventDetailPanel, 0, 2, false)
 
 	wl.applyPreviewLayout()
 
@@ -154,6 +156,16 @@ func (wl *WorkflowList) setup() {
 		case 'p':
 			wl.togglePreviewMode()
 			return nil
+		case '[':
+			if wl.previewModeEnabled() {
+				wl.cyclePreviewKind(-1)
+				return nil
+			}
+		case ']':
+			if wl.previewModeEnabled() {
+				wl.cyclePreviewKind(1)
+				return nil
+			}
 		}
 		return event
 	}
@@ -191,6 +203,10 @@ func (wl *WorkflowList) RefreshTheme() {
 	wl.eventTable.SetBackgroundColor(bg)
 	wl.eventDetail.SetBackgroundColor(bg)
 	wl.eventDetail.SetTextColor(theme.Fg())
+	if wl.workflowDetail != nil {
+		wl.workflowDetail.SetBackgroundColor(bg)
+		wl.workflowDetail.SetTextColor(theme.Fg())
+	}
 	if wl.rightFlex != nil {
 		wl.rightFlex.SetBackgroundColor(bg)
 	}
@@ -330,6 +346,20 @@ func (wl *WorkflowList) Start() {
 			wl.togglePreviewMode()
 			return true
 		}).
+		OnRune('[', func(e *tcell.EventKey) bool {
+			if !wl.previewModeEnabled() {
+				return false
+			}
+			wl.cyclePreviewKind(-1)
+			return true
+		}).
+		OnRune(']', func(e *tcell.EventKey) bool {
+			if !wl.previewModeEnabled() {
+				return false
+			}
+			wl.cyclePreviewKind(1)
+			return true
+		}).
 		OnRune('i', func(e *tcell.EventKey) bool {
 			return wl.showPreviewIO()
 		}).
@@ -399,8 +429,9 @@ func (wl *WorkflowList) Hints() []KeyHint {
 		switch wl.focusPane {
 		case focusEvents:
 			return []KeyHint{
-				{Key: "j/k", Description: "Events"},
+				{Key: "j/k", Description: wl.previewKind.title()},
 				{Key: "tab", Description: "Details"},
+				{Key: "[/]", Description: "View"},
 				{Key: "i", Description: "Input/Output"},
 				{Key: "p", Description: "Preview"},
 				{Key: "e", Description: "Event Graph"},
@@ -410,6 +441,7 @@ func (wl *WorkflowList) Hints() []KeyHint {
 			return []KeyHint{
 				{Key: "j/k", Description: "Scroll"},
 				{Key: "tab", Description: "Workflows"},
+				{Key: "[/]", Description: "View"},
 				{Key: "i", Description: "Input/Output"},
 				{Key: "p", Description: "Preview"},
 				{Key: "esc", Description: "Workflows"},
@@ -423,8 +455,9 @@ func (wl *WorkflowList) Hints() []KeyHint {
 	}
 	if wl.previewModeEnabled() {
 		hints = []KeyHint{
-			{Key: "enter", Description: "Events"},
-			{Key: "tab", Description: "Events"},
+			{Key: "enter", Description: wl.previewKind.title()},
+			{Key: "tab", Description: wl.previewKind.title()},
+			{Key: "[/]", Description: "View"},
 			{Key: "i", Description: "Input/Output"},
 			{Key: "p", Description: "Preview"},
 		}

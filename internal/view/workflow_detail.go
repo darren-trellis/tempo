@@ -307,12 +307,12 @@ func (wd *WorkflowDetail) render() {
 		return
 	}
 
-	w := wd.workflow
+	wd.workflowView.SetText(formatWorkflowInfo(*wd.workflow))
+}
+
+func formatWorkflowInfo(w temporal.Workflow) string {
 	now := time.Now()
 	statusHandle := temporal.GetWorkflowStatus(w.Status)
-	statusColor := statusHandle.ColorTag()
-	statusIcon := statusHandle.Icon()
-
 	durationStr := "In progress"
 	if w.EndTime != nil {
 		durationStr = w.EndTime.Sub(w.StartTime).Round(time.Second).String()
@@ -320,8 +320,7 @@ func (wd *WorkflowDetail) render() {
 		durationStr = time.Since(w.StartTime).Round(time.Second).String()
 	}
 
-	// Combined workflow info
-	workflowText := fmt.Sprintf(`
+	return fmt.Sprintf(`
 [%s::b]ID[-:-:-]           [%s]%s[-]
 [%s::b]Type[-:-:-]         [%s]%s[-]
 [%s::b]Status[-:-:-]       [%s]%s %s[-]
@@ -331,13 +330,12 @@ func (wd *WorkflowDetail) render() {
 [%s::b]Run ID[-:-:-]       [%s]%s[-]`,
 		theme.TagFgDim(), theme.TagFg(), w.ID,
 		theme.TagFgDim(), theme.TagFg(), w.Type,
-		theme.TagFgDim(), statusColor, statusIcon, w.Status,
+		theme.TagFgDim(), statusHandle.ColorTag(), statusHandle.Icon(), w.Status,
 		theme.TagFgDim(), theme.TagFg(), formatRelativeTime(now, w.StartTime),
 		theme.TagFgDim(), theme.TagFg(), durationStr,
 		theme.TagFgDim(), theme.TagFg(), w.TaskQueue,
 		theme.TagFgDim(), theme.TagFgDim(), truncateStr(w.RunID, 25),
 	)
-	wd.workflowView.SetText(workflowText)
 }
 
 func (wd *WorkflowDetail) updateEventDetail(ev temporal.EnhancedHistoryEvent) {

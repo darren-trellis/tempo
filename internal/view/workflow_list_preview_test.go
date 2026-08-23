@@ -24,7 +24,7 @@ func TestPreviewModeLayout(t *testing.T) {
 	if wl.GetItemCount() != 2 {
 		t.Fatalf("preview should show events pane, got %d items", wl.GetItemCount())
 	}
-	if desc := hintDescription(wl.Hints(), "enter"); desc != "Events" {
+	if desc := hintDescription(wl.Hints(), "enter"); desc != "Activities" {
 		t.Fatalf("preview enter hint: got %q", desc)
 	}
 

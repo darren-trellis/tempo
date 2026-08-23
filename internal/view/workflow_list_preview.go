@@ -68,7 +68,11 @@ func (wl *WorkflowList) activateSelectedWorkflow() {
 	wf := wl.workflows[row]
 	if wl.previewModeEnabled() {
 		wl.schedulePreview(wf, false)
-		wl.setFocusPane(focusEvents)
+		if wl.previewKind == previewDetails {
+			wl.setFocusPane(focusEventDetail)
+		} else {
+			wl.setFocusPane(focusEvents)
+		}
 		return
 	}
 	if wl.app != nil {
@@ -78,11 +82,17 @@ func (wl *WorkflowList) activateSelectedWorkflow() {
 
 func (wl *WorkflowList) paneAt(x, y int) (workflowFocusPane, bool) {
 	if wl.previewModeEnabled() {
-		if wl.eventDetailPanel != nil && wl.eventDetailPanel.InRect(x, y) {
-			return focusEventDetail, true
-		}
-		if wl.eventsPanel != nil && wl.eventsPanel.InRect(x, y) {
-			return focusEvents, true
+		if wl.previewKind == previewDetails {
+			if wl.workflowDetailPanel != nil && wl.workflowDetailPanel.InRect(x, y) {
+				return focusEventDetail, true
+			}
+		} else {
+			if wl.eventDetailPanel != nil && wl.eventDetailPanel.InRect(x, y) {
+				return focusEventDetail, true
+			}
+			if wl.eventsPanel != nil && wl.eventsPanel.InRect(x, y) {
+				return focusEvents, true
+			}
 		}
 	}
 	if wl.workflowsPanel != nil && wl.workflowsPanel.InRect(x, y) {
@@ -141,12 +151,15 @@ func (wl *WorkflowList) applyPreviewLayout() {
 		wl.AddItem(wl.workflowsPanel, 0, 1, true)
 	}
 
-	if on && len(wl.workflows) > 0 && wl.table != nil {
-		row := wl.table.SelectedRow()
-		if row < 0 || row >= len(wl.workflows) {
-			row = 0
+	if on {
+		wl.applyPreviewPage()
+		if len(wl.workflows) > 0 && wl.table != nil {
+			row := wl.table.SelectedRow()
+			if row < 0 || row >= len(wl.workflows) {
+				row = 0
+			}
+			wl.schedulePreview(wl.workflows[row], false)
 		}
-		wl.schedulePreview(wl.workflows[row], false)
 	}
 
 	if wl.app != nil && wl.app.JigApp() != nil {
@@ -159,6 +172,73 @@ func (wl *WorkflowList) applyPreviewLayout() {
 func (wl *WorkflowList) togglePreviewMode() {
 	wl.previewMode = !wl.previewMode
 	wl.applyPreviewLayout()
+}
+
+func (wl *WorkflowList) cyclePreviewKind(delta int) {
+	if !wl.previewModeEnabled() {
+		return
+	}
+	next := (int(wl.previewKind) + delta) % 3
+	if next < 0 {
+		next += 3
+	}
+	wl.previewKind = previewKind(next)
+	wasPreview := wl.focusPane != focusWorkflows
+	wl.applyPreviewPage()
+	if wasPreview {
+		if wl.previewKind == previewDetails {
+			wl.setFocusPane(focusEventDetail)
+		} else {
+			wl.setFocusPane(focusEvents)
+		}
+		return
+	}
+	if wl.app != nil && wl.app.JigApp() != nil {
+		wl.app.JigApp().Menu().SetHints(wl.Hints())
+	}
+}
+
+func (wl *WorkflowList) applyPreviewPage() {
+	if wl.rightFlex == nil {
+		return
+	}
+	wl.rightFlex.Clear()
+	if wl.previewKind == previewDetails {
+		if wl.workflowDetailPanel != nil {
+			wl.rightFlex.AddItem(wl.workflowDetailPanel, 0, 1, false)
+		}
+	} else {
+		if wl.eventsPanel != nil {
+			wl.rightFlex.AddItem(wl.eventsPanel, 0, 3, false)
+		}
+		if wl.eventDetailPanel != nil {
+			wl.rightFlex.AddItem(wl.eventDetailPanel, 0, 2, false)
+		}
+	}
+	if wl.previewWorkflowID != "" {
+		if w, ok := wl.currentPreviewWorkflow(); ok {
+			wl.renderPreview(w)
+		}
+	}
+}
+
+func (wl *WorkflowList) currentPreviewWorkflow() (temporal.Workflow, bool) {
+	for _, w := range wl.workflows {
+		if w.ID == wl.previewWorkflowID && w.RunID == wl.previewRunID {
+			return w, true
+		}
+	}
+	row := -1
+	if wl.table != nil {
+		row = wl.table.SelectedRow()
+	}
+	if row >= 0 && row < len(wl.workflows) {
+		return wl.workflows[row], true
+	}
+	if len(wl.workflows) > 0 {
+		return wl.workflows[0], true
+	}
+	return temporal.Workflow{}, false
 }
 
 func (wl *WorkflowList) setupPreview() {
@@ -175,74 +255,106 @@ func (wl *WorkflowList) setupPreview() {
 	wl.eventDetail.SetBackgroundColor(theme.Bg())
 	wl.eventDetail.SetTextColor(theme.Fg())
 
-	wl.eventsPanel = components.NewPanel().SetTitle(fmt.Sprintf("%s Events", theme.IconEvent))
+	wl.eventsPanel = components.NewPanel().SetTitle(fmt.Sprintf("%s Activities", theme.IconActivity))
 	wl.eventsPanel.SetContent(wl.eventTable)
 
-	wl.eventDetailPanel = components.NewPanel().SetTitle(fmt.Sprintf("%s Event Details", theme.IconInfo))
+	wl.eventDetailPanel = components.NewPanel().SetTitle(fmt.Sprintf("%s Details", theme.IconInfo))
 	wl.eventDetailPanel.SetContent(wl.eventDetail)
 
+	wl.workflowDetail = tview.NewTextView().
+		SetDynamicColors(true).
+		SetTextAlign(tview.AlignLeft).
+		SetWordWrap(true).
+		SetScrollable(true)
+	wl.workflowDetail.SetBackgroundColor(theme.Bg())
+	wl.workflowDetail.SetTextColor(theme.Fg())
+
+	wl.workflowDetailPanel = components.NewPanel().SetTitle(fmt.Sprintf("%s Details", theme.IconWorkflow))
+	wl.workflowDetailPanel.SetContent(wl.workflowDetail)
+
 	wl.eventTable.SetSelectionChangedFunc(func(row, col int) {
-		if row > 0 && row-1 < len(wl.previewEvents) {
-			wl.eventDetail.SetText(formatSelectedEventDetail(wl.previewEvents[row-1]))
-			wl.eventDetail.ScrollToBeginning()
-		}
+		wl.updatePreviewSelection(row)
 	})
 
-	wl.eventTable.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
-		switch event.Key() {
-		case tcell.KeyTab:
-			wl.cycleFocus(1)
-			return nil
-		case tcell.KeyBacktab:
-			wl.cycleFocus(-1)
-			return nil
-		case tcell.KeyEscape:
-			wl.setFocusPane(focusWorkflows)
+	wl.eventTable.SetInputCapture(wl.handlePreviewKeys)
+	wl.eventDetail.SetInputCapture(wl.handlePreviewKeys)
+	wl.workflowDetail.SetInputCapture(wl.handlePreviewKeys)
+}
+
+func (wl *WorkflowList) handlePreviewKeys(event *tcell.EventKey) *tcell.EventKey {
+	switch event.Key() {
+	case tcell.KeyTab:
+		wl.cycleFocus(1)
+		return nil
+	case tcell.KeyBacktab:
+		wl.cycleFocus(-1)
+		return nil
+	case tcell.KeyEscape:
+		wl.setFocusPane(focusWorkflows)
+		return nil
+	}
+	switch event.Rune() {
+	case '[':
+		wl.cyclePreviewKind(-1)
+		return nil
+	case ']':
+		wl.cyclePreviewKind(1)
+		return nil
+	case 'p':
+		wl.togglePreviewMode()
+		return nil
+	case 'i':
+		if wl.showPreviewIO() {
 			return nil
 		}
-		if event.Rune() == 'p' {
-			wl.togglePreviewMode()
-			return nil
-		}
-		if event.Rune() == 'i' && wl.showPreviewIO() {
-			return nil
-		}
-		if event.Rune() == 'e' && wl.previewWorkflowID != "" {
+	case 'e':
+		if wl.app != nil && wl.previewWorkflowID != "" {
 			wl.app.NavigateToEvents(wl.previewWorkflowID, wl.previewRunID)
 			return nil
 		}
-		return event
-	})
+	}
+	return event
+}
 
-	wl.eventDetail.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
-		switch event.Key() {
-		case tcell.KeyTab:
-			wl.cycleFocus(1)
-			return nil
-		case tcell.KeyBacktab:
-			wl.cycleFocus(-1)
-			return nil
-		case tcell.KeyEscape:
-			wl.setFocusPane(focusWorkflows)
-			return nil
+func (wl *WorkflowList) updatePreviewSelection(row int) {
+	if row <= 0 {
+		return
+	}
+	idx := row - 1
+	if wl.previewKind == previewActivities {
+		if idx < len(wl.previewActivities) {
+			wl.eventDetail.SetText(formatSelectedActivityDetail(wl.previewActivities[idx]))
+			wl.eventDetail.ScrollToBeginning()
 		}
-		if event.Rune() == 'p' {
-			wl.togglePreviewMode()
-			return nil
-		}
-		if event.Rune() == 'i' && wl.showPreviewIO() {
-			return nil
-		}
-		return event
-	})
+		return
+	}
+	if idx < len(wl.previewEvents) {
+		wl.eventDetail.SetText(formatSelectedEventDetail(wl.previewEvents[idx]))
+		wl.eventDetail.ScrollToBeginning()
+	}
+}
+
+func (wl *WorkflowList) previewFocusOrder() []workflowFocusPane {
+	if wl.previewKind == previewDetails {
+		return []workflowFocusPane{focusWorkflows, focusEventDetail}
+	}
+	return []workflowFocusPane{focusWorkflows, focusEvents, focusEventDetail}
 }
 
 func (wl *WorkflowList) cycleFocus(delta int) {
-	next := (int(wl.focusPane) + delta) % 3
-	if next < 0 {
-		next += 3
+	order := wl.previewFocusOrder()
+	idx := 0
+	for i, pane := range order {
+		if pane == wl.focusPane {
+			idx = i
+			break
+		}
 	}
-	wl.setFocusPane(workflowFocusPane(next))
+	next := (idx + delta) % len(order)
+	if next < 0 {
+		next += len(order)
+	}
+	wl.setFocusPane(order[next])
 }
 
 func (wl *WorkflowList) setFocusPane(pane workflowFocusPane) {
@@ -255,7 +367,11 @@ func (wl *WorkflowList) setFocusPane(pane workflowFocusPane) {
 	case focusEvents:
 		wl.app.JigApp().SetFocus(wl.eventTable)
 	case focusEventDetail:
-		wl.app.JigApp().SetFocus(wl.eventDetail)
+		if wl.previewKind == previewDetails {
+			wl.app.JigApp().SetFocus(wl.workflowDetail)
+		} else {
+			wl.app.JigApp().SetFocus(wl.eventDetail)
+		}
 	default:
 		wl.app.JigApp().SetFocus(wl.table)
 	}
@@ -271,7 +387,10 @@ func (wl *WorkflowList) applyFocusStyles() {
 		wl.eventsPanel.SetFocused(wl.focusPane == focusEvents)
 	}
 	if wl.eventDetailPanel != nil {
-		wl.eventDetailPanel.SetFocused(wl.focusPane == focusEventDetail)
+		wl.eventDetailPanel.SetFocused(wl.previewKind != previewDetails && wl.focusPane == focusEventDetail)
+	}
+	if wl.workflowDetailPanel != nil {
+		wl.workflowDetailPanel.SetFocused(wl.previewKind == previewDetails && wl.focusPane == focusEventDetail)
 	}
 	if wl.table != nil {
 		wl.table.SetSelectable(wl.focusPane == focusWorkflows, false)
@@ -284,6 +403,8 @@ func (wl *WorkflowList) applyFocusStyles() {
 func (wl *WorkflowList) syncFocusFromPrimitives() {
 	pane := focusWorkflows
 	switch {
+	case wl.workflowDetail != nil && wl.workflowDetail.HasFocus():
+		pane = focusEventDetail
 	case wl.eventDetail != nil && wl.eventDetail.HasFocus():
 		pane = focusEventDetail
 	case wl.eventTable != nil && wl.eventTable.HasFocus():
@@ -298,21 +419,58 @@ func (wl *WorkflowList) syncFocusFromPrimitives() {
 	wl.applyFocusStyles()
 }
 
-func (wl *WorkflowList) clearPreview() {
-	wl.previewEvents = nil
-	wl.previewWorkflowID = ""
-	wl.previewRunID = ""
-	wl.eventTable.ClearRows()
-	wl.eventTable.SetHeaders("ID", "TIME", "TYPE", "NAME")
-	wl.eventDetail.SetText(fmt.Sprintf("[%s]Select a workflow to load events[-]", theme.TagFgDim()))
+func (wl *WorkflowList) previewPanelTitle(w temporal.Workflow) string {
+	title := fmt.Sprintf("%s %s", wl.previewKind.icon(), wl.previewKind.title())
+	if w.Type != "" {
+		title += " · " + truncate(w.Type, 24)
+	}
+	return title
+}
+
+func (wl *WorkflowList) setPreviewListTitle(w temporal.Workflow) {
+	title := wl.previewPanelTitle(w)
 	if wl.eventsPanel != nil {
-		wl.eventsPanel.SetTitle(fmt.Sprintf("%s Events", theme.IconEvent))
+		wl.eventsPanel.SetTitle(title)
+	}
+	if wl.workflowDetailPanel != nil {
+		wl.workflowDetailPanel.SetTitle(title)
 	}
 }
 
+func (wl *WorkflowList) clearPreview() {
+	wl.previewEvents = nil
+	wl.previewActivities = nil
+	wl.previewWorkflowID = ""
+	wl.previewRunID = ""
+	if wl.eventTable != nil {
+		wl.eventTable.ClearRows()
+		wl.eventTable.SetHeaders("STATUS", "NAME", "STARTED", "DURATION")
+	}
+	if wl.eventDetail != nil {
+		wl.eventDetail.SetText(fmt.Sprintf("[%s]Select a workflow to load preview[-]", theme.TagFgDim()))
+	}
+	if wl.workflowDetail != nil {
+		wl.workflowDetail.SetText(fmt.Sprintf("[%s]Select a workflow to load preview[-]", theme.TagFgDim()))
+	}
+	wl.setPreviewListTitle(temporal.Workflow{})
+}
+
 func (wl *WorkflowList) setPreviewStatus(title, message string) {
+	if wl.previewKind == previewDetails {
+		if wl.workflowDetail != nil {
+			wl.workflowDetail.SetText(fmt.Sprintf("[%s]%s[-]", theme.TagFgDim(), message))
+		}
+		if wl.workflowDetailPanel != nil {
+			wl.workflowDetailPanel.SetTitle(title)
+		}
+		return
+	}
 	wl.eventTable.ClearRows()
-	wl.eventTable.SetHeaders("ID", "TIME", "TYPE", "NAME")
+	if wl.previewKind == previewActivities {
+		wl.eventTable.SetHeaders("STATUS", "NAME", "STARTED", "DURATION")
+	} else {
+		wl.eventTable.SetHeaders("ID", "TIME", "TYPE", "NAME")
+	}
 	wl.eventDetail.SetText(fmt.Sprintf("[%s]%s[-]", theme.TagFgDim(), message))
 	if wl.eventsPanel != nil {
 		wl.eventsPanel.SetTitle(title)
@@ -343,10 +501,11 @@ func (wl *WorkflowList) schedulePreview(w temporal.Workflow, force bool) {
 	gen := atomic.AddUint64(&wl.previewGen, 1)
 	wl.previewWorkflowID = w.ID
 	wl.previewRunID = w.RunID
-	wl.setPreviewStatus(
-		fmt.Sprintf("%s %s", theme.IconEvent, truncate(w.Type, 28)),
-		"Loading events...",
-	)
+	if wl.previewKind == previewDetails {
+		wl.renderPreviewDetails(w)
+	} else {
+		wl.setPreviewStatus(wl.previewPanelTitle(w), "Loading...")
+	}
 
 	if wl.previewTimer != nil {
 		wl.previewTimer.Stop()
@@ -385,10 +544,7 @@ func (wl *WorkflowList) loadPreview(gen uint64, w temporal.Workflow) {
 			return
 		}
 		if err != nil {
-			wl.setPreviewStatus(
-				fmt.Sprintf("%s %s", theme.IconEvent, truncate(w.Type, 28)),
-				"Failed to load events: "+err.Error(),
-			)
+			wl.setPreviewStatus(wl.previewPanelTitle(w), "Failed to load preview: "+err.Error())
 			return
 		}
 		wl.showPreviewEvents(w, events)
@@ -397,19 +553,40 @@ func (wl *WorkflowList) loadPreview(gen uint64, w temporal.Workflow) {
 
 func (wl *WorkflowList) showPreviewEvents(w temporal.Workflow, events []temporal.EnhancedHistoryEvent) {
 	wl.previewEvents = events
+	wl.previewActivities = previewActivitiesFromEvents(events)
 	wl.previewCache.put(w.ID, w.RunID, events)
+	wl.renderPreview(w)
+}
+
+func (wl *WorkflowList) renderPreview(w temporal.Workflow) {
+	switch wl.previewKind {
+	case previewDetails:
+		wl.renderPreviewDetails(w)
+	case previewEvents:
+		wl.renderPreviewEvents(w)
+	default:
+		wl.renderPreviewActivities(w)
+	}
+}
+
+func (wl *WorkflowList) renderPreviewDetails(w temporal.Workflow) {
+	wl.setPreviewListTitle(w)
+	if wl.workflowDetail == nil {
+		return
+	}
+	wl.workflowDetail.SetText(formatWorkflowInfo(w))
+	wl.workflowDetail.ScrollToBeginning()
+}
+
+func (wl *WorkflowList) renderPreviewEvents(w temporal.Workflow) {
+	wl.setPreviewListTitle(w)
 	wl.eventTable.ClearRows()
 	wl.eventTable.SetHeaders("ID", "TIME", "TYPE", "NAME")
-	if wl.eventsPanel != nil {
-		wl.eventsPanel.SetTitle(fmt.Sprintf("%s %s", theme.IconEvent, truncate(w.Type, 28)))
-	}
-
-	if len(events) == 0 {
+	if len(wl.previewEvents) == 0 {
 		wl.eventDetail.SetText(fmt.Sprintf("[%s]No events[-]", theme.TagFgDim()))
 		return
 	}
-
-	for _, ev := range events {
+	for _, ev := range wl.previewEvents {
 		name := getEventNameDetail(&ev)
 		wl.eventTable.AddRowWithColor(eventColor(ev.Type),
 			fmt.Sprintf("%d", ev.ID),
@@ -419,16 +596,68 @@ func (wl *WorkflowList) showPreviewEvents(w temporal.Workflow, events []temporal
 		)
 	}
 	wl.eventTable.SelectRow(0)
-	wl.eventDetail.SetText(formatSelectedEventDetail(events[0]))
+	wl.eventDetail.SetText(formatSelectedEventDetail(wl.previewEvents[0]))
+}
+
+func (wl *WorkflowList) renderPreviewActivities(w temporal.Workflow) {
+	wl.setPreviewListTitle(w)
+	wl.eventTable.ClearRows()
+	wl.eventTable.SetHeaders("STATUS", "NAME", "STARTED", "DURATION")
+	if len(wl.previewActivities) == 0 {
+		wl.eventDetail.SetText(fmt.Sprintf("[%s]No activities[-]", theme.TagFgDim()))
+		return
+	}
+	for _, a := range wl.previewActivities {
+		name := a.Type
+		if name == "" {
+			name = "Activity"
+		}
+		wl.eventTable.AddRowWithColor(eventColor(a.Status),
+			a.Status,
+			truncateStr(name, 28),
+			a.StartTime.Format("15:04:05"),
+			a.duration(),
+		)
+	}
+	wl.eventTable.SelectRow(0)
+	wl.eventDetail.SetText(formatSelectedActivityDetail(wl.previewActivities[0]))
 }
 
 func mockPreviewEvents(w temporal.Workflow) []temporal.EnhancedHistoryEvent {
+	started := w.StartTime
+	if started.IsZero() {
+		started = time.Now().Add(-2 * time.Minute)
+	}
 	events := []temporal.EnhancedHistoryEvent{
 		{
 			ID:      1,
 			Type:    "WorkflowExecutionStarted",
-			Time:    w.StartTime,
+			Time:    started,
 			Details: "taskQueue: " + w.TaskQueue,
+		},
+		{
+			ID:           5,
+			Type:         "ActivityTaskScheduled",
+			Time:         started.Add(10 * time.Second),
+			ActivityType: "MockActivity",
+			ActivityID:   "1",
+			TaskQueue:    w.TaskQueue,
+		},
+		{
+			ID:               6,
+			Type:             "ActivityTaskStarted",
+			Time:             started.Add(15 * time.Second),
+			ActivityType:     "MockActivity",
+			ScheduledEventID: 5,
+			Attempt:          1,
+		},
+		{
+			ID:               7,
+			Type:             "ActivityTaskCompleted",
+			Time:             started.Add(30 * time.Second),
+			ActivityType:     "MockActivity",
+			ScheduledEventID: 5,
+			Result:           `{"ok":true}`,
 		},
 	}
 	if w.EndTime != nil {
@@ -437,7 +666,7 @@ func mockPreviewEvents(w temporal.Workflow) []temporal.EnhancedHistoryEvent {
 			endType = "WorkflowExecutionFailed"
 		}
 		events = append(events, temporal.EnhancedHistoryEvent{
-			ID:      2,
+			ID:      8,
 			Type:    endType,
 			Time:    *w.EndTime,
 			Details: "status: " + w.Status,
