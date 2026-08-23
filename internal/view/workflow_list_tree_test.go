@@ -36,6 +36,31 @@ func TestNestWorkflowsIndentsChildren(t *testing.T) {
 	}
 }
 
+func TestNestWorkflowsOrdersChildrenByStartTime(t *testing.T) {
+	parent := "root-wf"
+	now := time.Now()
+	workflows := []temporal.Workflow{
+		{ID: parent, StartTime: now.Add(-time.Hour)},
+		{ID: "second", StartTime: now.Add(-10 * time.Minute), ParentID: &parent},
+		{ID: "first", StartTime: now.Add(-40 * time.Minute), ParentID: &parent},
+		{ID: "third", StartTime: now.Add(-time.Minute), ParentID: &parent},
+	}
+
+	got, depths := nestWorkflows(workflows)
+	if len(got) != 4 {
+		t.Fatalf("len: %d", len(got))
+	}
+	want := []string{parent, "first", "second", "third"}
+	for i, id := range want {
+		if got[i].ID != id {
+			t.Fatalf("row %d: %q, want %q", i, got[i].ID, id)
+		}
+	}
+	if depths[0] != 0 || depths[1] != 1 || depths[2] != 1 || depths[3] != 1 {
+		t.Fatalf("depths: %v", depths)
+	}
+}
+
 func TestNestWorkflowsMissingParentStaysRoot(t *testing.T) {
 	missing := "not-in-list"
 	workflows := []temporal.Workflow{

@@ -2103,16 +2103,32 @@ func (c *Client) getChildWorkflowsFromEvents(ctx context.Context, namespace stri
 		}(childID)
 	}
 
-	// Collect results
-	var children []Workflow
+	found := make([]Workflow, 0, len(childIDs))
 	for range childIDs {
 		r := <-results
 		if r.err == nil && r.workflow.ID != "" {
-			children = append(children, r.workflow)
+			found = append(found, r.workflow)
 		}
 	}
 
-	return children, nil
+	return workflowsInIDsOrder(childIDs, found), nil
+}
+
+func workflowsInIDsOrder(ids []string, found []Workflow) []Workflow {
+	byID := make(map[string]Workflow, len(found))
+	for _, w := range found {
+		if w.ID == "" {
+			continue
+		}
+		byID[w.ID] = w
+	}
+	children := make([]Workflow, 0, len(ids))
+	for _, id := range ids {
+		if w, ok := byID[id]; ok {
+			children = append(children, w)
+		}
+	}
+	return children
 }
 
 // GetWorkflowRelationships returns the complete relationship graph for a workflow.

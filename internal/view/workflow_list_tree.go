@@ -91,7 +91,7 @@ func nestWorkflows(workflows []temporal.Workflow) ([]temporal.Workflow, []int) {
 
 	for p := range children {
 		sort.SliceStable(children[p], func(a, b int) bool {
-			return workflows[children[p][a]].StartTime.After(workflows[children[p][b]].StartTime)
+			return workflows[children[p][a]].StartTime.Before(workflows[children[p][b]].StartTime)
 		})
 	}
 
