@@ -40,10 +40,30 @@ func TestWorkflowIOFromEvents(t *testing.T) {
 	}
 }
 
-func TestShowPreviewIORequiresPreviewMode(t *testing.T) {
+func TestWorkflowIOWithoutPreview(t *testing.T) {
 	wl := NewWorkflowList(&App{}, "default")
+	if desc := hintDescription(wl.Hints(), "i"); desc != "Input/Output" {
+		t.Fatalf("workflows pane should show io without preview, got %q", desc)
+	}
 	if wl.showPreviewIO() {
-		t.Fatal("input/output should be preview-mode only")
+		t.Fatal("input/output needs a selected workflow")
+	}
+
+	wf := temporal.Workflow{ID: "wf", RunID: "run", Type: "Order"}
+	wl.workflows = []temporal.Workflow{wf}
+	wl.table.AddRowWithColor(0, "Completed", "Order", "wf", "run")
+	wl.table.SelectRow(0)
+	wl.previewCache.put(wf.ID, wf.RunID, []temporal.EnhancedHistoryEvent{
+		{Type: "WorkflowExecutionStarted", Input: `{"id":1}`},
+		{Type: "WorkflowExecutionCompleted", Result: `{"ok":true}`},
+	})
+
+	title, input, output, ok := wl.previewIOPayload()
+	if !ok || title != "Order" || input != `{"id":1}` || output != `{"ok":true}` {
+		t.Fatalf("workflow io without preview: title=%q input=%q output=%q ok=%v", title, input, output, ok)
+	}
+	if !wl.showPreviewIO() {
+		t.Fatal("input/output should open from the workflows list")
 	}
 }
 

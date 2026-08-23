@@ -405,9 +405,6 @@ func (wl *WorkflowList) Start() {
 			return true
 		}).
 		OnRune('i', func(e *tcell.EventKey) bool {
-			if !wl.previewModeEnabled() {
-				return false
-			}
 			return wl.showPreviewIO()
 		}).
 		OnRune('e', func(e *tcell.EventKey) bool {
@@ -604,12 +601,9 @@ func (wl *WorkflowList) timelineHints() []KeyHint {
 
 func (wl *WorkflowList) workflowPaneHints() []KeyHint {
 	hints := []KeyHint{
-		{Key: "p", Description: "Preview"},
+		{Key: "i", Description: "Input/Output"},
 	}
 	if wl.previewModeEnabled() {
-		hints = []KeyHint{
-			{Key: "i", Description: "Input/Output"},
-		}
 		hints = append(hints,
 			KeyHint{Key: "z", Description: "Timeline"},
 			KeyHint{Key: "b", Description: treeModeHint(wl.workflowTreeMode)},
@@ -617,6 +611,7 @@ func (wl *WorkflowList) workflowPaneHints() []KeyHint {
 		)
 	} else {
 		hints = append(hints,
+			KeyHint{Key: "p", Description: "Preview"},
 			KeyHint{Key: "z", Description: "Timeline"},
 			KeyHint{Key: "b", Description: treeModeHint(wl.workflowTreeMode)},
 		)

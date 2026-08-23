@@ -147,6 +147,14 @@ func TestPreviewHierarchyTab(t *testing.T) {
 		t.Fatalf("graph pane should show center, got %q", desc)
 	}
 
+	wl.hierarchyView.loading = true
+	if ev := wl.handlePreviewKeys(tcell.NewEventKey(tcell.KeyRune, ']', 0)); ev != nil {
+		t.Fatal("] should switch tabs while hierarchy is loading")
+	}
+	if wl.previewKind != previewDetails {
+		t.Fatalf("] should leave hierarchy while loading, got %d", wl.previewKind)
+	}
+
 	wl.setPreviewKind(previewActivities)
 	if ev := wl.handlePreviewKeys(tcell.NewEventKey(tcell.KeyRune, 'o', 0)); ev != nil {
 		t.Fatal("o should switch preview to hierarchy")
@@ -158,6 +166,10 @@ func TestPreviewHierarchyTab(t *testing.T) {
 
 func TestPreviewHintsArePaneSpecific(t *testing.T) {
 	wl := NewWorkflowList(&App{}, "default")
+	if desc := hintDescription(wl.Hints(), "i"); desc != "Input/Output" {
+		t.Fatalf("workflows pane should show io without preview, got %q", desc)
+	}
+
 	wl.togglePreviewMode()
 	if desc := hintDescription(wl.Hints(), "b"); desc != "Tree" {
 		t.Fatalf("workflows pane should show tree, got %q", desc)

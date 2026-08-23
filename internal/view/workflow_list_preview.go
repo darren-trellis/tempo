@@ -53,10 +53,7 @@ func (wl *WorkflowList) selectedPreviewActivity() (previewActivity, bool) {
 }
 
 func (wl *WorkflowList) previewIOPayload() (title, input, output string, ok bool) {
-	if !wl.previewModeEnabled() {
-		return "", "", "", false
-	}
-	if wl.previewKind == previewActivities {
+	if wl.previewModeEnabled() && wl.previewKind == previewActivities {
 		a, found := wl.selectedPreviewActivity()
 		if !found {
 			return "", "", "", false
@@ -71,23 +68,30 @@ func (wl *WorkflowList) previewIOPayload() (title, input, output string, ok bool
 		}
 		return name, a.Input, out, true
 	}
-	row := wl.table.SelectedRow()
-	if row < 0 || row >= len(wl.workflows) {
+	w, found := wl.selectedWorkflow()
+	if !found {
 		return "", "", "", false
 	}
-	wf := wl.workflows[row]
-	if wl.previewWorkflowID != wf.ID || wl.previewRunID != wf.RunID {
+	events, found := wl.workflowIOEvents(w)
+	if !found {
 		return "", "", "", false
 	}
-	input, output = workflowIOFromEvents(wl.previewEvents)
-	return wf.Type, input, output, true
+	input, output = workflowIOFromEvents(events)
+	return w.Type, input, output, true
+}
+
+func (wl *WorkflowList) workflowIOEvents(w temporal.Workflow) ([]temporal.EnhancedHistoryEvent, bool) {
+	if w.ID != "" && wl.previewWorkflowID == w.ID && wl.previewRunID == w.RunID && wl.previewEvents != nil {
+		return wl.previewEvents, true
+	}
+	if events, ok := wl.previewCache.get(w.ID, w.RunID); ok {
+		return events, true
+	}
+	return nil, false
 }
 
 func (wl *WorkflowList) showPreviewIO() bool {
-	if !wl.previewModeEnabled() {
-		return false
-	}
-	if wl.previewKind == previewActivities {
+	if wl.previewModeEnabled() && wl.previewKind == previewActivities {
 		if len(wl.previewActivities) == 0 {
 			if wl.app != nil {
 				if wl.previewWorkflowID == "" {
@@ -98,35 +102,83 @@ func (wl *WorkflowList) showPreviewIO() bool {
 			}
 			return true
 		}
-	} else {
-		row := wl.table.SelectedRow()
-		if row < 0 || row >= len(wl.workflows) {
-			return false
-		}
-		wf := wl.workflows[row]
-		if wl.previewWorkflowID != wf.ID || wl.previewRunID != wf.RunID {
+		title, input, output, ok := wl.previewIOPayload()
+		if !ok {
 			if wl.app != nil {
-				wl.app.ToastError("Events still loading")
+				wl.app.ToastError("Nothing to show")
 			}
 			return true
 		}
-	}
-	title, input, output, ok := wl.previewIOPayload()
-	if !ok {
-		if wl.app != nil {
-			wl.app.ToastError("Nothing to show")
+		restore := wl.focusPane
+		if restore == focusWorkflows {
+			restore = focusEvents
 		}
+		wl.openWorkflowIO(title, input, output, restore)
 		return true
 	}
-	restore := wl.focusPane
-	if wl.previewKind == previewActivities && restore == focusWorkflows {
-		restore = focusEvents
+	w, ok := wl.selectedWorkflow()
+	if !ok {
+		return false
 	}
+	if events, found := wl.workflowIOEvents(w); found {
+		input, output := workflowIOFromEvents(events)
+		wl.openWorkflowIO(w.Type, input, output, wl.focusPane)
+		return true
+	}
+	wl.loadWorkflowIO(w)
+	return true
+}
+
+func (wl *WorkflowList) openWorkflowIO(title, input, output string, restore workflowFocusPane) {
 	wl.keepDataOnStart = true
 	showWorkflowIO(wl.app, wl, title, input, output, func() {
 		wl.setFocusPane(restore)
 	})
-	return true
+}
+
+func (wl *WorkflowList) loadWorkflowIO(w temporal.Workflow) {
+	if wl.app == nil {
+		return
+	}
+	if wl.app.toasts != nil {
+		wl.app.ToastWarning("Loading input/output...")
+	}
+	go func() {
+		events, err := wl.fetchWorkflowEvents(w)
+		if wl.app.JigApp() == nil {
+			return
+		}
+		wl.app.JigApp().QueueUpdateDraw(func() {
+			if err != nil {
+				wl.app.ToastError("Failed to load input/output: " + err.Error())
+				return
+			}
+			wl.previewCache.put(w.ID, w.RunID, events)
+			if selected, ok := wl.selectedWorkflow(); ok && selected.ID == w.ID && selected.RunID == w.RunID {
+				if wl.previewWorkflowID == "" {
+					wl.previewWorkflowID = w.ID
+					wl.previewRunID = w.RunID
+					wl.previewEvents = events
+					wl.previewActivities = previewActivitiesFromEvents(events)
+				}
+			}
+			input, output := workflowIOFromEvents(events)
+			wl.openWorkflowIO(w.Type, input, output, wl.focusPane)
+		})
+	}()
+}
+
+func (wl *WorkflowList) fetchWorkflowEvents(w temporal.Workflow) ([]temporal.EnhancedHistoryEvent, error) {
+	if wl.app == nil {
+		return mockPreviewEvents(w), nil
+	}
+	provider := wl.app.Provider()
+	if provider == nil {
+		return mockPreviewEvents(w), nil
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	return provider.GetEnhancedWorkflowHistory(ctx, wl.namespace, w.ID, w.RunID)
 }
 
 func (wl *WorkflowList) activateSelectedWorkflow() {

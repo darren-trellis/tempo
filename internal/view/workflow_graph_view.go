@@ -29,6 +29,7 @@ type WorkflowGraphView struct {
 	relationships *temporal.WorkflowRelationships
 	depthLimit    int
 	loading       bool
+	loadGen       uint64
 	embedded      bool
 }
 
@@ -92,11 +93,17 @@ func (wg *WorkflowGraphView) ShowWorkflow(namespace string, workflow temporal.Wo
 		return
 	}
 	wg.namespace = namespace
-	if wg.workflow != nil && wg.workflow.ID == workflow.ID && wg.workflow.RunID == workflow.RunID && wg.relationships != nil {
+	same := wg.workflow != nil && wg.workflow.ID == workflow.ID && wg.workflow.RunID == workflow.RunID
+	if same && (wg.relationships != nil || wg.loading) {
 		return
 	}
 	wf := workflow
 	wg.workflow = &wf
+	if wg.loading {
+		wg.loadGen++
+		wg.loading = false
+		wg.relationships = nil
+	}
 	wg.loadData()
 }
 
@@ -203,59 +210,69 @@ func (wg *WorkflowGraphView) loadData() {
 		return
 	}
 	wg.loading = true
+	wg.loadGen++
+	gen := wg.loadGen
+	id, runID := wg.workflow.ID, wg.workflow.RunID
 
-	// Show initial state with just the current workflow while loading children
 	wg.showInitialState()
 
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
 
-		provider := wg.app.Provider()
-		if provider == nil {
+		finish := func(fn func()) {
 			if wg.app != nil && wg.app.JigApp() != nil {
 				wg.app.JigApp().QueueUpdateDraw(func() {
-					wg.app.ToastError("No provider available")
-					wg.loading = false
+					if wg.loadGen != gen {
+						return
+					}
+					fn()
 				})
-			} else {
-				wg.loading = false
+				return
 			}
+			if wg.loadGen == gen {
+				fn()
+			}
+		}
+
+		if wg.app == nil {
+			finish(func() { wg.loading = false })
+			return
+		}
+		provider := wg.app.Provider()
+		if provider == nil {
+			finish(func() {
+				if wg.app != nil {
+					wg.app.ToastError("No provider available")
+				}
+				wg.loading = false
+			})
 			return
 		}
 
 		relationships, err := provider.GetWorkflowRelationships(
 			ctx,
 			wg.namespace,
-			wg.workflow.ID,
-			wg.workflow.RunID,
+			id,
+			runID,
 			wg.depthLimit,
 		)
 		if err != nil {
-			if wg.app != nil && wg.app.JigApp() != nil {
-				wg.app.JigApp().QueueUpdateDraw(func() {
+			finish(func() {
+				if wg.app != nil {
 					wg.app.ToastError(fmt.Sprintf("Failed to load relationships: %v", err))
-					wg.loading = false
-				})
-			} else {
+				}
 				wg.loading = false
-			}
+			})
 			return
 		}
 
-		if wg.app != nil && wg.app.JigApp() != nil {
-			wg.app.JigApp().QueueUpdateDraw(func() {
-				wg.relationships = relationships
-				wg.buildTreeData()
-				wg.buildGraphData()
-				wg.loading = false
-			})
-		} else {
+		finish(func() {
 			wg.relationships = relationships
 			wg.buildTreeData()
 			wg.buildGraphData()
 			wg.loading = false
-		}
+		})
 	}()
 }
 
@@ -271,8 +288,8 @@ func (wg *WorkflowGraphView) showInitialState() {
 		Sublabel:  wg.workflow.Type,
 		Status:    wg.workflow.Status,
 		NodeType:  components.GraphNodePrimary,
-		CanExpand: true,
-		Loading:   true, // Show loading indicator
+		CanExpand: false,
+		Loading:   true,
 		Data:      wg.workflow,
 	}
 	wg.treeData.AddNode(currentNode)
@@ -525,12 +542,15 @@ func (wg *WorkflowGraphView) onGraphSelect(node *components.GraphNode) {
 }
 
 func (wg *WorkflowGraphView) loadChildren(nodeID string) ([]*components.GraphTreeNode, []*components.GraphTreeEdge) {
-	// Lazy load children for a node
-	ctx := context.Background()
+	if wg.loading || wg.app == nil {
+		return nil, nil
+	}
 	provider := wg.app.Provider()
 	if provider == nil {
 		return nil, nil
 	}
+	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
+	defer cancel()
 
 	// Get the workflow for this node
 	treeNode := wg.treeData.GetNode(nodeID)
