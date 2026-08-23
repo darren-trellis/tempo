@@ -198,11 +198,38 @@ func (wl *WorkflowList) bindWorkerKeys() {
 		if wl.handleFocusCycleKey(event) || wl.handleListTabKey(event) {
 			return nil
 		}
+		if event.Key() == tcell.KeyEnter {
+			row, ok := wv.selectedRow()
+			if ok && row.IsHost {
+				wv.toggleSelectedHost()
+				return nil
+			}
+			if ok {
+				wl.setFocusPane(focusWorkerDetail)
+			}
+			return nil
+		}
 		switch event.Rune() {
 		case '/':
 			wv.showSearch()
 			return nil
 		case 'r':
+			wv.loadData()
+			return nil
+		case 'h':
+			wv.setHostCollapsed(true)
+			return nil
+		case 'l':
+			wv.setHostCollapsed(false)
+			return nil
+		}
+		return event
+	})
+	wv.preview.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		if wl.handleFocusCycleKey(event) {
+			return nil
+		}
+		if event.Rune() == 'r' {
 			wv.loadData()
 			return nil
 		}
@@ -265,7 +292,7 @@ func (wl *WorkflowList) setListKind(kind listKind) {
 		wl.ensureWorkers()
 		wl.focusPane = focusWorkflows
 	default:
-		if wl.focusPane == focusPollers || wl.focusPane == focusScheduleDetail {
+		if wl.focusPane == focusPollers || wl.focusPane == focusScheduleDetail || wl.focusPane == focusWorkerDetail {
 			wl.focusPane = focusWorkflows
 		}
 	}

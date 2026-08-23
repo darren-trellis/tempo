@@ -8,53 +8,98 @@ import (
 	"github.com/galaxy-io/tempo/internal/temporal"
 )
 
-func TestMergeListedWorker(t *testing.T) {
-	now := time.Now()
-	byIdentity := map[string]*workerEntry{}
-	mergeListedWorker(byIdentity, temporal.Worker{
-		Identity: "worker-1", TaskQueue: "orders", Types: []string{"Workflow"}, LastAccess: now.Add(-time.Second),
-	})
-	mergeListedWorker(byIdentity, temporal.Worker{
-		Identity: "worker-1", TaskQueue: "payments", Types: []string{"Activity"}, LastAccess: now,
-	})
-	workers := workerEntriesFromMap(byIdentity)
-	if len(workers) != 1 {
-		t.Fatalf("workers: %d", len(workers))
+func TestWorkerViewMockTree(t *testing.T) {
+	wv := NewWorkerView(&App{})
+	wv.loadMockData()
+	if len(wv.groups) != 2 {
+		t.Fatalf("hosts: %d", len(wv.groups))
 	}
-	if got := strings.Join(workers[0].Queues, ", "); got != "orders, payments" {
-		t.Fatalf("queues: %q", got)
+	if len(wv.rows) != 5 || !wv.rows[0].IsHost || wv.rows[1].IsHost {
+		t.Fatalf("tree: %+v", wv.rows)
 	}
-	if got := strings.Join(workers[0].Types, ", "); got != "Activity, Workflow" {
-		t.Fatalf("types: %q", got)
+	if !strings.Contains(formatWorkerHostPreview(wv.groups[0]), "host-001") {
+		t.Fatal("host preview should include the hostname")
 	}
 }
 
-func TestMergeWorkerPollers(t *testing.T) {
-	now := time.Now()
-	byIdentity := map[string]*workerEntry{}
-	mergeWorkerPollers(byIdentity, "order-tasks", []temporal.Poller{
-		{Identity: "worker-1", TaskQueueType: "Workflow", LastAccessTime: now.Add(-10 * time.Second)},
-		{Identity: "worker-1", TaskQueueType: "Activity", LastAccessTime: now.Add(-2 * time.Second)},
-	})
-	mergeWorkerPollers(byIdentity, "payment-tasks", []temporal.Poller{
-		{Identity: "worker-1", TaskQueueType: "Workflow", LastAccessTime: now.Add(-1 * time.Second)},
-		{Identity: "worker-2", TaskQueueType: "Activity", LastAccessTime: now},
-	})
+func TestGroupWorkersByHost(t *testing.T) {
+	workers := []temporal.Worker{
+		{Host: "host-b", Identity: "b1", TaskQueue: "q2"},
+		{Host: "host-a", Identity: "a2", TaskQueue: "q1"},
+		{Host: "host-a", Identity: "a1", TaskQueue: "q1"},
+		{Identity: "solo@host-c", TaskQueue: "q3"},
+	}
+	groups := groupWorkersByHost(workers)
+	if len(groups) != 3 {
+		t.Fatalf("groups: %d", len(groups))
+	}
+	if groups[0].Host != "host-a" || len(groups[0].Workers) != 2 {
+		t.Fatalf("host-a: %+v", groups[0])
+	}
+	if groups[0].Workers[0].Identity != "a1" || groups[0].Workers[1].Identity != "a2" {
+		t.Fatalf("host-a order: %+v", groups[0].Workers)
+	}
+	if groups[1].Host != "host-b" || groups[2].Host != "host-c" {
+		t.Fatalf("hosts: %q %q", groups[1].Host, groups[2].Host)
+	}
+}
 
-	workers := workerEntriesFromMap(byIdentity)
-	if len(workers) != 2 {
-		t.Fatalf("workers: %d", len(workers))
+func TestFlattenWorkerRowsCollapsed(t *testing.T) {
+	groups := groupWorkersByHost([]temporal.Worker{
+		{Host: "host-a", Identity: "a1", TaskQueue: "q1"},
+		{Host: "host-a", Identity: "a2", TaskQueue: "q1"},
+		{Host: "host-b", Identity: "b1", TaskQueue: "q2"},
+	})
+	rows := flattenWorkerRows(groups, nil)
+	if len(rows) != 5 {
+		t.Fatalf("expanded: %d", len(rows))
 	}
-	if workers[0].Identity != "worker-2" {
-		t.Fatalf("newest worker first: %q", workers[0].Identity)
+	if !rows[0].IsHost || rows[1].IsHost || rows[1].Worker.Identity != "a1" {
+		t.Fatalf("expanded rows: %+v", rows)
 	}
-	if workers[1].Identity != "worker-1" {
-		t.Fatalf("worker-1: %q", workers[1].Identity)
+
+	rows = flattenWorkerRows(groups, map[string]bool{"host-a": true})
+	if len(rows) != 3 {
+		t.Fatalf("collapsed: %d", len(rows))
 	}
-	if got := strings.Join(workers[1].Queues, ", "); got != "order-tasks, payment-tasks" {
-		t.Fatalf("queues: %q", got)
+	if !rows[0].IsHost || rows[0].Host != "host-a" || !rows[1].IsHost {
+		t.Fatalf("collapsed rows: %+v", rows)
 	}
-	if got := strings.Join(workers[1].Types, ", "); got != "Activity, Workflow" {
-		t.Fatalf("types: %q", got)
+}
+
+func TestWorkerMatches(t *testing.T) {
+	w := temporal.Worker{
+		Host: "host-a", Identity: "worker-1", TaskQueue: "orders",
+		Status: temporal.WorkerStatusRunning, BuildID: "build-9", ProcessID: "4122",
+	}
+	if !workerMatches(w, "host-a") || !workerMatches(w, "build-9") || !workerMatches(w, "4122") {
+		t.Fatal("expected match")
+	}
+	if workerMatches(w, "payments") {
+		t.Fatal("unexpected match")
+	}
+}
+
+func TestFormatWorkerInstancePreview(t *testing.T) {
+	text := formatWorkerInstancePreview(temporal.Worker{
+		InstanceKey: "inst-1", Identity: "worker-1", Host: "host-a", ProcessID: "4122",
+		TaskQueue: "orders", Status: temporal.WorkerStatusRunning,
+		BuildID: "build-9", StartTime: time.Now().Add(-time.Hour), LastHeartbeat: time.Now(),
+		HasHostInfo: true, CPU: 0.2, Memory: 0.5,
+		WorkflowSlots: temporal.WorkerSlots{Used: 1, Available: 10, Processed: 4},
+	})
+	for _, want := range []string{"Instance", "worker-1", "host-a", "4122", "orders", "build-9", "Running", "20%", "50%"} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("preview missing %q:\n%s", want, text)
+		}
+	}
+}
+
+func TestFormatStickyCache(t *testing.T) {
+	if got := formatStickyCache(temporal.Worker{}); got != "-" {
+		t.Fatalf("empty: %q", got)
+	}
+	if got := formatStickyCache(temporal.Worker{StickyCacheHit: 80, StickyCacheMiss: 20, StickyCacheSize: 12}); got != "size 12  hit 80%" {
+		t.Fatalf("cache: %q", got)
 	}
 }

@@ -20,6 +20,7 @@ const (
 	focusTimeline
 	focusPollers
 	focusScheduleDetail
+	focusWorkerDetail
 )
 
 // WorkflowList displays a list of workflows.
@@ -500,8 +501,15 @@ func (wl *WorkflowList) Stop() {
 
 // Hints returns keybinding hints for this view.
 func (wl *WorkflowList) Hints() []KeyHint {
-	if wl.taskQueuesActive() || wl.workersActive() {
+	if wl.taskQueuesActive() {
 		return []KeyHint{
+			{Key: "/", Description: "Search"},
+			{Key: "r", Description: "Refresh"},
+		}
+	}
+	if wl.workersActive() {
+		return []KeyHint{
+			{Key: "h/l", Description: "Collapse/Expand"},
 			{Key: "/", Description: "Search"},
 			{Key: "r", Description: "Refresh"},
 		}
@@ -659,6 +667,10 @@ func (wl *WorkflowList) HandleEscape() bool {
 		wl.setFocusPane(focusWorkflows)
 		return true
 	}
+	if wl.workersActive() && wl.focusPane == focusWorkerDetail {
+		wl.setFocusPane(focusWorkflows)
+		return true
+	}
 	if !wl.workflowsActive() {
 		wl.setListKind(listWorkflows)
 		return true
@@ -697,6 +709,10 @@ func (wl *WorkflowList) Focus(delegate func(p tview.Primitive)) {
 		return
 	}
 	if wl.workersActive() && wl.workers != nil {
+		if wl.focusPane == focusWorkerDetail && wl.workers.preview != nil {
+			delegate(wl.workers.preview)
+			return
+		}
 		delegate(wl.workers.table)
 		return
 	}

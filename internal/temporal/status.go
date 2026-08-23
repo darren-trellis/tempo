@@ -139,3 +139,41 @@ func GetTaskQueueTypeStatus(tqType string) *theme.Status {
 		return TaskQueueTypeUnknownStatus
 	}
 }
+
+var (
+	WorkerStatusRunningHandle      = theme.DefineStatus("Running", theme.Success, theme.IconRunning)
+	WorkerStatusShuttingDownHandle = theme.DefineStatus("Shutting Down", theme.Warning, theme.IconWarning)
+	WorkerStatusShutdownHandle     = theme.DefineStatus("Shutdown", theme.FgDim, theme.IconStop)
+)
+
+const (
+	WorkerStatusRunning      = "Running"
+	WorkerStatusShuttingDown = "Shutting Down"
+	WorkerStatusShutdown     = "Shutdown"
+)
+
+func MapWorkerStatus(status enums.WorkerStatus) string {
+	switch status {
+	case enums.WORKER_STATUS_RUNNING:
+		return WorkerStatusRunning
+	case enums.WORKER_STATUS_SHUTTING_DOWN:
+		return WorkerStatusShuttingDown
+	case enums.WORKER_STATUS_SHUTDOWN:
+		return WorkerStatusShutdown
+	default:
+		return "Unknown"
+	}
+}
+
+func GetWorkerStatus(status string) *theme.Status {
+	switch status {
+	case WorkerStatusRunning:
+		return WorkerStatusRunningHandle
+	case WorkerStatusShuttingDown:
+		return WorkerStatusShuttingDownHandle
+	case WorkerStatusShutdown:
+		return WorkerStatusShutdownHandle
+	default:
+		return StatusUnknown
+	}
+}

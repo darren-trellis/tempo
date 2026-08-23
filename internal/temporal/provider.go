@@ -269,12 +269,50 @@ type Poller struct {
 	RatePerSecond  float64
 }
 
-// Worker represents a worker reported by Temporal worker visibility.
+// WorkerSlots is task-slot usage reported by a worker heartbeat.
+type WorkerSlots struct {
+	Used      int32
+	Available int32
+	Kind      string
+	Processed int32
+	Failed    int32
+}
+
+// WorkerPollers is poller state reported by a worker heartbeat.
+type WorkerPollers struct {
+	Current     int32
+	Autoscaling bool
+}
+
+// Worker represents a worker instance reported by Temporal worker visibility.
 type Worker struct {
-	Identity   string
-	TaskQueue  string
-	Types      []string
-	LastAccess time.Time
+	InstanceKey     string
+	Identity        string
+	Host            string
+	ProcessID       string
+	TaskQueue       string
+	Types           []string
+	Status          string
+	StartTime       time.Time
+	LastHeartbeat   time.Time
+	BuildID         string
+	Deployment      string
+	SDKName         string
+	SDKVersion      string
+	HasHostInfo     bool
+	CPU             float32
+	Memory          float32
+	WorkflowSlots   WorkerSlots
+	ActivitySlots   WorkerSlots
+	LocalSlots      WorkerSlots
+	NexusSlots      WorkerSlots
+	WorkflowPollers WorkerPollers
+	StickyPollers   WorkerPollers
+	ActivityPollers WorkerPollers
+	NexusPollers    WorkerPollers
+	StickyCacheHit  int32
+	StickyCacheMiss int32
+	StickyCacheSize int32
 }
 
 // Schedule represents a Temporal schedule.

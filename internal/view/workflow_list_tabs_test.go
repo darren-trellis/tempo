@@ -122,8 +122,14 @@ func TestWorkflowListSchedulesAndWorkersTabs(t *testing.T) {
 	if wl.Name() != "workers" {
 		t.Fatalf("workers name: %q", wl.Name())
 	}
+	if wl.mainFlex.GetItemCount() != 2 {
+		t.Fatalf("workers should show a detail pane, got %d", wl.mainFlex.GetItemCount())
+	}
 	if hintDescription(wl.Hints(), "/") != "Search" {
 		t.Fatalf("workers hints: %q", hintDescription(wl.Hints(), "/"))
+	}
+	if hintDescription(wl.Hints(), "h/l") != "Collapse/Expand" {
+		t.Fatalf("workers tree hint: %q", hintDescription(wl.Hints(), "h/l"))
 	}
 
 	if !wl.handleListTabKey(tcell.NewEventKey(tcell.KeyRune, ']', 0)) {

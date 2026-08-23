@@ -1535,24 +1535,9 @@ func (c *Client) ListWorkers(ctx context.Context, namespace string) ([]Worker, e
 			return nil, fmt.Errorf("failed to list workers: %w", err)
 		}
 		for _, info := range resp.GetWorkersInfo() {
-			hb := info.GetWorkerHeartbeat()
-			if hb == nil {
-				continue
+			if w, ok := WorkerFromHeartbeat(info.GetWorkerHeartbeat()); ok {
+				workers = append(workers, w)
 			}
-			lastAccess := hb.GetHeartbeatTime().AsTime()
-			if lastAccess.IsZero() && hb.GetStartTime() != nil {
-				lastAccess = hb.GetStartTime().AsTime()
-			}
-			identity := hb.GetWorkerIdentity()
-			if identity == "" {
-				identity = hb.GetWorkerInstanceKey()
-			}
-			workers = append(workers, Worker{
-				Identity:   identity,
-				TaskQueue:  hb.GetTaskQueue(),
-				Types:      workerTypesFromHeartbeat(hb),
-				LastAccess: lastAccess,
-			})
 		}
 		token = resp.GetNextPageToken()
 		if len(token) == 0 {
