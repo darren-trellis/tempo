@@ -917,7 +917,7 @@ func (eh *EventHistory) showDetailModal() {
 	}
 
 	// Create modal with event details
-	modal := components.NewModal(components.ModalConfig{
+	modal := newModal(components.ModalConfig{
 		Title:  truncateEventType(eventType),
 		Width:  80,
 		Height: 30,

@@ -15,27 +15,27 @@ import (
 func (wl *WorkflowList) showSignalWithStart() {
 	form := components.NewFormBuilder().
 		Text("workflowId", "Workflow ID").
-			Placeholder("Enter workflow ID").
-			Validate(validators.Required()).
-			Done().
+		Placeholder("Enter workflow ID").
+		Validate(validators.Required()).
+		Done().
 		Text("workflowType", "Workflow Type").
-			Placeholder("Enter workflow type").
-			Validate(validators.Required()).
-			Done().
+		Placeholder("Enter workflow type").
+		Validate(validators.Required()).
+		Done().
 		Text("taskQueue", "Task Queue").
-			Placeholder("Enter task queue").
-			Validate(validators.Required()).
-			Done().
+		Placeholder("Enter task queue").
+		Validate(validators.Required()).
+		Done().
 		Text("signalName", "Signal Name").
-			Placeholder("Enter signal name").
-			Validate(validators.Required()).
-			Done().
+		Placeholder("Enter signal name").
+		Validate(validators.Required()).
+		Done().
 		Text("signalInput", "Signal Input (JSON, optional)").
-			Placeholder("{}").
-			Done().
+		Placeholder("{}").
+		Done().
 		Text("workflowInput", "Workflow Input (JSON, optional)").
-			Placeholder("{}").
-			Done().
+		Placeholder("{}").
+		Done().
 		OnSubmit(func(values map[string]any) {
 			workflowID := values["workflowId"].(string)
 			workflowType := values["workflowType"].(string)
@@ -52,7 +52,7 @@ func (wl *WorkflowList) showSignalWithStart() {
 		}).
 		Build()
 
-	modal := components.NewModal(components.ModalConfig{
+	modal := newModal(components.ModalConfig{
 		Title:    fmt.Sprintf("%s Signal With Start (%s)", theme.IconInfo, wl.namespace),
 		Width:    70,
 		Height:   20,

@@ -336,7 +336,7 @@ func (nd *NamespaceDetail) showEditForm() {
 		return
 	}
 
-	modal := components.NewModal(components.ModalConfig{
+	modal := newModal(components.ModalConfig{
 		Title:    fmt.Sprintf("%s Edit Namespace", theme.IconNamespace),
 		Width:    70,
 		Height:   18,
@@ -353,17 +353,17 @@ func (nd *NamespaceDetail) showEditForm() {
 
 	form := components.NewFormBuilder().
 		Text("description", "Description").
-			Value(nd.detail.Description).
-			Placeholder("Enter description").
-			Done().
+		Value(nd.detail.Description).
+		Placeholder("Enter description").
+		Done().
 		Text("ownerEmail", "Owner Email").
-			Value(nd.detail.OwnerEmail).
-			Placeholder("owner@example.com").
-			Done().
+		Value(nd.detail.OwnerEmail).
+		Placeholder("owner@example.com").
+		Done().
 		Text("retention", "Retention (days)").
-			Value(strconv.Itoa(currentRetention)).
-			Validate(validators.Required()).
-			Done().
+		Value(strconv.Itoa(currentRetention)).
+		Validate(validators.Required()).
+		Done().
 		OnSubmit(func(values map[string]any) {
 			retentionStr := values["retention"].(string)
 			retentionDays, err := strconv.Atoi(retentionStr)
@@ -397,7 +397,7 @@ func (nd *NamespaceDetail) showEditForm() {
 }
 
 func (nd *NamespaceDetail) showUpdateConfirm(req temporal.NamespaceUpdateRequest) {
-	modal := components.NewModal(components.ModalConfig{
+	modal := newModal(components.ModalConfig{
 		Title:    fmt.Sprintf("%s Confirm Update", theme.IconWarning),
 		Width:    65,
 		Height:   14,
@@ -467,7 +467,7 @@ func (nd *NamespaceDetail) showDeprecateConfirm() {
 		return
 	}
 
-	modal := components.NewModal(components.ModalConfig{
+	modal := newModal(components.ModalConfig{
 		Title:    fmt.Sprintf("%s Deprecate Namespace", theme.IconError),
 		Width:    70,
 		Height:   16,
@@ -493,9 +493,9 @@ func (nd *NamespaceDetail) showDeprecateConfirm() {
 
 	form := components.NewFormBuilder().
 		Text("confirm", "Type namespace name to confirm").
-			Placeholder(nd.namespace).
-			Validate(validators.Required()).
-			Done().
+		Placeholder(nd.namespace).
+		Validate(validators.Required()).
+		Done().
 		OnSubmit(func(values map[string]any) {
 			confirm := values["confirm"].(string)
 			if confirm != nd.namespace {

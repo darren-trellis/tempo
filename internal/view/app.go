@@ -936,7 +936,7 @@ func (a *App) showThemeSelector() {
 	}
 
 	// Create modal with backdrop disabled so dashboard is visible for live preview
-	modal := components.NewModal(components.ModalConfig{
+	modal := newModal(components.ModalConfig{
 		Title:    "Select Theme",
 		Width:    30,
 		Height:   22,
@@ -1605,7 +1605,7 @@ func (a *App) showCommandConfirm(name string, cfg config.CommandConfig, expanded
 		title = fmt.Sprintf("Confirm: %s", cfg.Description)
 	}
 
-	modal := components.NewModal(components.ModalConfig{
+	modal := newModal(components.ModalConfig{
 		Title:    title,
 		Width:    70,
 		Height:   12,

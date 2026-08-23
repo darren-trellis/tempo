@@ -7,7 +7,7 @@ import (
 )
 
 type overlayModal struct {
-	*components.Modal
+	*shadowedModal
 	background tview.Primitive
 	hints      []components.KeyHint
 }
@@ -15,8 +15,8 @@ type overlayModal struct {
 func newOverlayModal(cfg components.ModalConfig, background tview.Primitive) *overlayModal {
 	cfg.Backdrop = false
 	return &overlayModal{
-		Modal:      components.NewModal(cfg),
-		background: background,
+		shadowedModal: newModal(cfg),
+		background:    background,
 	}
 }
 
@@ -46,5 +46,5 @@ func (m *overlayModal) Draw(screen tcell.Screen) {
 		m.background.SetRect(x, y, w, h)
 		m.background.Draw(screen)
 	}
-	m.Modal.Draw(screen)
+	m.shadowedModal.Draw(screen)
 }

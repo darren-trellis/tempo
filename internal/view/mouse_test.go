@@ -36,7 +36,7 @@ func TestRouteModalMouseIgnoresNormalPages(t *testing.T) {
 }
 
 func TestRouteModalMouseConsumesBackdrop(t *testing.T) {
-	modal := components.NewModal(components.ModalConfig{Width: 20, Height: 10, Backdrop: true})
+	modal := newModal(components.ModalConfig{Width: 20, Height: 10, Backdrop: true})
 	modal.SetRect(0, 0, 80, 24)
 	modal.GetPanel().SetRect(30, 7, 20, 10)
 
@@ -47,7 +47,7 @@ func TestRouteModalMouseConsumesBackdrop(t *testing.T) {
 }
 
 func TestRouteModalMouseFocusesPanel(t *testing.T) {
-	modal := components.NewModal(components.ModalConfig{Width: 20, Height: 10, Backdrop: true})
+	modal := newModal(components.ModalConfig{Width: 20, Height: 10, Backdrop: true})
 	modal.SetRect(0, 0, 80, 24)
 	modal.GetPanel().SetRect(30, 7, 20, 10)
 

@@ -464,7 +464,7 @@ func (nl *NamespaceList) getSelectedNamespace() *temporal.Namespace {
 
 // showSignalWithStart displays a modal for SignalWithStart operation.
 func (nl *NamespaceList) showSignalWithStart(namespace string) {
-	modal := components.NewModal(components.ModalConfig{
+	modal := newModal(components.ModalConfig{
 		Title:    fmt.Sprintf("%s Signal With Start (%s)", theme.IconInfo, namespace),
 		Width:    70,
 		Height:   20,
@@ -473,27 +473,27 @@ func (nl *NamespaceList) showSignalWithStart(namespace string) {
 
 	form := components.NewFormBuilder().
 		Text("workflowId", "Workflow ID").
-			Placeholder("Enter workflow ID").
-			Validate(validators.Required()).
-			Done().
+		Placeholder("Enter workflow ID").
+		Validate(validators.Required()).
+		Done().
 		Text("workflowType", "Workflow Type").
-			Placeholder("Enter workflow type").
-			Validate(validators.Required()).
-			Done().
+		Placeholder("Enter workflow type").
+		Validate(validators.Required()).
+		Done().
 		Text("taskQueue", "Task Queue").
-			Placeholder("Enter task queue").
-			Validate(validators.Required()).
-			Done().
+		Placeholder("Enter task queue").
+		Validate(validators.Required()).
+		Done().
 		Text("signalName", "Signal Name").
-			Placeholder("Enter signal name").
-			Validate(validators.Required()).
-			Done().
+		Placeholder("Enter signal name").
+		Validate(validators.Required()).
+		Done().
 		Text("signalInput", "Signal Input (JSON, optional)").
-			Placeholder("{}").
-			Done().
+		Placeholder("{}").
+		Done().
 		Text("workflowInput", "Workflow Input (JSON, optional)").
-			Placeholder("{}").
-			Done().
+		Placeholder("{}").
+		Done().
 		OnSubmit(func(values map[string]any) {
 			workflowID := values["workflowId"].(string)
 			workflowType := values["workflowType"].(string)
@@ -562,7 +562,7 @@ func (nl *NamespaceList) closeModal() {
 
 // showCreateNamespaceForm displays a modal for creating a new namespace.
 func (nl *NamespaceList) showCreateNamespaceForm() {
-	modal := components.NewModal(components.ModalConfig{
+	modal := newModal(components.ModalConfig{
 		Title:    fmt.Sprintf("%s Create Namespace", theme.IconNamespace),
 		Width:    70,
 		Height:   18,
@@ -571,19 +571,19 @@ func (nl *NamespaceList) showCreateNamespaceForm() {
 
 	form := components.NewFormBuilder().
 		Text("name", "Namespace Name").
-			Placeholder("Enter namespace name").
-			Validate(validators.Required()).
-			Done().
+		Placeholder("Enter namespace name").
+		Validate(validators.Required()).
+		Done().
 		Text("description", "Description").
-			Placeholder("Enter description").
-			Done().
+		Placeholder("Enter description").
+		Done().
 		Text("ownerEmail", "Owner Email").
-			Placeholder("owner@example.com").
-			Done().
+		Placeholder("owner@example.com").
+		Done().
 		Text("retention", "Retention (days)").
-			Value("3").
-			Validate(validators.Required()).
-			Done().
+		Value("3").
+		Validate(validators.Required()).
+		Done().
 		OnSubmit(func(values map[string]any) {
 			name := values["name"].(string)
 
@@ -674,7 +674,7 @@ func (nl *NamespaceList) showEditNamespaceForm() {
 
 // showEditFormWithData displays the edit form with pre-populated values.
 func (nl *NamespaceList) showEditFormWithData(name, description, ownerEmail, retentionPeriod string) {
-	modal := components.NewModal(components.ModalConfig{
+	modal := newModal(components.ModalConfig{
 		Title:    fmt.Sprintf("%s Edit Namespace: %s", theme.IconNamespace, name),
 		Width:    70,
 		Height:   16,
@@ -691,17 +691,17 @@ func (nl *NamespaceList) showEditFormWithData(name, description, ownerEmail, ret
 
 	form := components.NewFormBuilder().
 		Text("description", "Description").
-			Value(description).
-			Placeholder("Enter description").
-			Done().
+		Value(description).
+		Placeholder("Enter description").
+		Done().
 		Text("ownerEmail", "Owner Email").
-			Value(ownerEmail).
-			Placeholder("owner@example.com").
-			Done().
+		Value(ownerEmail).
+		Placeholder("owner@example.com").
+		Done().
 		Text("retention", "Retention (days)").
-			Value(strconv.Itoa(currentRetention)).
-			Validate(validators.Required()).
-			Done().
+		Value(strconv.Itoa(currentRetention)).
+		Validate(validators.Required()).
+		Done().
 		OnSubmit(func(values map[string]any) {
 			retentionStr := values["retention"].(string)
 			retentionDays, err := strconv.Atoi(retentionStr)
@@ -772,7 +772,7 @@ func (nl *NamespaceList) showDeprecateConfirm() {
 		nl.stopAutoRefresh()
 	}
 
-	modal := components.NewModal(components.ModalConfig{
+	modal := newModal(components.ModalConfig{
 		Title:    fmt.Sprintf("%s Deprecate Namespace", theme.IconError),
 		Width:    70,
 		Height:   16,
@@ -798,9 +798,9 @@ func (nl *NamespaceList) showDeprecateConfirm() {
 
 	form := components.NewFormBuilder().
 		Text("confirm", "Type namespace name to confirm").
-			Placeholder(name).
-			Validate(validators.Required()).
-			Done().
+		Placeholder(name).
+		Validate(validators.Required()).
+		Done().
 		OnSubmit(func(values map[string]any) {
 			confirm := values["confirm"].(string)
 			if confirm != name {
@@ -874,7 +874,7 @@ func (nl *NamespaceList) showDeleteConfirm() {
 		nl.stopAutoRefresh()
 	}
 
-	modal := components.NewModal(components.ModalConfig{
+	modal := newModal(components.ModalConfig{
 		Title:    fmt.Sprintf("%s Delete Namespace", theme.IconError),
 		Width:    70,
 		Height:   18,
@@ -903,9 +903,9 @@ Deleting a namespace will permanently remove:
 
 	form := components.NewFormBuilder().
 		Text("confirm", "Type namespace name to confirm").
-			Placeholder(name).
-			Validate(validators.Required()).
-			Done().
+		Placeholder(name).
+		Validate(validators.Required()).
+		Done().
 		OnSubmit(func(values map[string]any) {
 			confirm := values["confirm"].(string)
 			if confirm != name {

@@ -482,7 +482,7 @@ func (sl *ScheduleList) showPauseConfirm() {
 		return
 	}
 
-	modal := components.NewModal(components.ModalConfig{
+	modal := newModal(components.ModalConfig{
 		Title:    fmt.Sprintf("%s Pause Schedule", theme.IconWarning),
 		Width:    60,
 		Height:   12,
@@ -529,7 +529,7 @@ func (sl *ScheduleList) showPauseConfirm() {
 }
 
 func (sl *ScheduleList) showUnpauseConfirm(s *temporal.Schedule) {
-	modal := components.NewModal(components.ModalConfig{
+	modal := newModal(components.ModalConfig{
 		Title:    fmt.Sprintf("%s Unpause Schedule", theme.IconInfo),
 		Width:    60,
 		Height:   12,
@@ -621,7 +621,7 @@ func (sl *ScheduleList) showTriggerConfirm() {
 		return
 	}
 
-	modal := components.NewModal(components.ModalConfig{
+	modal := newModal(components.ModalConfig{
 		Title:    fmt.Sprintf("%s Trigger Schedule", theme.IconSignal),
 		Width:    60,
 		Height:   12,
@@ -687,7 +687,7 @@ func (sl *ScheduleList) showDeleteConfirm() {
 		return
 	}
 
-	modal := components.NewModal(components.ModalConfig{
+	modal := newModal(components.ModalConfig{
 		Title:    fmt.Sprintf("%s Delete Schedule", theme.IconError),
 		Width:    65,
 		Height:   14,

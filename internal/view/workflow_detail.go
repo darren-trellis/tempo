@@ -795,7 +795,7 @@ func (wd *WorkflowDetail) showCancelConfirm() {
 		}).
 		Build()
 
-	modal := components.NewModal(components.ModalConfig{
+	modal := newModal(components.ModalConfig{
 		Title:    fmt.Sprintf("%s Cancel Workflow", theme.IconWarning),
 		Width:    60,
 		Height:   12,
@@ -868,7 +868,7 @@ func (wd *WorkflowDetail) showTerminateConfirm() {
 	contentFlex.AddItem(warningText, 3, 0, false)
 	contentFlex.AddItem(form, 0, 1, true)
 
-	modal := components.NewModal(components.ModalConfig{
+	modal := newModal(components.ModalConfig{
 		Title:    fmt.Sprintf("%s Terminate Workflow", theme.IconError),
 		Width:    65,
 		Height:   14,
@@ -955,7 +955,7 @@ This action cannot be undone.[-]
 	contentFlex.AddItem(warningText, 5, 0, false)
 	contentFlex.AddItem(form, 0, 1, true)
 
-	modal := components.NewModal(components.ModalConfig{
+	modal := newModal(components.ModalConfig{
 		Title:    fmt.Sprintf("%s Delete Workflow", theme.IconError),
 		Width:    70,
 		Height:   16,
@@ -1019,7 +1019,7 @@ func (wd *WorkflowDetail) showSignalInput() {
 		}).
 		Build()
 
-	modal := components.NewModal(components.ModalConfig{
+	modal := newModal(components.ModalConfig{
 		Title:    fmt.Sprintf("%s Signal Workflow", theme.IconSignal),
 		Width:    70,
 		Height:   16,
@@ -1092,7 +1092,7 @@ func (wd *WorkflowDetail) showResetSelector() {
 	}
 
 	// Show loading modal
-	loadingModal := components.NewModal(components.ModalConfig{
+	loadingModal := newModal(components.ModalConfig{
 		Title:    fmt.Sprintf("%s Loading Reset Points...", theme.IconInfo),
 		Width:    40,
 		Height:   5,
@@ -1165,7 +1165,7 @@ func (wd *WorkflowDetail) showQuickResetModal(failurePoint temporal.ResetPoint, 
 	contentFlex.AddItem(infoText, 6, 0, false)
 	contentFlex.AddItem(form, 0, 1, true)
 
-	modal := components.NewModal(components.ModalConfig{
+	modal := newModal(components.ModalConfig{
 		Title:    fmt.Sprintf("%s Quick Reset", theme.IconWarning),
 		Width:    70,
 		Height:   14,
@@ -1183,7 +1183,7 @@ func (wd *WorkflowDetail) showQuickResetModal(failurePoint temporal.ResetPoint, 
 }
 
 func (wd *WorkflowDetail) showResetPicker(resetPoints []temporal.ResetPoint) {
-	modal := components.NewModal(components.ModalConfig{
+	modal := newModal(components.ModalConfig{
 		Title:     fmt.Sprintf("%s Select Reset Point", theme.IconInfo),
 		Width:     90,
 		Height:    20,
@@ -1277,7 +1277,7 @@ func (wd *WorkflowDetail) showResetConfirm(resetPoint temporal.ResetPoint) {
 	contentFlex.AddItem(infoText, 7, 0, false)
 	contentFlex.AddItem(form, 0, 1, true)
 
-	modal := components.NewModal(components.ModalConfig{
+	modal := newModal(components.ModalConfig{
 		Title:    fmt.Sprintf("%s Confirm Reset", theme.IconWarning),
 		Width:    70,
 		Height:   16,
@@ -1325,7 +1325,7 @@ func (wd *WorkflowDetail) executeResetWorkflow(eventID int64, reason string) {
 }
 
 func (wd *WorkflowDetail) showResetError(message string) {
-	modal := components.NewModal(components.ModalConfig{
+	modal := newModal(components.ModalConfig{
 		Title:    fmt.Sprintf("%s Reset Error", theme.IconError),
 		Width:    50,
 		Height:   8,
@@ -1383,7 +1383,7 @@ func (wd *WorkflowDetail) showQueryInput() {
 		}).
 		Build()
 
-	modal := components.NewModal(components.ModalConfig{
+	modal := newModal(components.ModalConfig{
 		Title:    fmt.Sprintf("%s Query Workflow", theme.IconInfo),
 		Width:    70,
 		Height:   18,
@@ -1435,7 +1435,7 @@ func (wd *WorkflowDetail) executeQuery(queryType, args string) {
 }
 
 func (wd *WorkflowDetail) showQueryResult(queryType, result string) {
-	modal := components.NewModal(components.ModalConfig{
+	modal := newModal(components.ModalConfig{
 		Title:     fmt.Sprintf("%s Query Result: %s", theme.IconInfo, queryType),
 		Width:     0,
 		Height:    0,
@@ -1508,7 +1508,7 @@ func (wd *WorkflowDetail) showQueryResult(queryType, result string) {
 }
 
 func (wd *WorkflowDetail) showQueryError(queryType, errMsg string) {
-	modal := components.NewModal(components.ModalConfig{
+	modal := newModal(components.ModalConfig{
 		Title:    fmt.Sprintf("%s Query Failed: %s", theme.IconError, queryType),
 		Width:    60,
 		Height:   10,
@@ -1620,7 +1620,7 @@ func (wd *WorkflowDetail) showEventDetailModal() {
 	ev := wd.events[row]
 
 	// Create modal
-	modal := components.NewModal(components.ModalConfig{
+	modal := newModal(components.ModalConfig{
 		Title:     fmt.Sprintf("%s Event: %s", theme.IconEvent, truncateEventTypeStr(ev.Type)),
 		Width:     0,
 		Height:    0,

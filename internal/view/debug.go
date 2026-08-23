@@ -80,7 +80,7 @@ type DebugScreen struct {
 	*tview.Flex
 	panel   *components.Panel
 	content *tview.TextView
-	pons     *tview.TextView
+	pons    *tview.TextView
 	inner   *tview.Flex
 	data    DebugData
 	app     *DebugApp // reference to app for toasts
@@ -91,7 +91,7 @@ func NewDebugScreen(data DebugData) *DebugScreen {
 	ds := &DebugScreen{
 		Flex:    tview.NewFlex().SetDirection(tview.FlexColumn),
 		content: tview.NewTextView(),
-		pons:     tview.NewTextView(),
+		pons:    tview.NewTextView(),
 		inner:   tview.NewFlex().SetDirection(tview.FlexColumn),
 		data:    data,
 	}
@@ -572,7 +572,7 @@ func (da *DebugApp) showThemeSelector() {
 	})
 
 	// Create modal
-	modal := components.NewModal(components.ModalConfig{
+	modal := newModal(components.ModalConfig{
 		Title:    "Select Theme",
 		Width:    30,
 		Height:   22,

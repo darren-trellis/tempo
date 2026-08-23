@@ -235,7 +235,7 @@ func (wd *WorkflowDiff) promptWorkflowInput(isLeft bool) {
 		side = "Right"
 	}
 
-	modal := components.NewModal(components.ModalConfig{
+	modal := newModal(components.ModalConfig{
 		Title:    fmt.Sprintf("%s Set %s Workflow", theme.IconWorkflow, side),
 		Width:    70,
 		Height:   14,
@@ -244,12 +244,12 @@ func (wd *WorkflowDiff) promptWorkflowInput(isLeft bool) {
 
 	form := components.NewFormBuilder().
 		Text("workflowID", "Workflow ID").
-			Placeholder("Enter workflow ID").
-			Validate(validators.Required()).
-			Done().
+		Placeholder("Enter workflow ID").
+		Validate(validators.Required()).
+		Done().
 		Text("runID", "Run ID (optional)").
-			Placeholder("Leave empty for latest run").
-			Done().
+		Placeholder("Leave empty for latest run").
+		Done().
 		OnSubmit(func(values map[string]any) {
 			workflowID := values["workflowID"].(string)
 			runID := values["runID"].(string)

@@ -40,7 +40,7 @@ func (wl *WorkflowList) showVisibilityQuery() {
 		AddItem(helpText, 0, 1, false)
 	content.SetBackgroundColor(theme.Bg())
 
-	modal := components.NewModal(components.ModalConfig{
+	modal := newModal(components.ModalConfig{
 		Title:    fmt.Sprintf("%s Visibility Query", theme.IconSearch),
 		Width:    70,
 		Height:   16,
@@ -102,7 +102,7 @@ func (wl *WorkflowList) showQueryTemplates() {
 		{"Failed Today", "ExecutionStatus = 'Failed' AND StartTime > $TODAY"},
 	}
 
-	modal := components.NewModal(components.ModalConfig{
+	modal := newModal(components.ModalConfig{
 		Title:    fmt.Sprintf("%s Query Templates", theme.IconInfo),
 		Width:    70,
 		Height:   24,
@@ -161,7 +161,7 @@ func (wl *WorkflowList) showDateRangePicker() {
 		}).
 		Build()
 
-	modal := components.NewModal(components.ModalConfig{
+	modal := newModal(components.ModalConfig{
 		Title:    fmt.Sprintf("%s Date Range Filter", theme.IconInfo),
 		Width:    55,
 		Height:   14,
@@ -210,7 +210,7 @@ func (wl *WorkflowList) showSavedFilters() {
 		return
 	}
 
-	modal := components.NewModal(components.ModalConfig{
+	modal := newModal(components.ModalConfig{
 		Title:    fmt.Sprintf("%s Query History", theme.IconInfo),
 		Width:    70,
 		Height:   18,
@@ -253,7 +253,7 @@ func (wl *WorkflowList) showSavedFilters() {
 }
 
 func (wl *WorkflowList) showNoSavedFilters() {
-	modal := components.NewModal(components.ModalConfig{
+	modal := newModal(components.ModalConfig{
 		Title:    fmt.Sprintf("%s Query History", theme.IconInfo),
 		Width:    50,
 		Height:   10,
@@ -311,7 +311,7 @@ func (wl *WorkflowList) showSaveFilter() {
 		AddItem(form, 0, 1, true)
 	content.SetBackgroundColor(theme.Bg())
 
-	modal := components.NewModal(components.ModalConfig{
+	modal := newModal(components.ModalConfig{
 		Title:    fmt.Sprintf("%s Save Filter", theme.IconInfo),
 		Width:    60,
 		Height:   12,

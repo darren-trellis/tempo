@@ -18,14 +18,14 @@ import (
 
 // SplashModal displays a splash screen with app info.
 type SplashModal struct {
-	*components.Modal
+	*shadowedModal
 	content *tview.TextView
 	onClose func()
 }
 
 func NewSplashModal() *SplashModal {
 	m := &SplashModal{
-		Modal: components.NewModal(components.ModalConfig{
+		shadowedModal: newModal(components.ModalConfig{
 			Title:    "Tempo",
 			Width:    60,
 			Height:   18,
@@ -98,7 +98,7 @@ func (m *SplashModal) InputHandler() func(*tcell.EventKey, func(tview.Primitive)
 
 // HelpModal displays help information with view-specific keybindings.
 type HelpModal struct {
-	*components.Modal
+	*shadowedModal
 	viewName  string
 	viewHints []KeyHint
 	content   *tview.TextView
@@ -107,7 +107,7 @@ type HelpModal struct {
 
 func NewHelpModal() *HelpModal {
 	m := &HelpModal{
-		Modal: components.NewModal(components.ModalConfig{
+		shadowedModal: newModal(components.ModalConfig{
 			Title:    fmt.Sprintf("%s Help", theme.IconInfo),
 			Width:    65,
 			Height:   25,
@@ -204,7 +204,7 @@ func (m *HelpModal) SetOnClose(fn func()) {
 
 // ThemeSelectorModal allows selecting themes.
 type ThemeSelectorModal struct {
-	*components.Modal
+	*shadowedModal
 	table       *components.Table
 	themes      []string
 	currentIdx  int
@@ -216,7 +216,7 @@ type ThemeSelectorModal struct {
 
 func NewThemeSelectorModal() *ThemeSelectorModal {
 	m := &ThemeSelectorModal{
-		Modal: components.NewModal(components.ModalConfig{
+		shadowedModal: newModal(components.ModalConfig{
 			Title:    fmt.Sprintf("%s Select Theme", theme.IconInfo),
 			Width:    50,
 			Height:   20,
@@ -297,7 +297,7 @@ func (m *ThemeSelectorModal) Focus(delegate func(p tview.Primitive)) {
 
 // ProfileModal manages connection profiles.
 type ProfileModal struct {
-	*components.Modal
+	*shadowedModal
 	table    *components.Table
 	profiles []string
 	active   string
@@ -315,7 +315,7 @@ func (m *ProfileModal) isExternal(name string) bool {
 
 func NewProfileModal() *ProfileModal {
 	m := &ProfileModal{
-		Modal: components.NewModal(components.ModalConfig{
+		shadowedModal: newModal(components.ModalConfig{
 			Title:    fmt.Sprintf("%s Connection Profiles", theme.IconInfo),
 			Width:    55,
 			Height:   20,
@@ -427,7 +427,7 @@ func (m *ProfileModal) Focus(delegate func(p tview.Primitive)) {
 
 // ProfileForm for creating/editing profiles.
 type ProfileForm struct {
-	*components.Modal
+	*shadowedModal
 	form     *components.Form
 	isEdit   bool
 	editName string
@@ -437,7 +437,7 @@ type ProfileForm struct {
 
 func NewProfileForm() *ProfileForm {
 	f := &ProfileForm{
-		Modal: components.NewModal(components.ModalConfig{
+		shadowedModal: newModal(components.ModalConfig{
 			Title:    fmt.Sprintf("%s New Profile", theme.IconInfo),
 			Width:    60,
 			Height:   24,
@@ -596,7 +596,7 @@ func truncateMiddle(s string, maxLen int) string {
 
 // DeleteConfirmModal shows a confirmation dialog for deletion.
 type DeleteConfirmModal struct {
-	*components.Modal
+	*shadowedModal
 	itemName  string
 	itemType  string
 	onConfirm func()
@@ -605,7 +605,7 @@ type DeleteConfirmModal struct {
 
 func NewDeleteConfirmModal(itemType, itemName string) *DeleteConfirmModal {
 	m := &DeleteConfirmModal{
-		Modal: components.NewModal(components.ModalConfig{
+		shadowedModal: newModal(components.ModalConfig{
 			Title:    fmt.Sprintf("%s Delete %s", theme.IconError, itemType),
 			Width:    50,
 			Height:   10,
@@ -667,14 +667,14 @@ func (m *DeleteConfirmModal) InputHandler() func(*tcell.EventKey, func(tview.Pri
 
 // ErrorModal displays an error message.
 type ErrorModal struct {
-	*components.Modal
+	*shadowedModal
 	message string
 	onClose func()
 }
 
 func NewErrorModal(title, message string) *ErrorModal {
 	m := &ErrorModal{
-		Modal: components.NewModal(components.ModalConfig{
+		shadowedModal: newModal(components.ModalConfig{
 			Title:    fmt.Sprintf("%s %s", theme.IconError, title),
 			Width:    55,
 			Height:   12,
@@ -719,13 +719,13 @@ func (m *ErrorModal) InputHandler() func(*tcell.EventKey, func(tview.Primitive))
 
 // InfoModal displays an informational message.
 type InfoModal struct {
-	*components.Modal
+	*shadowedModal
 	onClose func()
 }
 
 func NewInfoModal(title, message string) *InfoModal {
 	m := &InfoModal{
-		Modal: components.NewModal(components.ModalConfig{
+		shadowedModal: newModal(components.ModalConfig{
 			Title:    fmt.Sprintf("%s %s", theme.IconInfo, title),
 			Width:    55,
 			Height:   12,

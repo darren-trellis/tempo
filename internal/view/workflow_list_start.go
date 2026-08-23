@@ -23,24 +23,24 @@ type startWorkflowPrefill struct {
 func showStartWorkflowModal(app *App, prefill startWorkflowPrefill) {
 	form := components.NewFormBuilder().
 		Text("workflowId", "Workflow ID").
-			Placeholder("Enter workflow ID").
-			Value(prefill.WorkflowID).
-			Validate(validators.Required()).
-			Done().
+		Placeholder("Enter workflow ID").
+		Value(prefill.WorkflowID).
+		Validate(validators.Required()).
+		Done().
 		Text("workflowType", "Workflow Type").
-			Placeholder("Enter workflow type").
-			Value(prefill.WorkflowType).
-			Validate(validators.Required()).
-			Done().
+		Placeholder("Enter workflow type").
+		Value(prefill.WorkflowType).
+		Validate(validators.Required()).
+		Done().
 		Text("taskQueue", "Task Queue").
-			Placeholder("Enter task queue").
-			Value(prefill.TaskQueue).
-			Validate(validators.Required()).
-			Done().
+		Placeholder("Enter task queue").
+		Value(prefill.TaskQueue).
+		Validate(validators.Required()).
+		Done().
 		Text("input", "Input (JSON, optional)").
-			Placeholder("{}").
-			Value(prefill.Input).
-			Done().
+		Placeholder("{}").
+		Value(prefill.Input).
+		Done().
 		OnSubmit(func(values map[string]any) {
 			workflowID := values["workflowId"].(string)
 			workflowType := values["workflowType"].(string)
@@ -55,7 +55,7 @@ func showStartWorkflowModal(app *App, prefill startWorkflowPrefill) {
 		}).
 		Build()
 
-	modal := components.NewModal(components.ModalConfig{
+	modal := newModal(components.ModalConfig{
 		Title:    fmt.Sprintf("%s Start Workflow", theme.IconInfo),
 		Width:    70,
 		Height:   18,

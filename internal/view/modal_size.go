@@ -7,12 +7,12 @@ import (
 )
 
 type resizableModal struct {
-	*components.Modal
+	*shadowedModal
 	maximized bool
 }
 
 func newResizableModal(cfg components.ModalConfig) *resizableModal {
-	return &resizableModal{Modal: components.NewModal(cfg)}
+	return &resizableModal{shadowedModal: newModal(cfg)}
 }
 
 func (m *resizableModal) toggleMaximize() {
@@ -21,7 +21,7 @@ func (m *resizableModal) toggleMaximize() {
 
 func (m *resizableModal) Draw(screen tcell.Screen) {
 	if !m.maximized {
-		m.Modal.Draw(screen)
+		m.shadowedModal.Draw(screen)
 		return
 	}
 	drawMaximizedOverlay(screen, m)

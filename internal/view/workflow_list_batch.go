@@ -80,7 +80,7 @@ func (wl *WorkflowList) showBatchCancelConfirm() {
 		AddItem(form, 0, 1, true)
 	content.SetBackgroundColor(theme.Bg())
 
-	modal := components.NewModal(components.ModalConfig{
+	modal := newModal(components.ModalConfig{
 		Title:    fmt.Sprintf("%s Cancel %d Workflow(s)", theme.IconWarning, len(selected)),
 		Width:    60,
 		Height:   14,
@@ -184,7 +184,7 @@ func (wl *WorkflowList) showBatchTerminateConfirm() {
 		AddItem(form, 0, 1, true)
 	content.SetBackgroundColor(theme.Bg())
 
-	modal := components.NewModal(components.ModalConfig{
+	modal := newModal(components.ModalConfig{
 		Title:    fmt.Sprintf("%s Terminate %d Workflow(s)", theme.IconError, len(selected)),
 		Width:    65,
 		Height:   16,
