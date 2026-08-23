@@ -142,7 +142,7 @@ func (a previewActivity) duration() string {
 }
 
 func formatSelectedActivityDetail(a previewActivity) string {
-	status := temporal.GetWorkflowStatus(a.Status)
+	status := temporal.GetActivityStatus(a.Status)
 	name := a.Type
 	if name == "" {
 		name = "Activity"

@@ -31,8 +31,8 @@ type WorkflowList struct {
 	previewTabs       *components.Tabs
 	eventTable        *components.Table
 	eventDetail       *tview.TextView
+	eventDetailTitle  *tview.TextView
 	eventsPanel       *components.Panel
-	eventDetailPanel  *components.Panel
 	workflowDetail    *tview.TextView
 	focusPane         workflowFocusPane
 	previewKind       previewKind
@@ -212,6 +212,10 @@ func (wl *WorkflowList) RefreshTheme() {
 	wl.eventTable.SetBackgroundColor(bg)
 	wl.eventDetail.SetBackgroundColor(bg)
 	wl.eventDetail.SetTextColor(theme.Fg())
+	if wl.eventDetailTitle != nil {
+		wl.eventDetailTitle.SetBackgroundColor(bg)
+		wl.eventDetailTitle.SetTextColor(theme.Fg())
+	}
 	if wl.workflowDetail != nil {
 		wl.workflowDetail.SetBackgroundColor(bg)
 		wl.workflowDetail.SetTextColor(theme.Fg())
@@ -579,6 +583,9 @@ func (wl *WorkflowList) Draw(screen tcell.Screen) {
 	if wl.eventDetail != nil {
 		wl.eventDetail.SetBackgroundColor(bg)
 		wl.eventDetail.SetTextColor(theme.Fg())
+	}
+	if wl.eventDetailTitle != nil {
+		wl.eventDetailTitle.SetBackgroundColor(bg)
 	}
 	wl.syncFocusFromPrimitives()
 	wl.Flex.Draw(screen)

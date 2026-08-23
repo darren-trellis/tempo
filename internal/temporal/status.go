@@ -14,7 +14,16 @@ var (
 	StatusTerminated = theme.DefineStatus("Terminated", theme.Error, theme.IconStop)
 	StatusTimedOut   = theme.DefineStatus("TimedOut", theme.Warning, theme.IconTimedOut)
 	StatusUnknown    = theme.DefineStatus("Unknown", theme.FgDim, theme.IconPending)
+	StatusScheduled  = theme.DefineStatus("Scheduled", theme.FgDim, theme.IconPending)
 )
+
+// GetActivityStatus returns the typed Status for an activity status string.
+func GetActivityStatus(status string) *theme.Status {
+	if status == "Scheduled" {
+		return StatusScheduled
+	}
+	return GetWorkflowStatus(status)
+}
 
 // MapWorkflowStatus converts a Temporal SDK workflow execution status to a display string.
 func MapWorkflowStatus(status enums.WorkflowExecutionStatus) string {

@@ -151,7 +151,10 @@ func (wl *WorkflowList) paneAt(x, y int) (workflowFocusPane, bool) {
 				return focusEventDetail, true
 			}
 		} else {
-			if wl.eventDetailPanel != nil && wl.eventDetailPanel.InRect(x, y) {
+			if wl.eventDetail != nil && wl.eventDetail.InRect(x, y) {
+				return focusEventDetail, true
+			}
+			if wl.eventDetailTitle != nil && wl.eventDetailTitle.InRect(x, y) {
 				return focusEventDetail, true
 			}
 			if wl.eventTable != nil && wl.eventTable.InRect(x, y) {
@@ -331,8 +334,11 @@ func (wl *WorkflowList) setupPreview() {
 	wl.eventsPanel = components.NewPanel().SetTitle(fmt.Sprintf("%s Activities", theme.IconActivity))
 	wl.eventsPanel.SetContent(wl.eventTable)
 
-	wl.eventDetailPanel = components.NewPanel().SetTitle(fmt.Sprintf("%s Activity", theme.IconActivity))
-	wl.eventDetailPanel.SetContent(wl.eventDetail)
+	wl.eventDetailTitle = tview.NewTextView().
+		SetDynamicColors(true).
+		SetTextAlign(tview.AlignLeft)
+	wl.eventDetailTitle.SetBackgroundColor(theme.Bg())
+	wl.eventDetailTitle.SetTextColor(theme.Fg())
 
 	wl.workflowDetail = tview.NewTextView().
 		SetDynamicColors(true).
@@ -345,7 +351,8 @@ func (wl *WorkflowList) setupPreview() {
 	listFlex := tview.NewFlex().SetDirection(tview.FlexRow)
 	listFlex.SetBackgroundColor(theme.Bg())
 	listFlex.AddItem(wl.eventTable, 0, 3, false)
-	listFlex.AddItem(wl.eventDetailPanel, 0, 2, false)
+	listFlex.AddItem(wl.eventDetailTitle, 1, 0, false)
+	listFlex.AddItem(wl.eventDetail, 0, 2, false)
 
 	wl.previewTabs = components.NewTabs().
 		SetShowIcons(true).
@@ -369,6 +376,7 @@ func (wl *WorkflowList) setupPreview() {
 
 	wl.eventTable.SetInputCapture(wl.handlePreviewKeys)
 	wl.eventDetail.SetInputCapture(wl.handlePreviewKeys)
+	wl.eventDetailTitle.SetInputCapture(wl.handlePreviewKeys)
 	wl.workflowDetail.SetInputCapture(wl.handlePreviewKeys)
 	wl.previewTabs.SetInputCapture(wl.handlePreviewKeys)
 }
@@ -487,9 +495,6 @@ func (wl *WorkflowList) applyFocusStyles() {
 	if wl.eventsPanel != nil {
 		wl.eventsPanel.SetFocused(wl.focusPane == focusEvents)
 	}
-	if wl.eventDetailPanel != nil {
-		wl.eventDetailPanel.SetFocused(wl.previewKind != previewDetails && wl.focusPane == focusEventDetail)
-	}
 	if wl.table != nil {
 		wl.table.SetSelectable(wl.focusPane == focusWorkflows, false)
 	}
@@ -549,14 +554,14 @@ func (wl *WorkflowList) previewTabAt(x, y int) (previewKind, bool) {
 }
 
 func (wl *WorkflowList) syncPreviewChrome() {
-	if wl.eventDetailPanel == nil {
+	if wl.eventDetailTitle == nil {
 		return
 	}
 	if wl.previewKind == previewActivities {
-		wl.eventDetailPanel.SetTitle(fmt.Sprintf("%s Activity", theme.IconActivity))
+		wl.eventDetailTitle.SetText(fmt.Sprintf("[%s::b]%s Activity Details[-]", theme.TagFg(), theme.IconActivity))
 		return
 	}
-	wl.eventDetailPanel.SetTitle(fmt.Sprintf("%s Event Details", theme.IconEvent))
+	wl.eventDetailTitle.SetText(fmt.Sprintf("[%s::b]%s Event Details[-]", theme.TagFg(), theme.IconEvent))
 }
 
 func (wl *WorkflowList) clearPreview() {
@@ -729,8 +734,13 @@ func (wl *WorkflowList) renderPreviewActivities(w temporal.Workflow) {
 		if name == "" {
 			name = "Activity"
 		}
-		wl.eventTable.AddRowWithColor(eventColor(a.Status),
-			a.Status,
+		status := temporal.GetActivityStatus(a.Status)
+		statusText := a.Status
+		if icon := status.Icon(); icon != "" {
+			statusText = icon + " " + a.Status
+		}
+		wl.eventTable.AddRowWithColor(status.Color(),
+			statusText,
 			truncateStr(name, 28),
 			a.StartTime.Format("15:04:05"),
 			a.duration(),
