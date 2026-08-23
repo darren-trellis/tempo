@@ -8,13 +8,13 @@ import (
 
 func TestWorkflowIOHints(t *testing.T) {
 	hints := workflowIOHints(false)
-	if len(hints) != 6 {
-		t.Fatalf("want all io hints, got %d", len(hints))
+	if len(hints) != 4 {
+		t.Fatalf("want io hints without nav keys, got %d", len(hints))
 	}
-	if hints[2].Description != "Maximize" {
-		t.Fatalf("restore hint: %+v", hints[2])
+	if hints[0].Description != "Maximize" {
+		t.Fatalf("restore hint: %+v", hints[0])
 	}
-	if got := workflowIOHints(true)[2].Description; got != "Minimize" {
+	if got := workflowIOHints(true)[0].Description; got != "Minimize" {
 		t.Fatalf("maximize hint: %q", got)
 	}
 }

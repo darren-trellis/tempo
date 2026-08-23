@@ -116,14 +116,11 @@ func (wl *WorkflowList) setupTimeline() {
 		case 'z':
 			wl.toggleTimeline()
 			return nil
-		case 'b':
-			wl.toggleWorkflowTree()
-			return nil
 		case 'p':
 			wl.togglePreviewMode()
 			return nil
 		case 'i':
-			if wl.showPreviewIO() {
+			if wl.previewKind != previewDetails && wl.showPreviewIO() {
 				return nil
 			}
 		}

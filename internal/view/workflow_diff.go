@@ -148,7 +148,6 @@ func (wd *WorkflowDiff) RefreshTheme() {
 // Hints returns keybinding hints for this view.
 func (wd *WorkflowDiff) Hints() []KeyHint {
 	return []KeyHint{
-		{Key: "Tab", Description: "Switch Panel"},
 		{Key: "a", Description: "Set Left"},
 		{Key: "b", Description: "Set Right"},
 		{Key: "r", Description: "Refresh"},

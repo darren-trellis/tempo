@@ -50,11 +50,51 @@ func TestWorkflowTableKeepsHorizontalScrollKeys(t *testing.T) {
 	if wl.previewKind != previewEvents {
 		t.Fatalf("] should go to events, got %d", wl.previewKind)
 	}
-	if desc := hintDescription(wl.Hints(), "h/l"); desc != "Scroll" {
-		t.Fatalf("workflows hint should keep h/l scroll, got %q", desc)
+	if desc := hintDescription(wl.Hints(), "h/l"); desc != "" {
+		t.Fatalf("obvious scroll keys should stay off the footer, got %q", desc)
 	}
 	if desc := hintDescription(wl.Hints(), "[/]/1-3"); desc != "View" {
 		t.Fatalf("preview tabs should use [/]/1-3, got %q", desc)
+	}
+}
+
+func TestPreviewHintsArePaneSpecific(t *testing.T) {
+	wl := NewWorkflowList(&App{}, "default")
+	wl.togglePreviewMode()
+	if desc := hintDescription(wl.Hints(), "b"); desc != "Tree" {
+		t.Fatalf("workflows pane should show tree, got %q", desc)
+	}
+	if desc := hintDescription(wl.Hints(), "tab"); desc != "" {
+		t.Fatalf("tab should not be hinted, got %q", desc)
+	}
+	if desc := hintDescription(wl.Hints(), "i"); desc != "Input/Output" {
+		t.Fatalf("workflows pane should show io, got %q", desc)
+	}
+
+	wl.setPreviewKind(previewActivities)
+	wl.focusPane = focusEvents
+	if desc := hintDescription(wl.Hints(), "b"); desc != "" {
+		t.Fatalf("preview should not show tree, got %q", desc)
+	}
+	if desc := hintDescription(wl.Hints(), "i"); desc != "Input/Output" {
+		t.Fatalf("activities should show io, got %q", desc)
+	}
+
+	wl.setPreviewKind(previewDetails)
+	wl.focusPane = focusWorkflows
+	if desc := hintDescription(wl.Hints(), "i"); desc != "Input/Output" {
+		t.Fatalf("workflows pane should keep io on details tab, got %q", desc)
+	}
+
+	wl.focusPane = focusEventDetail
+	if desc := hintDescription(wl.Hints(), "i"); desc != "" {
+		t.Fatalf("details should not show io, got %q", desc)
+	}
+	if desc := hintDescription(wl.Hints(), "y"); desc != "Yank" {
+		t.Fatalf("details should show yank, got %q", desc)
+	}
+	if desc := hintDescription(wl.Hints(), "j/k"); desc != "" {
+		t.Fatalf("obvious nav keys should stay off the footer, got %q", desc)
 	}
 }
 

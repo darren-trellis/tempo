@@ -775,20 +775,15 @@ func (wd *WorkflowDetail) Hints() []KeyHint {
 	switch wd.focusPane {
 	case detailFocusEventDetail:
 		return []KeyHint{
-			{Key: "j/k", Description: "Scroll"},
-			{Key: "tab", Description: "Workflow"},
 			{Key: "esc", Description: "Events"},
 		}
 	case detailFocusWorkflow:
 		return []KeyHint{
-			{Key: "j/k", Description: "Scroll"},
-			{Key: "tab", Description: "Events"},
 			{Key: "esc", Description: "Events"},
 		}
 	}
 
 	hints := []KeyHint{
-		{Key: "tab", Description: "Detail"},
 		{Key: "/", Description: "Search"},
 		{Key: "i", Description: "Input/Output"},
 		{Key: "e", Description: "Event Graph"},
@@ -797,7 +792,6 @@ func (wd *WorkflowDetail) Hints() []KeyHint {
 		{Key: "g", Description: "Go to Child"},
 		{Key: "y", Description: "Yank"},
 		{Key: "r", Description: "Refresh"},
-		{Key: "j/k", Description: "Navigate"},
 	}
 
 	// Only show mutation hints if workflow is running
@@ -1305,7 +1299,6 @@ func (wd *WorkflowDetail) showResetPicker(resetPoints []temporal.ResetPoint) {
 
 	modal.SetContent(table)
 	modal.SetHints([]components.KeyHint{
-		{Key: "j/k", Description: "Navigate"},
 		{Key: "Enter", Description: "Select"},
 		{Key: "Esc", Description: "Cancel"},
 	})
@@ -1572,7 +1565,6 @@ func (wd *WorkflowDetail) showQueryResult(queryType, result string) {
 
 	modal.SetContent(panel)
 	modal.SetHints([]components.KeyHint{
-		{Key: "j/k", Description: "Scroll"},
 		{Key: "y", Description: "Copy"},
 		{Key: "Esc", Description: "Close"},
 	})
@@ -1740,7 +1732,6 @@ func (wd *WorkflowDetail) showEventDetailModal() {
 
 	modal.SetContent(panel)
 	modal.SetHints([]components.KeyHint{
-		{Key: "j/k", Description: "Scroll"},
 		{Key: "g/G", Description: "Top/Bottom"},
 		{Key: "y", Description: "Copy"},
 		{Key: "esc", Description: "Close"},

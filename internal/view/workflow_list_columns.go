@@ -340,7 +340,6 @@ func (wl *WorkflowList) showColumnEditor() {
 	}, wl)
 	modal.SetContent(table)
 	hints := []components.KeyHint{
-		{Key: "j/k", Description: "Select"},
 		{Key: "J/K", Description: "Reorder"},
 		{Key: "+/-", Description: "Width"},
 		{Key: "space", Description: "Hide"},

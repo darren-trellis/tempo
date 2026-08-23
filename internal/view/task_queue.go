@@ -462,8 +462,6 @@ func (tq *TaskQueueView) Hints() []KeyHint {
 	return []KeyHint{
 		{Key: "/", Description: "Search"},
 		{Key: "r", Description: "Refresh"},
-		{Key: "tab", Description: "Switch Panel"},
-		{Key: "j/k", Description: "Navigate"},
 		{Key: "T", Description: "Theme"},
 		{Key: "esc", Description: "Back"},
 	}

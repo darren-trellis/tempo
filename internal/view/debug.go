@@ -580,7 +580,6 @@ func (da *DebugApp) showThemeSelector() {
 	})
 	modal.SetContent(list)
 	modal.SetHints([]components.KeyHint{
-		{Key: "j/k", Description: "Navigate"},
 		{Key: "Enter", Description: "Select"},
 		{Key: "Esc", Description: "Cancel"},
 	})

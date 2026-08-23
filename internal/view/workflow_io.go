@@ -51,8 +51,6 @@ func workflowIOHints(maximized bool) []components.KeyHint {
 		maxHint = "Minimize"
 	}
 	return []components.KeyHint{
-		{Key: "tab/h/l/←/→", Description: "Switch"},
-		{Key: "j/k", Description: "Scroll"},
 		{Key: "m", Description: maxHint},
 		{Key: "e", Description: "Editor"},
 		{Key: "y", Description: "Copy"},

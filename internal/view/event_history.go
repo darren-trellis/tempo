@@ -670,12 +670,10 @@ func (eh *EventHistory) Hints() []KeyHint {
 	case ViewModeTimeline:
 		hints = append(hints,
 			KeyHint{Key: "+/-", Description: "Zoom"},
-			KeyHint{Key: "h/l", Description: "Scroll"},
 		)
 	}
 
 	hints = append(hints,
-		KeyHint{Key: "j/k", Description: "Navigate"},
 		KeyHint{Key: "T", Description: "Theme"},
 		KeyHint{Key: "esc", Description: "Back"},
 	)
@@ -941,7 +939,6 @@ func (eh *EventHistory) showDetailModal() {
 
 	modal.SetContent(textView)
 	modal.SetHints([]components.KeyHint{
-		{Key: "j/k", Description: "Scroll"},
 		{Key: "y", Description: "Copy"},
 		{Key: "esc", Description: "Close"},
 	})

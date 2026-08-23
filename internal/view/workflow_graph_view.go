@@ -21,9 +21,9 @@ type WorkflowGraphView struct {
 	namespace string
 	workflow  *temporal.Workflow
 
-	tree     *components.GraphTree
-	graph    *components.NodeGraph
-	treeData *components.GraphTreeData
+	tree      *components.GraphTree
+	graph     *components.NodeGraph
+	treeData  *components.GraphTreeData
 	graphData *components.NodeGraphData
 
 	relationships *temporal.WorkflowRelationships
@@ -104,9 +104,7 @@ func (wg *WorkflowGraphView) Stop() {
 // Hints returns keybinding hints for this view.
 func (wg *WorkflowGraphView) Hints() []KeyHint {
 	return []KeyHint{
-		{Key: "j/k", Description: "Navigate"},
 		{Key: "h/l", Description: "Collapse/Expand"},
-		{Key: "Tab", Description: "Switch Pane"},
 		{Key: "c", Description: "Center Graph"},
 		{Key: "+/-", Description: "Depth"},
 		{Key: "Enter", Description: "Open Detail"},

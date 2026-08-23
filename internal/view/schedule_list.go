@@ -821,7 +821,6 @@ func (sl *ScheduleList) Hints() []KeyHint {
 	hints := []KeyHint{
 		{Key: "/", Description: "Search"},
 		{Key: "r", Description: "Refresh"},
-		{Key: "j/k", Description: "Navigate"},
 		{Key: "Enter", Description: "View runs"},
 		{Key: "p", Description: "Preview"},
 		{Key: "P", Description: "Pause/Unpause"},

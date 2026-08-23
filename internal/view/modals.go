@@ -134,7 +134,6 @@ func (m *HelpModal) setup() {
 
 	m.Modal.SetContent(m.content)
 	m.Modal.SetHints([]components.KeyHint{
-		{Key: "j/k", Description: "Scroll"},
 		{Key: "Esc", Description: "Close"},
 	})
 }
@@ -253,7 +252,6 @@ func (m *ThemeSelectorModal) setup() {
 
 	m.Modal.SetContent(m.table)
 	m.Modal.SetHints([]components.KeyHint{
-		{Key: "j/k", Description: "Navigate"},
 		{Key: "Enter", Description: "Select"},
 		{Key: "Esc", Description: "Cancel"},
 	})

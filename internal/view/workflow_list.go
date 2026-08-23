@@ -395,6 +395,9 @@ func (wl *WorkflowList) Start() {
 			return true
 		}).
 		OnRune('i', func(e *tcell.EventKey) bool {
+			if !wl.previewModeEnabled() {
+				return false
+			}
 			return wl.showPreviewIO()
 		}).
 		OnRune('e', func(e *tcell.EventKey) bool {
@@ -487,9 +490,6 @@ func (wl *WorkflowList) Hints() []KeyHint {
 			{Key: "[/]/1-2", Description: "View"},
 			{Key: "/", Description: "Search"},
 			{Key: "r", Description: "Refresh"},
-			{Key: "tab", Description: "Switch Panel"},
-			{Key: "j/k", Description: "Navigate"},
-			{Key: "T", Description: "Theme"},
 			{Key: "esc", Description: "Workflows"},
 		}
 	}
@@ -510,65 +510,64 @@ func (wl *WorkflowList) Hints() []KeyHint {
 		return hints
 	}
 
-	if wl.previewModeEnabled() || wl.timelineVisible {
-		switch wl.focusPane {
-		case focusEvents:
-			return []KeyHint{
-				{Key: "j/k", Description: wl.previewKind.title()},
-				{Key: "tab", Description: "Details"},
-				{Key: "[/]/1-3", Description: "View"},
-				{Key: "i", Description: "Input/Output"},
-				{Key: "z", Description: "Timeline"},
-				{Key: "b", Description: treeModeHint(wl.workflowTreeMode)},
-				{Key: "p", Description: "Preview"},
-				{Key: "e", Description: "Event Graph"},
-				{Key: "esc", Description: "Workflows"},
-			}
-		case focusEventDetail:
-			if wl.previewKind == previewDetails {
-				hints := []KeyHint{
-					{Key: "j/k", Description: "Select"},
-					{Key: "h/l", Description: "Scroll"},
-					{Key: "y", Description: "Yank"},
-				}
-				if wl.selectedPreviewDetailRowIs(workflowInfoParent) {
-					hints = append(hints, KeyHint{Key: "enter", Description: "Parent"})
-				}
-				hints = append(hints,
-					KeyHint{Key: "tab", Description: "Workflows"},
-					KeyHint{Key: "[/]/1-3", Description: "View"},
-					KeyHint{Key: "i", Description: "Input/Output"},
-					KeyHint{Key: "z", Description: "Timeline"},
-					KeyHint{Key: "b", Description: treeModeHint(wl.workflowTreeMode)},
-					KeyHint{Key: "p", Description: "Preview"},
-					KeyHint{Key: "esc", Description: "Workflows"},
-				)
-				return hints
-			}
-			return []KeyHint{
-				{Key: "j/k", Description: "Scroll"},
-				{Key: "tab", Description: "Workflows"},
-				{Key: "[/]/1-3", Description: "View"},
-				{Key: "i", Description: "Input/Output"},
-				{Key: "z", Description: "Timeline"},
-				{Key: "b", Description: treeModeHint(wl.workflowTreeMode)},
-				{Key: "p", Description: "Preview"},
-				{Key: "esc", Description: "Workflows"},
-			}
-		case focusTimeline:
-			return []KeyHint{
-				{Key: "j/k", Description: "Lane"},
-				{Key: "h/l", Description: "Scroll"},
-				{Key: "+/-", Description: "Zoom"},
-				{Key: "m", Description: timelineSizeHint(wl.timelineNarrow)},
-				{Key: "tab", Description: "Workflows"},
-				{Key: "z", Description: "Timeline"},
-				{Key: "b", Description: treeModeHint(wl.workflowTreeMode)},
-				{Key: "esc", Description: "Workflows"},
-			}
-		}
+	switch wl.focusPane {
+	case focusEvents:
+		return wl.previewListHints()
+	case focusEventDetail:
+		return wl.previewSideHints()
+	case focusTimeline:
+		return wl.timelineHints()
 	}
+	return wl.workflowPaneHints()
+}
 
+func (wl *WorkflowList) previewIOHint() []KeyHint {
+	if !wl.previewModeEnabled() || wl.previewKind == previewDetails {
+		return nil
+	}
+	return []KeyHint{{Key: "i", Description: "Input/Output"}}
+}
+
+func (wl *WorkflowList) previewListHints() []KeyHint {
+	hints := []KeyHint{
+		{Key: "[/]/1-3", Description: "View"},
+	}
+	hints = append(hints, wl.previewIOHint()...)
+	return append(hints,
+		KeyHint{Key: "z", Description: "Timeline"},
+		KeyHint{Key: "p", Description: "Preview"},
+		KeyHint{Key: "e", Description: "Event Graph"},
+		KeyHint{Key: "esc", Description: "Workflows"},
+	)
+}
+
+func (wl *WorkflowList) previewSideHints() []KeyHint {
+	if wl.previewKind == previewDetails {
+		hints := []KeyHint{{Key: "y", Description: "Yank"}}
+		if wl.selectedPreviewDetailRowIs(workflowInfoParent) {
+			hints = append(hints, KeyHint{Key: "enter", Description: "Parent"})
+		}
+		return append(hints,
+			KeyHint{Key: "[/]/1-3", Description: "View"},
+			KeyHint{Key: "z", Description: "Timeline"},
+			KeyHint{Key: "p", Description: "Preview"},
+			KeyHint{Key: "esc", Description: "Workflows"},
+		)
+	}
+	return wl.previewListHints()
+}
+
+func (wl *WorkflowList) timelineHints() []KeyHint {
+	return []KeyHint{
+		{Key: "+/-", Description: "Zoom"},
+		{Key: "m", Description: timelineSizeHint(wl.timelineNarrow)},
+		{Key: "z", Description: "Timeline"},
+		{Key: "p", Description: "Preview"},
+		{Key: "esc", Description: "Workflows"},
+	}
+}
+
+func (wl *WorkflowList) workflowPaneHints() []KeyHint {
 	hints := []KeyHint{
 		{Key: "enter", Description: "Detail"},
 		{Key: "p", Description: "Preview"},
@@ -577,15 +576,15 @@ func (wl *WorkflowList) Hints() []KeyHint {
 	if wl.previewModeEnabled() {
 		hints = []KeyHint{
 			{Key: "enter", Description: wl.previewKind.title()},
-			{Key: "tab", Description: wl.previewKind.title()},
 			{Key: "[/]/1-3", Description: "View"},
 			{Key: "i", Description: "Input/Output"},
-			{Key: "z", Description: "Timeline"},
-			{Key: "b", Description: treeModeHint(wl.workflowTreeMode)},
-			{Key: "p", Description: "Preview"},
 		}
-	}
-	if !wl.previewModeEnabled() {
+		hints = append(hints,
+			KeyHint{Key: "z", Description: "Timeline"},
+			KeyHint{Key: "b", Description: treeModeHint(wl.workflowTreeMode)},
+			KeyHint{Key: "p", Description: "Preview"},
+		)
+	} else {
 		hints = append(hints,
 			KeyHint{Key: "z", Description: "Timeline"},
 			KeyHint{Key: "b", Description: treeModeHint(wl.workflowTreeMode)},
@@ -593,8 +592,6 @@ func (wl *WorkflowList) Hints() []KeyHint {
 	}
 	hints = append(hints,
 		KeyHint{Key: "e", Description: "Event Graph"},
-		KeyHint{Key: "h/l", Description: "Scroll"},
-		KeyHint{Key: "home/end", Description: "Columns"},
 		KeyHint{Key: "|", Description: "Columns"},
 		KeyHint{Key: "/", Description: "Filter"},
 		KeyHint{Key: "F", Description: "Query"},
@@ -607,7 +604,7 @@ func (wl *WorkflowList) Hints() []KeyHint {
 			KeyHint{Key: "S", Description: "Save Filter"},
 		)
 	}
-	hints = append(hints,
+	return append(hints,
 		KeyHint{Key: "L", Description: "Load Filter"},
 		KeyHint{Key: "d", Description: "Diff"},
 		KeyHint{Key: "o", Description: "Overview"},
@@ -622,7 +619,6 @@ func (wl *WorkflowList) Hints() []KeyHint {
 		KeyHint{Key: "?", Description: "Help"},
 		KeyHint{Key: "esc", Description: "Back"},
 	)
-	return hints
 }
 
 // HandleEscape implements EscapeHandler to clear filter state before navigation.

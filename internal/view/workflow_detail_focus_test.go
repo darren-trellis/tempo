@@ -57,8 +57,8 @@ func TestWorkflowDetailRestoresPaneTabAfterStop(t *testing.T) {
 func TestWorkflowDetailHintsOmitActive(t *testing.T) {
 	wd := NewWorkflowDetail(&App{}, "wf", "run")
 	for _, h := range wd.Hints() {
-		if h.Key == "tab" && h.Description != "Detail" {
-			t.Fatalf("events tab hint: %q", h.Description)
+		if h.Key == "tab" || h.Key == "j/k" {
+			t.Fatalf("obvious key should stay off the footer: %q", h.Key)
 		}
 	}
 	wd.setFocusPane(detailFocusEventDetail)
