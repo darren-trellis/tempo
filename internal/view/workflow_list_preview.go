@@ -47,59 +47,118 @@ func (wl *WorkflowList) setupPreview() {
 	wl.eventDetail = tview.NewTextView().
 		SetDynamicColors(true).
 		SetTextAlign(tview.AlignLeft).
-		SetWordWrap(true)
+		SetWordWrap(true).
+		SetScrollable(true)
 	wl.eventDetail.SetBackgroundColor(theme.Bg())
 	wl.eventDetail.SetTextColor(theme.Fg())
 
 	wl.eventsPanel = components.NewPanel().SetTitle(fmt.Sprintf("%s Events", theme.IconEvent))
 	wl.eventsPanel.SetContent(wl.eventTable)
 
-	wl.eventDetailPanel = components.NewPanel().SetTitle(fmt.Sprintf("%s Event Detail", theme.IconInfo))
+	wl.eventDetailPanel = components.NewPanel().SetTitle(fmt.Sprintf("%s Event Details", theme.IconInfo))
 	wl.eventDetailPanel.SetContent(wl.eventDetail)
-
-	wl.preview = tview.NewFlex().SetDirection(tview.FlexRow)
-	wl.preview.SetBackgroundColor(theme.Bg())
-	wl.preview.AddItem(wl.eventsPanel, 0, 3, true)
-	wl.preview.AddItem(wl.eventDetailPanel, 0, 2, false)
 
 	wl.eventTable.SetSelectionChangedFunc(func(row, col int) {
 		if row > 0 && row-1 < len(wl.previewEvents) {
 			wl.eventDetail.SetText(formatSelectedEventDetail(wl.previewEvents[row-1]))
+			wl.eventDetail.ScrollToBeginning()
 		}
 	})
 
 	wl.eventTable.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
-		if event.Key() == tcell.KeyTab || event.Key() == tcell.KeyEscape || event.Key() == tcell.KeyBacktab {
-			wl.focusWorkflowTable()
+		switch event.Key() {
+		case tcell.KeyTab:
+			wl.cycleFocus(1)
+			return nil
+		case tcell.KeyBacktab:
+			wl.cycleFocus(-1)
+			return nil
+		case tcell.KeyEscape:
+			wl.setFocusPane(focusWorkflows)
 			return nil
 		}
-		if event.Rune() == 'e' {
-			if wl.previewWorkflowID != "" {
-				wl.app.NavigateToEvents(wl.previewWorkflowID, wl.previewRunID)
-				return nil
-			}
+		if event.Rune() == 'e' && wl.previewWorkflowID != "" {
+			wl.app.NavigateToEvents(wl.previewWorkflowID, wl.previewRunID)
+			return nil
+		}
+		return event
+	})
+
+	wl.eventDetail.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		switch event.Key() {
+		case tcell.KeyTab:
+			wl.cycleFocus(1)
+			return nil
+		case tcell.KeyBacktab:
+			wl.cycleFocus(-1)
+			return nil
+		case tcell.KeyEscape:
+			wl.setFocusPane(focusWorkflows)
+			return nil
 		}
 		return event
 	})
 }
 
-func (wl *WorkflowList) focusPreview() {
-	if !wl.IsDetailVisible() {
-		wl.ShowDetail()
+func (wl *WorkflowList) cycleFocus(delta int) {
+	next := (int(wl.focusPane) + delta) % 3
+	if next < 0 {
+		next += 3
 	}
-	wl.FocusDetail()
-	if wl.app != nil && wl.app.JigApp() != nil {
+	wl.setFocusPane(workflowFocusPane(next))
+}
+
+func (wl *WorkflowList) setFocusPane(pane workflowFocusPane) {
+	wl.focusPane = pane
+	if wl.app == nil || wl.app.JigApp() == nil {
+		wl.applyFocusStyles()
+		return
+	}
+	switch pane {
+	case focusEvents:
 		wl.app.JigApp().SetFocus(wl.eventTable)
-		wl.app.JigApp().Menu().SetHints(wl.Hints())
+	case focusEventDetail:
+		wl.app.JigApp().SetFocus(wl.eventDetail)
+	default:
+		wl.app.JigApp().SetFocus(wl.table)
+	}
+	wl.applyFocusStyles()
+	wl.app.JigApp().Menu().SetHints(wl.Hints())
+}
+
+func (wl *WorkflowList) applyFocusStyles() {
+	if wl.workflowsPanel != nil {
+		wl.workflowsPanel.SetFocused(wl.focusPane == focusWorkflows)
+	}
+	if wl.eventsPanel != nil {
+		wl.eventsPanel.SetFocused(wl.focusPane == focusEvents)
+	}
+	if wl.eventDetailPanel != nil {
+		wl.eventDetailPanel.SetFocused(wl.focusPane == focusEventDetail)
+	}
+	if wl.table != nil {
+		wl.table.SetSelectable(wl.focusPane == focusWorkflows, false)
+	}
+	if wl.eventTable != nil {
+		wl.eventTable.SetSelectable(wl.focusPane == focusEvents, false)
 	}
 }
 
-func (wl *WorkflowList) focusWorkflowTable() {
-	wl.FocusMaster()
-	if wl.app != nil && wl.app.JigApp() != nil {
-		wl.app.JigApp().SetFocus(wl.table)
-		wl.app.JigApp().Menu().SetHints(wl.Hints())
+func (wl *WorkflowList) syncFocusFromPrimitives() {
+	pane := focusWorkflows
+	switch {
+	case wl.eventDetail != nil && wl.eventDetail.HasFocus():
+		pane = focusEventDetail
+	case wl.eventTable != nil && wl.eventTable.HasFocus():
+		pane = focusEvents
 	}
+	if pane != wl.focusPane {
+		wl.focusPane = pane
+		if wl.app != nil && wl.app.JigApp() != nil {
+			wl.app.JigApp().Menu().SetHints(wl.Hints())
+		}
+	}
+	wl.applyFocusStyles()
 }
 
 func (wl *WorkflowList) clearPreview() {
@@ -109,8 +168,8 @@ func (wl *WorkflowList) clearPreview() {
 	wl.eventTable.ClearRows()
 	wl.eventTable.SetHeaders("ID", "TIME", "TYPE", "NAME")
 	wl.eventDetail.SetText(fmt.Sprintf("[%s]Select a workflow to load events[-]", theme.TagFgDim()))
-	if wl.MasterDetailView != nil {
-		wl.SetDetailTitle(fmt.Sprintf("%s Events", theme.IconEvent))
+	if wl.eventsPanel != nil {
+		wl.eventsPanel.SetTitle(fmt.Sprintf("%s Events", theme.IconEvent))
 	}
 }
 
@@ -118,8 +177,8 @@ func (wl *WorkflowList) setPreviewStatus(title, message string) {
 	wl.eventTable.ClearRows()
 	wl.eventTable.SetHeaders("ID", "TIME", "TYPE", "NAME")
 	wl.eventDetail.SetText(fmt.Sprintf("[%s]%s[-]", theme.TagFgDim(), message))
-	if wl.MasterDetailView != nil {
-		wl.SetDetailTitle(title)
+	if wl.eventsPanel != nil {
+		wl.eventsPanel.SetTitle(title)
 	}
 }
 
@@ -132,10 +191,9 @@ func (wl *WorkflowList) schedulePreview(w temporal.Workflow, force bool) {
 	wl.previewWorkflowID = w.ID
 	wl.previewRunID = w.RunID
 	wl.setPreviewStatus(
-		fmt.Sprintf("%s Events", theme.IconEvent),
+		fmt.Sprintf("%s %s", theme.IconEvent, truncate(w.Type, 28)),
 		"Loading events...",
 	)
-	wl.SetDetailTitle(fmt.Sprintf("%s %s", theme.IconEvent, truncate(w.Type, 28)))
 
 	if wl.previewTimer != nil {
 		wl.previewTimer.Stop()
@@ -175,7 +233,7 @@ func (wl *WorkflowList) loadPreview(gen uint64, w temporal.Workflow) {
 		}
 		if err != nil {
 			wl.setPreviewStatus(
-				fmt.Sprintf("%s Events", theme.IconEvent),
+				fmt.Sprintf("%s %s", theme.IconEvent, truncate(w.Type, 28)),
 				"Failed to load events: "+err.Error(),
 			)
 			return
@@ -188,7 +246,9 @@ func (wl *WorkflowList) showPreviewEvents(w temporal.Workflow, events []temporal
 	wl.previewEvents = events
 	wl.eventTable.ClearRows()
 	wl.eventTable.SetHeaders("ID", "TIME", "TYPE", "NAME")
-	wl.SetDetailTitle(fmt.Sprintf("%s %s", theme.IconEvent, truncate(w.Type, 28)))
+	if wl.eventsPanel != nil {
+		wl.eventsPanel.SetTitle(fmt.Sprintf("%s %s", theme.IconEvent, truncate(w.Type, 28)))
+	}
 
 	if len(events) == 0 {
 		wl.eventDetail.SetText(fmt.Sprintf("[%s]No events[-]", theme.TagFgDim()))

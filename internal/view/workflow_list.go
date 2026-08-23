@@ -12,17 +12,27 @@ import (
 	"github.com/rivo/tview"
 )
 
+type workflowFocusPane int
+
+const (
+	focusWorkflows workflowFocusPane = iota
+	focusEvents
+	focusEventDetail
+)
+
 // WorkflowList displays a list of workflows.
 type WorkflowList struct {
-	*components.MasterDetailView
+	*tview.Flex
 	app               *App
 	namespace         string
 	table             *components.Table
-	preview           *tview.Flex
+	workflowsPanel    *components.Panel
+	rightFlex         *tview.Flex
 	eventTable        *components.Table
 	eventDetail       *tview.TextView
 	eventsPanel       *components.Panel
 	eventDetailPanel  *components.Panel
+	focusPane         workflowFocusPane
 	previewEvents     []temporal.EnhancedHistoryEvent
 	previewWorkflowID string
 	previewRunID      string
@@ -52,6 +62,7 @@ type WorkflowList struct {
 // NewWorkflowList creates a new workflow list view.
 func NewWorkflowList(app *App, namespace string) *WorkflowList {
 	wl := &WorkflowList{
+		Flex:           tview.NewFlex().SetDirection(tview.FlexColumn),
 		app:            app,
 		namespace:      namespace,
 		table:          components.NewTable(),
@@ -72,6 +83,7 @@ func NewWorkflowList(app *App, namespace string) *WorkflowList {
 // NewWorkflowListWithData creates a workflow list pre-populated with data (no server fetch).
 func NewWorkflowListWithData(app *App, namespace string, workflows []temporal.Workflow) *WorkflowList {
 	wl := &WorkflowList{
+		Flex:           tview.NewFlex().SetDirection(tview.FlexColumn),
 		app:            app,
 		namespace:      namespace,
 		table:          components.NewTable(),
@@ -99,11 +111,24 @@ func (wl *WorkflowList) CommandContext() (workflowID, runID, workflowType string
 }
 
 func (wl *WorkflowList) setup() {
+	wl.SetBackgroundColor(theme.Bg())
 	wl.table.SetEvaluateAllRows(true)
 	wl.table.SetBorder(false)
 	wl.table.SetBackgroundColor(theme.Bg())
 	applyWorkflowColumnHeaders(wl.table, wl.columnLayout())
 	wl.setupPreview()
+
+	wl.workflowsPanel = components.NewPanel().SetTitle(fmt.Sprintf("%s Workflows", theme.IconWorkflow))
+	wl.workflowsPanel.SetContent(wl.table)
+
+	wl.rightFlex = tview.NewFlex().SetDirection(tview.FlexRow)
+	wl.rightFlex.SetBackgroundColor(theme.Bg())
+	wl.rightFlex.AddItem(wl.eventsPanel, 0, 3, false)
+	wl.rightFlex.AddItem(wl.eventDetailPanel, 0, 2, false)
+
+	wl.AddItem(wl.workflowsPanel, 0, 11, true)
+	wl.AddItem(wl.rightFlex, 0, 9, false)
+	wl.applyFocusStyles()
 
 	emptyInputCapture := func(event *tcell.EventKey) *tcell.EventKey {
 		switch event.Rune() {
@@ -141,12 +166,6 @@ func (wl *WorkflowList) setup() {
 		SetMessage("No workflows match the current filter")
 	wl.noResultsState.SetInputCapture(emptyInputCapture)
 
-	wl.MasterDetailView = components.NewMasterDetailView().
-		SetMasterTitle(fmt.Sprintf("%s Workflows", theme.IconWorkflow)).
-		SetDetailTitle(fmt.Sprintf("%s Events", theme.IconEvent)).
-		SetMasterContent(wl.table).
-		SetDetailContent(wl.preview).
-		SetRatio(0.55)
 	wl.clearPreview()
 
 	wl.table.SetSelectionChangedFunc(func(row, col int) {
@@ -158,7 +177,7 @@ func (wl *WorkflowList) setup() {
 	wl.table.SetOnSelect(func(row int) {
 		if row >= 0 && row < len(wl.workflows) {
 			wl.schedulePreview(wl.workflows[row], false)
-			wl.focusPreview()
+			wl.setFocusPane(focusEvents)
 		}
 	})
 }
@@ -166,12 +185,28 @@ func (wl *WorkflowList) setup() {
 // RefreshTheme updates all component colors after a theme change.
 func (wl *WorkflowList) RefreshTheme() {
 	bg := theme.Bg()
+	wl.SetBackgroundColor(bg)
 	wl.table.SetBackgroundColor(bg)
 	wl.eventTable.SetBackgroundColor(bg)
 	wl.eventDetail.SetBackgroundColor(bg)
 	wl.eventDetail.SetTextColor(theme.Fg())
-	wl.preview.SetBackgroundColor(bg)
+	if wl.rightFlex != nil {
+		wl.rightFlex.SetBackgroundColor(bg)
+	}
 	wl.populateTable()
+	wl.applyFocusStyles()
+}
+
+func (wl *WorkflowList) SetMasterTitle(title string) {
+	if wl.workflowsPanel != nil {
+		wl.workflowsPanel.SetTitle(title)
+	}
+}
+
+func (wl *WorkflowList) SetMasterContent(content tview.Primitive) {
+	if wl.workflowsPanel != nil {
+		wl.workflowsPanel.SetContent(content)
+	}
 }
 
 // Name returns the view name.
@@ -300,7 +335,11 @@ func (wl *WorkflowList) Start() {
 			return false
 		}).
 		On(tcell.KeyTab, func(e *tcell.EventKey) bool {
-			wl.focusPreview()
+			wl.cycleFocus(1)
+			return true
+		}).
+		On(tcell.KeyBacktab, func(e *tcell.EventKey) bool {
+			wl.cycleFocus(-1)
 			return true
 		})
 
@@ -342,11 +381,18 @@ func (wl *WorkflowList) Hints() []KeyHint {
 		return hints
 	}
 
-	if !wl.IsMasterFocused() {
+	switch wl.focusPane {
+	case focusEvents:
 		return []KeyHint{
 			{Key: "j/k", Description: "Events"},
-			{Key: "tab", Description: "Workflows"},
+			{Key: "tab", Description: "Details"},
 			{Key: "e", Description: "Event Graph"},
+			{Key: "esc", Description: "Workflows"},
+		}
+	case focusEventDetail:
+		return []KeyHint{
+			{Key: "j/k", Description: "Scroll"},
+			{Key: "tab", Description: "Workflows"},
 			{Key: "esc", Description: "Workflows"},
 		}
 	}
@@ -389,8 +435,8 @@ func (wl *WorkflowList) Hints() []KeyHint {
 
 // HandleEscape implements EscapeHandler to clear filter state before navigation.
 func (wl *WorkflowList) HandleEscape() bool {
-	if !wl.IsMasterFocused() {
-		wl.focusWorkflowTable()
+	if wl.focusPane != focusWorkflows {
+		wl.setFocusPane(focusWorkflows)
 		return true
 	}
 	if wl.filterText != "" || wl.visibilityQuery != "" || wl.originalWorkflows != nil {
@@ -403,18 +449,33 @@ func (wl *WorkflowList) HandleEscape() bool {
 // Focus sets focus to the table.
 func (wl *WorkflowList) Focus(delegate func(p tview.Primitive)) {
 	if len(wl.workflows) == 0 && len(wl.allWorkflows) == 0 {
-		delegate(wl.MasterDetailView)
+		delegate(wl.workflowsPanel)
 		return
 	}
-	delegate(wl.table)
+	switch wl.focusPane {
+	case focusEvents:
+		delegate(wl.eventTable)
+	case focusEventDetail:
+		delegate(wl.eventDetail)
+	default:
+		delegate(wl.table)
+	}
 }
 
 // Draw draws the workflow list.
 func (wl *WorkflowList) Draw(screen tcell.Screen) {
 	bg := theme.Bg()
-	wl.preview.SetBackgroundColor(bg)
-	wl.eventTable.SetBackgroundColor(bg)
-	wl.eventDetail.SetBackgroundColor(bg)
-	wl.eventDetail.SetTextColor(theme.Fg())
-	wl.MasterDetailView.Draw(screen)
+	wl.SetBackgroundColor(bg)
+	if wl.rightFlex != nil {
+		wl.rightFlex.SetBackgroundColor(bg)
+	}
+	if wl.eventTable != nil {
+		wl.eventTable.SetBackgroundColor(bg)
+	}
+	if wl.eventDetail != nil {
+		wl.eventDetail.SetBackgroundColor(bg)
+		wl.eventDetail.SetTextColor(theme.Fg())
+	}
+	wl.syncFocusFromPrimitives()
+	wl.Flex.Draw(screen)
 }
