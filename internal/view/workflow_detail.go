@@ -711,18 +711,14 @@ func (wd *WorkflowDetail) Start() {
 		}
 		return event
 	})
+	wd.setupPaneInput(wd.workflowView)
+	wd.setupPaneInput(wd.eventDetailView)
 	wd.loadData()
 }
 
 // Stop is called when the view is deactivated.
 func (wd *WorkflowDetail) Stop() {
 	wd.eventTable.SetInputCapture(nil)
-	if wd.workflowView != nil {
-		wd.workflowView.SetInputCapture(nil)
-	}
-	if wd.eventDetailView != nil {
-		wd.eventDetailView.SetInputCapture(nil)
-	}
 }
 
 // Hints returns keybinding hints for this view.
@@ -2131,7 +2127,7 @@ func formatIOContent(label, content string) string {
 // closeIOModal closes the IO modal.
 func (wd *WorkflowDetail) closeIOModal() {
 	wd.app.JigApp().Pages().DismissModal()
-	wd.app.JigApp().SetFocus(wd.eventTable)
+	wd.setFocusPane(detailFocusEvents)
 }
 
 // jumpToChildWorkflow navigates to the child workflow if the selected event is a child workflow event.

@@ -1,6 +1,10 @@
 package view
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/gdamore/tcell/v2"
+)
 
 func TestWorkflowDetailFocusCycle(t *testing.T) {
 	wd := NewWorkflowDetail(&App{}, "wf", "run")
@@ -27,6 +31,24 @@ func TestWorkflowDetailFocusCycle(t *testing.T) {
 	wd.cycleFocus(1)
 	if wd.focusPane != detailFocusEvents {
 		t.Fatal("tab should wrap back to events")
+	}
+}
+
+func TestWorkflowDetailRestoresPaneTabAfterStop(t *testing.T) {
+	wd := NewWorkflowDetail(&App{}, "wf", "run")
+	wd.Stop()
+	wd.Start()
+
+	capture := wd.eventDetailView.GetInputCapture()
+	if capture == nil {
+		t.Fatal("event detail should keep tab handling after a modal closes")
+	}
+	wd.focusPane = detailFocusEventDetail
+	if ev := capture(tcell.NewEventKey(tcell.KeyTab, 0, tcell.ModNone)); ev != nil {
+		t.Fatal("tab should be consumed")
+	}
+	if wd.focusPane != detailFocusWorkflow {
+		t.Fatalf("tab should leave event detail, got %d", wd.focusPane)
 	}
 }
 
