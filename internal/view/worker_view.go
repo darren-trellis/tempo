@@ -27,6 +27,17 @@ type workerRow struct {
 	Worker temporal.Worker
 }
 
+const (
+	// Bar widths for the CPU/memory meters in the table and the detail pane.
+	workerMeterCells       = 6
+	workerMeterDetailCells = 16
+	workerMeterFilled      = "\u2588"
+	workerMeterEmpty       = "\u2591"
+	// Utilization ratios where the meter turns amber, then red.
+	workerMeterWarn = 0.6
+	workerMeterHigh = 0.85
+)
+
 type WorkerView struct {
 	app          *App
 	table        *components.Table
@@ -245,8 +256,8 @@ func (wv *WorkerView) addHostRow(host string) {
 	label := fmt.Sprintf("%s %s %s (%d)", chevron, theme.IconServer, host, count)
 	cpu, mem := "-", "-"
 	if group != nil && group.Resources {
-		cpu = formatWorkerPercent(group.CPU)
-		mem = formatWorkerPercent(group.Memory)
+		cpu = formatWorkerMeter(group.CPU, workerMeterCells)
+		mem = formatWorkerMeter(group.Memory, workerMeterCells)
 	}
 	wv.table.AddRow(label, "", "", "", "", "", "", cpu, mem)
 }
@@ -261,8 +272,8 @@ func (wv *WorkerView) addInstanceRow(now time.Time, w temporal.Worker) {
 		formatWorkerTime(now, w.StartTime),
 		w.BuildID,
 		w.ProcessID,
-		formatWorkerResource(w),
-		formatWorkerMemory(w),
+		formatWorkerResource(w, workerMeterCells),
+		formatWorkerMemory(w, workerMeterCells),
 	}
 	wv.table.AddRowWithStatus(status, 1, cells...)
 }
@@ -491,26 +502,61 @@ func formatWorkerPercent(value float32) string {
 	return fmt.Sprintf("%.0f%%", value*100)
 }
 
-func formatWorkerResource(w temporal.Worker) string {
-	if !w.HasHostInfo {
-		return "-"
+// formatWorkerMeter renders a utilization ratio as a colored bar plus its percentage.
+func formatWorkerMeter(value float32, cells int) string {
+	if cells <= 0 {
+		return formatWorkerPercent(value)
 	}
-	return formatWorkerPercent(w.CPU)
+	ratio := float64(value)
+	if ratio < 0 {
+		ratio = 0
+	}
+	if ratio > 1 {
+		ratio = 1
+	}
+	filled := int(ratio*float64(cells) + 0.5)
+	if filled == 0 && ratio > 0 {
+		filled = 1
+	}
+	return fmt.Sprintf("[%s]%s[%s]%s[-] %s",
+		workerMeterTag(ratio),
+		strings.Repeat(workerMeterFilled, filled),
+		theme.TagFgMuted(),
+		strings.Repeat(workerMeterEmpty, cells-filled),
+		fmt.Sprintf("%4s", formatWorkerPercent(float32(ratio))))
 }
 
-func formatWorkerMemory(w temporal.Worker) string {
+func workerMeterTag(ratio float64) string {
+	switch {
+	case ratio >= workerMeterHigh:
+		return theme.TagError()
+	case ratio >= workerMeterWarn:
+		return theme.TagWarning()
+	default:
+		return theme.TagSuccess()
+	}
+}
+
+func formatWorkerResource(w temporal.Worker, cells int) string {
 	if !w.HasHostInfo {
 		return "-"
 	}
-	return formatWorkerPercent(w.Memory)
+	return formatWorkerMeter(w.CPU, cells)
+}
+
+func formatWorkerMemory(w temporal.Worker, cells int) string {
+	if !w.HasHostInfo {
+		return "-"
+	}
+	return formatWorkerMeter(w.Memory, cells)
 }
 
 func formatWorkerHostPreview(group workerHostGroup) string {
 	now := time.Now()
 	cpu, mem := "-", "-"
 	if group.Resources {
-		cpu = formatWorkerPercent(group.CPU)
-		mem = formatWorkerPercent(group.Memory)
+		cpu = formatWorkerMeter(group.CPU, workerMeterDetailCells)
+		mem = formatWorkerMeter(group.Memory, workerMeterDetailCells)
 	}
 	lines := []string{
 		fmt.Sprintf("[%s::b]Host[-:-:-]", theme.TagAccent()),
@@ -520,10 +566,10 @@ func formatWorkerHostPreview(group workerHostGroup) string {
 		fmt.Sprintf("[%s]%d[-]", theme.TagFg(), len(group.Workers)),
 		"",
 		fmt.Sprintf("[%s]CPU[-]", theme.TagFgDim()),
-		fmt.Sprintf("[%s]%s[-]", theme.TagFg(), cpu),
+		cpu,
 		"",
 		fmt.Sprintf("[%s]Memory[-]", theme.TagFgDim()),
-		fmt.Sprintf("[%s]%s[-]", theme.TagFg(), mem),
+		mem,
 		"",
 		fmt.Sprintf("[%s]Workers[-]", theme.TagFgDim()),
 	}
@@ -590,10 +636,10 @@ func formatWorkerInstancePreview(w temporal.Worker) string {
 		fmt.Sprintf("[%s]%s[-]", theme.TagFg(), formatWorkerTime(now, w.LastHeartbeat)),
 		"",
 		fmt.Sprintf("[%s]CPU[-]", theme.TagFgDim()),
-		fmt.Sprintf("[%s]%s[-]", theme.TagFg(), formatWorkerResource(w)),
+		formatWorkerResource(w, workerMeterDetailCells),
 		"",
 		fmt.Sprintf("[%s]Memory[-]", theme.TagFgDim()),
-		fmt.Sprintf("[%s]%s[-]", theme.TagFg(), formatWorkerMemory(w)),
+		formatWorkerMemory(w, workerMeterDetailCells),
 		"",
 		fmt.Sprintf("[%s]Task Slots[-]", theme.TagFgDim()),
 		formatSlotLine("Workflow", w.WorkflowSlots),

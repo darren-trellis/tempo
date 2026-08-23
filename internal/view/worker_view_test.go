@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/atterpac/jig/theme"
 	"github.com/galaxy-io/tempo/internal/temporal"
 )
 
@@ -92,6 +93,47 @@ func TestFormatWorkerInstancePreview(t *testing.T) {
 		if !strings.Contains(text, want) {
 			t.Fatalf("preview missing %q:\n%s", want, text)
 		}
+	}
+}
+
+// meterCells strips the color tags and percentage from a meter, leaving the bar.
+func meterCells(meter string) string {
+	var b strings.Builder
+	for _, r := range meter {
+		if r == '█' || r == '░' {
+			b.WriteRune(r)
+		}
+	}
+	return b.String()
+}
+
+func TestFormatWorkerMeter(t *testing.T) {
+	if half := formatWorkerMeter(0.5, 4); meterCells(half) != "██░░" || !strings.Contains(half, "50%") {
+		t.Fatalf("half meter: %q", half)
+	}
+	if empty := formatWorkerMeter(0, 4); meterCells(empty) != "░░░░" {
+		t.Fatalf("empty meter: %q", empty)
+	}
+	if tiny := formatWorkerMeter(0.01, 4); meterCells(tiny) != "█░░░" {
+		t.Fatalf("a live worker should keep at least one filled cell: %q", tiny)
+	}
+	if full := formatWorkerMeter(1.5, 4); meterCells(full) != "████" || !strings.Contains(full, "100%") {
+		t.Fatalf("meter should clamp at full: %q", full)
+	}
+	if !strings.Contains(formatWorkerMeter(0.9, 4), theme.TagError()) {
+		t.Fatal("high utilization should use the error color")
+	}
+	if !strings.Contains(formatWorkerMeter(0.7, 4), theme.TagWarning()) {
+		t.Fatal("elevated utilization should use the warning color")
+	}
+	if !strings.Contains(formatWorkerMeter(0.2, 4), theme.TagSuccess()) {
+		t.Fatal("low utilization should use the success color")
+	}
+	if got := formatWorkerResource(temporal.Worker{}, 4); got != "-" {
+		t.Fatalf("no host info: %q", got)
+	}
+	if got := formatWorkerMemory(temporal.Worker{}, 4); got != "-" {
+		t.Fatalf("no host info: %q", got)
 	}
 }
 
