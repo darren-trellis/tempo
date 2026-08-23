@@ -114,6 +114,7 @@ type Config struct {
 	ExternalProfiles map[string]ConnectionConfig `yaml:"-"`
 	SavedFilters     []SavedFilter               `yaml:"saved_filters,omitempty"`
 	CheckUpdates     *bool                       `yaml:"check_updates,omitempty"`
+	Autoreload       *bool                       `yaml:"autoreload,omitempty"`
 	HelpStyle        string                      `yaml:"help_style,omitempty"` // "modal" (default) or "sheet"
 	Commands         map[string]CommandConfig    `yaml:"commands,omitempty"`
 	WorkflowColumns  []WorkflowColumnConfig      `yaml:"workflow_columns,omitempty"`
@@ -147,6 +148,15 @@ func (c *Config) ShouldCheckUpdates() bool {
 	return *c.CheckUpdates
 }
 
+// ShouldAutoreload returns whether config file changes should be applied live.
+// Defaults to true if not explicitly set.
+func (c *Config) ShouldAutoreload() bool {
+	if c == nil || c.Autoreload == nil {
+		return true
+	}
+	return *c.Autoreload
+}
+
 // DefaultConfig returns a config with default values.
 func DefaultConfig() *Config {
 	return &Config{
@@ -176,17 +186,11 @@ func Load() (*Config, error) {
 		return nil, fmt.Errorf("reading config: %w", err)
 	}
 
-	cfg := DefaultConfig()
-	if err := yaml.Unmarshal(data, cfg); err != nil {
-		return nil, fmt.Errorf("parsing config: %w", err)
+	cfg, err := parseConfig(data)
+	if err != nil {
+		return nil, err
 	}
-
-	// Ensure profiles and active profile are set
-	cfg.ensureDefaults()
-
-	// Load external profiles from Temporal CLI config
-	cfg.loadExternalProfiles()
-
+	noteFileHash(data)
 	return cfg, nil
 }
 
@@ -245,6 +249,7 @@ func (c *Config) Save() error {
 	if err := os.WriteFile(path, data, 0644); err != nil {
 		return fmt.Errorf("writing config: %w", err)
 	}
+	noteFileHash(data)
 
 	return nil
 }

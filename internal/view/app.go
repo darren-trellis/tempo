@@ -45,7 +45,8 @@ type App struct {
 	reconnecting  bool
 
 	// Connection monitor
-	stopMonitor chan struct{}
+	stopMonitor     chan struct{}
+	stopConfigWatch chan struct{}
 
 	// Profile management
 	config *config.Config
@@ -483,6 +484,8 @@ func (a *App) Run() error {
 		go a.connectionMonitor()
 	}
 
+	a.startConfigWatch()
+
 	// Check for updates if enabled
 	if a.config != nil && a.config.ShouldCheckUpdates() {
 		go a.checkForUpdates()
@@ -664,6 +667,13 @@ func (a *App) Stop() {
 		case <-a.stopMonitor:
 		default:
 			close(a.stopMonitor)
+		}
+	}
+	if a.stopConfigWatch != nil {
+		select {
+		case <-a.stopConfigWatch:
+		default:
+			close(a.stopConfigWatch)
 		}
 	}
 	a.app.Stop()
@@ -1193,6 +1203,10 @@ func (a *App) deleteProfile(name string) {
 
 // SwitchProfile switches to a different connection profile.
 func (a *App) SwitchProfile(name string) {
+	a.applyProfile(name, true)
+}
+
+func (a *App) applyProfile(name string, persist bool) {
 	a.mu.RLock()
 	provider := a.provider
 	currentProfile := a.activeProfile
@@ -1221,21 +1235,19 @@ func (a *App) SwitchProfile(name string) {
 		CodecEndpoint: profileCfg.CodecEndpoint,
 	}
 
-	// Stop current views
-	if current := a.app.Pages().Current(); current != nil {
-		current.Stop()
-	}
-
-	// Update UI to show connecting state (setProfile must be first - clears sections)
-	a.setProfile(name + " (connecting...)")
-	a.setConnected(false)
+	a.app.QueueUpdateDraw(func() {
+		if current := a.app.Pages().Current(); current != nil {
+			current.Stop()
+		}
+		a.setProfile(name + " (connecting...)")
+		a.setConnected(false)
+	})
 
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		err := provider.ReconnectWithConfig(ctx, connConfig)
 		cancel()
 
-		// Update state before QueueUpdateDraw to avoid deadlock
 		if err == nil {
 			a.mu.Lock()
 			a.activeProfile = name
@@ -1243,7 +1255,9 @@ func (a *App) SwitchProfile(name string) {
 			a.mu.Unlock()
 
 			a.config.SetActiveProfile(name)
-			_ = a.config.Save()
+			if persist {
+				_ = a.config.Save()
+			}
 		}
 
 		a.app.QueueUpdateDraw(func() {

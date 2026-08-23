@@ -1,6 +1,7 @@
 package config
 
 import (
+	"os"
 	"testing"
 )
 
@@ -69,5 +70,64 @@ func TestSetWorkflowColumnsOmitsDefaults(t *testing.T) {
 	cfg.SetWorkflowColumns([]WorkflowColumnConfig{{ID: WorkflowColumnWorkflowID, Width: 40}})
 	if len(cfg.WorkflowColumns) != 1 || cfg.WorkflowColumns[0].Width != 40 {
 		t.Fatalf("got %+v", cfg.WorkflowColumns)
+	}
+}
+
+func TestShouldAutoreloadDefault(t *testing.T) {
+	if !DefaultConfig().ShouldAutoreload() {
+		t.Fatal("autoreload should default to on")
+	}
+	off := false
+	cfg := &Config{Autoreload: &off}
+	if cfg.ShouldAutoreload() {
+		t.Fatal("autoreload: false should disable reload")
+	}
+	on := true
+	cfg.Autoreload = &on
+	if !cfg.ShouldAutoreload() {
+		t.Fatal("autoreload: true should enable reload")
+	}
+}
+
+func TestReadChangedConfigFile(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	cfg := DefaultConfig()
+	cfg.Theme = "nord"
+	if err := cfg.Save(); err != nil {
+		t.Fatal(err)
+	}
+	if _, changed, err := ReadChangedConfigFile(); err != nil || changed {
+		t.Fatalf("changed=%v err=%v after save", changed, err)
+	}
+
+	if err := os.WriteFile(ConfigPath(), []byte("theme: dracula\nactive_profile: default\nprofiles:\n  default:\n    address: localhost:7233\n    namespace: default\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	data, changed, err := ReadChangedConfigFile()
+	if err != nil || !changed {
+		t.Fatalf("changed=%v err=%v", changed, err)
+	}
+	parsed, err := ParseConfigFile(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if parsed.Theme != "dracula" {
+		t.Fatalf("theme=%q", parsed.Theme)
+	}
+	AcknowledgeConfigFile(data)
+	if _, changed, err = ReadChangedConfigFile(); err != nil || changed {
+		t.Fatalf("changed=%v err=%v after acknowledge", changed, err)
+	}
+}
+
+func TestConnectionSettingsEqual(t *testing.T) {
+	a := ConnectionConfig{Address: "localhost:7233", Namespace: "default"}
+	b := a
+	if !ConnectionSettingsEqual(a, b) {
+		t.Fatal("expected equal")
+	}
+	b.CodecEndpoint = "https://codec"
+	if ConnectionSettingsEqual(a, b) {
+		t.Fatal("expected codec change to differ")
 	}
 }
