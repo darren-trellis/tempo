@@ -13,6 +13,7 @@ import (
 
 const (
 	timelineMinWidth = 40
+	timelineBarFill  = '\u00a0'
 )
 
 // TimelineLane represents a horizontal lane in the timeline.
@@ -279,30 +280,23 @@ func (tv *TimelineView) drawLaneBar(screen tcell.Screen, x, y, width int, lane T
 
 	barWidth := barEnd - barStart
 	label := timelineBarName(lane)
-	name := []rune(fitTimelineName(label, barWidth-2))
-	nameStart := 1
-	if barWidth < 3 {
-		name = nil
-	}
-
-	for i := barStart; i < barEnd && i < width; i++ {
-		rel := i - barStart
-		ch := barChar
-		if len(name) > 0 && rel >= nameStart && rel-nameStart < len(name) {
-			ch = name[rel-nameStart]
+	contents := timelineBarContents(barChar, label, barWidth)
+	for i, ch := range contents {
+		pos := barStart + i
+		if pos < 0 || pos >= width {
+			continue
 		}
-		screen.SetContent(x+i, y, ch, nil, barStyle)
+		screen.SetContent(x+pos, y, ch, nil, barStyle)
 	}
 
-	if len(name) == 0 && label != "" {
-		outside := []rune(fitTimelineName(label, width-barEnd-1))
-		labelStyle := barStyle
+	if barWidth < 3 && label != "" {
+		outside := timelineBarLabelRunes(label, width-barEnd-1)
 		pos := barEnd + 1
 		for _, r := range outside {
 			if pos >= width {
 				break
 			}
-			screen.SetContent(x+pos, y, r, nil, labelStyle)
+			screen.SetContent(x+pos, y, r, nil, barStyle)
 			pos++
 		}
 	}
@@ -368,10 +362,14 @@ func (tv *TimelineView) drawCursor(screen tcell.Screen, x, y, width, height int,
 		}
 	}
 
-	// Draw vertical cursor line at start position
+	// Draw vertical cursor line at start position, skipping the selected
+	// lane so it does not cover the type glyph on the highlighted bar.
 	if startPos >= 0 && startPos < width {
 		cursorStyle := tcell.StyleDefault.Foreground(theme.Accent()).Background(theme.Bg())
 		for row := y + 2; row < lanesEnd; row++ {
+			if row == selectedRow {
+				continue
+			}
 			screen.SetContent(x+startPos, row, '│', nil, cursorStyle)
 		}
 
@@ -402,6 +400,9 @@ func (tv *TimelineView) drawCursor(screen tcell.Screen, x, y, width, height int,
 		if endPos > startPos && endPos >= 0 && endPos < width {
 			endStyle := tcell.StyleDefault.Foreground(theme.Success()).Background(theme.Bg())
 			for row := y + 2; row < lanesEnd; row++ {
+				if row == selectedRow {
+					continue
+				}
 				screen.SetContent(x+endPos, row, '│', nil, endStyle)
 			}
 		}
@@ -586,6 +587,33 @@ func timelineStatusColor(status string) tcell.Color {
 	default:
 		return temporal.GetWorkflowStatus(status).Color()
 	}
+}
+
+func timelineBarContents(glyph rune, label string, width int) []rune {
+	if width <= 0 {
+		return nil
+	}
+	cells := make([]rune, width)
+	for i := range cells {
+		cells[i] = timelineBarFill
+	}
+	cells[0] = glyph
+	if width < 3 {
+		return cells
+	}
+	name := timelineBarLabelRunes(label, width-2)
+	copy(cells[2:], name)
+	return cells
+}
+
+func timelineBarLabelRunes(label string, width int) []rune {
+	name := []rune(fitTimelineName(label, width))
+	for i, r := range name {
+		if r == ' ' {
+			name[i] = timelineBarFill
+		}
+	}
+	return name
 }
 
 func timelineBarName(lane TimelineLane) string {

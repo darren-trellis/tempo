@@ -79,6 +79,42 @@ func TestTimelineBarName(t *testing.T) {
 	}
 }
 
+func TestTimelineBarContentsPlacesGlyphOnce(t *testing.T) {
+	cells := timelineBarContents('●', "Hi There", 12)
+	if len(cells) != 12 {
+		t.Fatalf("len: %d", len(cells))
+	}
+	if cells[0] != '●' {
+		t.Fatalf("glyph: %q", string(cells[0]))
+	}
+	if cells[1] != timelineBarFill {
+		t.Fatal("glyph should be followed by one blank")
+	}
+	if string(cells[2:4]) != "Hi" {
+		t.Fatalf("label: %q", string(cells[2:4]))
+	}
+	if cells[4] != timelineBarFill {
+		t.Fatal("spaces in the label should keep the bar fill")
+	}
+	if string(cells[5:10]) != "There" {
+		t.Fatalf("rest of label: %q", string(cells[5:10]))
+	}
+	for i, r := range cells[10:] {
+		if r != timelineBarFill {
+			t.Fatalf("cell %d should be fill, got %q", i+10, string(r))
+		}
+	}
+	count := 0
+	for _, r := range cells {
+		if r == '●' {
+			count++
+		}
+	}
+	if count != 1 {
+		t.Fatalf("glyph count: %d", count)
+	}
+}
+
 func TestFitTimelineName(t *testing.T) {
 	if got := fitTimelineName("ValidateOrder", 20); got != "ValidateOrder" {
 		t.Fatalf("short name: %q", got)
@@ -88,6 +124,33 @@ func TestFitTimelineName(t *testing.T) {
 	}
 	if got := fitTimelineName("ValidateOrder", 0); got != "" {
 		t.Fatalf("empty width: %q", got)
+	}
+}
+
+func TestTimelineCursorSkipsSelectedGlyph(t *testing.T) {
+	start := time.Date(2026, 8, 23, 12, 0, 0, 0, time.UTC)
+	end := start.Add(time.Minute)
+	tv := NewTimelineView()
+	tv.SetNodes(temporal.BuildEventTree([]temporal.EnhancedHistoryEvent{
+		{ID: 1, Type: "WorkflowExecutionStarted", Time: start},
+		{ID: 5, Type: "ActivityTaskScheduled", Time: start, ActivityType: "First"},
+		{ID: 6, Type: "ActivityTaskCompleted", Time: end, ScheduledEventID: 5},
+	}))
+	tv.SetRect(0, 0, 80, 10)
+
+	screen := tcell.NewSimulationScreen("UTF-8")
+	if err := screen.Init(); err != nil {
+		t.Fatal(err)
+	}
+	screen.SetSize(80, 10)
+	tv.Draw(screen)
+
+	ch, _, _, _ := screen.GetContent(0, 2)
+	if ch == '│' {
+		t.Fatal("cursor should not cover the selected bar glyph")
+	}
+	if ch != timelineTypeGlyph(temporal.GroupActivity) {
+		t.Fatalf("selected bar should start with its type glyph, got %q", string(ch))
 	}
 }
 
