@@ -56,6 +56,7 @@ type WorkflowList struct {
 	focusPane             workflowFocusPane
 	previewKind           previewKind
 	hierarchyView         *WorkflowGraphView
+	hierarchyGraphPanel   *components.Panel
 	previewEvents         []temporal.EnhancedHistoryEvent
 	previewActivities     []previewActivity
 	previewWorkflowID     string
@@ -560,7 +561,6 @@ func (wl *WorkflowList) previewListHints() []KeyHint {
 	if wl.previewKind == previewHierarchy {
 		return []KeyHint{
 			{Key: "h/l", Description: "Collapse/Expand"},
-			{Key: "c", Description: "Center Graph"},
 			{Key: "+/-", Description: "Depth"},
 			{Key: "z", Description: "Timeline"},
 			{Key: "p", Description: "Preview"},
@@ -581,6 +581,14 @@ func (wl *WorkflowList) previewSideHints() []KeyHint {
 			KeyHint{Key: "z", Description: "Timeline"},
 			KeyHint{Key: "p", Description: "Preview"},
 		)
+	}
+	if wl.previewKind == previewHierarchy {
+		return []KeyHint{
+			{Key: "c", Description: "Center Graph"},
+			{Key: "+/-", Description: "Depth"},
+			{Key: "z", Description: "Timeline"},
+			{Key: "p", Description: "Preview"},
+		}
 	}
 	return wl.previewListHints()
 }
@@ -684,14 +692,18 @@ func (wl *WorkflowList) Focus(delegate func(p tview.Primitive)) {
 	}
 	switch wl.focusPane {
 	case focusEvents:
-		if wl.previewKind == previewHierarchy && wl.hierarchyView != nil {
-			delegate(wl.hierarchyView)
+		if wl.previewKind == previewHierarchy && wl.hierarchyView != nil && wl.hierarchyView.tree != nil {
+			delegate(wl.hierarchyView.tree)
 			return
 		}
 		delegate(wl.eventTable)
 	case focusEventDetail:
 		if wl.previewKind == previewDetails && wl.workflowDetail != nil {
 			delegate(wl.workflowDetail)
+			return
+		}
+		if wl.previewKind == previewHierarchy && wl.hierarchyView != nil && wl.hierarchyView.graph != nil {
+			delegate(wl.hierarchyView.graph)
 			return
 		}
 		delegate(wl.eventDetail)

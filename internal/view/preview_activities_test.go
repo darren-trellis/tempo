@@ -117,8 +117,8 @@ func TestPreviewKindCycle(t *testing.T) {
 	if wl.previewKind != previewHierarchy || wl.previewTabs.GetActive() != int(previewHierarchy) {
 		t.Fatalf("next kind: %d tab %d", wl.previewKind, wl.previewTabs.GetActive())
 	}
-	if wl.rightFlex.GetItemCount() != 1 {
-		t.Fatalf("hierarchy should hide the sibling pane, got %d items", wl.rightFlex.GetItemCount())
+	if wl.rightFlex.GetItemCount() != 2 {
+		t.Fatalf("hierarchy should show the graph pane, got %d items", wl.rightFlex.GetItemCount())
 	}
 
 	wl.cyclePreviewKind(1)

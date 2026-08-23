@@ -126,20 +126,25 @@ func TestPreviewHierarchyTab(t *testing.T) {
 	if wl.previewKind != previewHierarchy {
 		t.Fatalf("o should open hierarchy, got %d", wl.previewKind)
 	}
-	if wl.rightFlex.GetItemCount() != 1 {
-		t.Fatalf("hierarchy should hide the sibling pane, got %d items", wl.rightFlex.GetItemCount())
+	if wl.rightFlex.GetItemCount() != 2 {
+		t.Fatalf("hierarchy should show the graph pane, got %d items", wl.rightFlex.GetItemCount())
 	}
 	if wl.focusPane != focusEvents {
-		t.Fatalf("o should focus hierarchy, got %d", wl.focusPane)
+		t.Fatalf("o should focus the hierarchy tree, got %d", wl.focusPane)
 	}
 	if desc := hintDescription(wl.Hints(), "h/l"); desc != "Collapse/Expand" {
 		t.Fatalf("hierarchy hints: %q", desc)
 	}
-	if desc := hintDescription(wl.Hints(), "c"); desc != "Center Graph" {
-		t.Fatalf("center hint: %q", desc)
+	if desc := hintDescription(wl.Hints(), "c"); desc != "" {
+		t.Fatalf("tree pane should not show center graph, got %q", desc)
 	}
 	if desc := hintDescription(wl.Hints(), "i"); desc != "" {
 		t.Fatalf("hierarchy should not show io, got %q", desc)
+	}
+
+	wl.setFocusPane(focusEventDetail)
+	if desc := hintDescription(wl.Hints(), "c"); desc != "Center Graph" {
+		t.Fatalf("graph pane should show center, got %q", desc)
 	}
 
 	wl.setPreviewKind(previewActivities)
