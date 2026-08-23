@@ -148,15 +148,15 @@ func (wl *WorkflowList) togglePreviewMode() {
 	on := !cfg.ShouldPreviewMode()
 	cfg.SetPreviewMode(on)
 	if err := cfg.Save(); err != nil {
-		wl.app.ShowToastError("Failed to save preview mode: " + err.Error())
+		wl.app.ToastError("Failed to save preview mode: " + err.Error())
 		return
 	}
 	wl.applyPreviewLayout()
 	if on {
-		wl.app.ShowToastSuccess("Preview mode on")
+		wl.app.ToastSuccess("Preview mode on")
 		return
 	}
-	wl.app.ShowToastSuccess("Preview mode off")
+	wl.app.ToastSuccess("Preview mode off")
 }
 
 func (wl *WorkflowList) setupPreview() {
