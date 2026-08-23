@@ -73,6 +73,21 @@ func TestSetWorkflowColumnsOmitsDefaults(t *testing.T) {
 	}
 }
 
+func TestShouldPreviewModeDefault(t *testing.T) {
+	if DefaultConfig().ShouldPreviewMode() {
+		t.Fatal("preview mode should default to off")
+	}
+	on := true
+	cfg := &Config{PreviewMode: &on}
+	if !cfg.ShouldPreviewMode() {
+		t.Fatal("preview_mode: true should enable preview")
+	}
+	cfg.SetPreviewMode(false)
+	if cfg.ShouldPreviewMode() || cfg.PreviewMode != nil {
+		t.Fatal("SetPreviewMode(false) should restore the default")
+	}
+}
+
 func TestShouldAutoreloadDefault(t *testing.T) {
 	if !DefaultConfig().ShouldAutoreload() {
 		t.Fatal("autoreload should default to on")

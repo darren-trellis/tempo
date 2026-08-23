@@ -38,6 +38,70 @@ func formatSelectedEventDetail(ev temporal.EnhancedHistoryEvent) string {
 	)
 }
 
+func (wl *WorkflowList) previewModeEnabled() bool {
+	if wl.app == nil {
+		return false
+	}
+	return wl.app.Config().ShouldPreviewMode()
+}
+
+func (wl *WorkflowList) applyPreviewLayout() {
+	on := wl.previewModeEnabled()
+	if !on {
+		if wl.previewTimer != nil {
+			wl.previewTimer.Stop()
+		}
+		if wl.eventTable != nil {
+			wl.clearPreview()
+		}
+		wl.focusPane = focusWorkflows
+	}
+
+	wl.Clear()
+	if on {
+		wl.AddItem(wl.workflowsPanel, 0, 11, true)
+		wl.AddItem(wl.rightFlex, 0, 9, false)
+	} else if wl.workflowsPanel != nil {
+		wl.AddItem(wl.workflowsPanel, 0, 1, true)
+	}
+
+	if on && len(wl.workflows) > 0 && wl.table != nil {
+		row := wl.table.SelectedRow()
+		if row < 0 || row >= len(wl.workflows) {
+			row = 0
+		}
+		wl.schedulePreview(wl.workflows[row], false)
+	}
+
+	if wl.app != nil && wl.app.JigApp() != nil {
+		wl.setFocusPane(wl.focusPane)
+		return
+	}
+	wl.applyFocusStyles()
+}
+
+func (wl *WorkflowList) togglePreviewMode() {
+	if wl.app == nil {
+		return
+	}
+	cfg := wl.app.Config()
+	if cfg == nil {
+		return
+	}
+	on := !cfg.ShouldPreviewMode()
+	cfg.SetPreviewMode(on)
+	if err := cfg.Save(); err != nil {
+		wl.app.ShowToastError("Failed to save preview mode: " + err.Error())
+		return
+	}
+	wl.applyPreviewLayout()
+	if on {
+		wl.app.ShowToastSuccess("Preview mode on")
+		return
+	}
+	wl.app.ShowToastSuccess("Preview mode off")
+}
+
 func (wl *WorkflowList) setupPreview() {
 	wl.eventTable = components.NewTable()
 	wl.eventTable.SetHeaders("ID", "TIME", "TYPE", "NAME")
@@ -77,6 +141,10 @@ func (wl *WorkflowList) setupPreview() {
 			wl.setFocusPane(focusWorkflows)
 			return nil
 		}
+		if event.Rune() == 'p' {
+			wl.togglePreviewMode()
+			return nil
+		}
 		if event.Rune() == 'e' && wl.previewWorkflowID != "" {
 			wl.app.NavigateToEvents(wl.previewWorkflowID, wl.previewRunID)
 			return nil
@@ -94,6 +162,10 @@ func (wl *WorkflowList) setupPreview() {
 			return nil
 		case tcell.KeyEscape:
 			wl.setFocusPane(focusWorkflows)
+			return nil
+		}
+		if event.Rune() == 'p' {
+			wl.togglePreviewMode()
 			return nil
 		}
 		return event
@@ -183,6 +255,9 @@ func (wl *WorkflowList) setPreviewStatus(title, message string) {
 }
 
 func (wl *WorkflowList) schedulePreview(w temporal.Workflow, force bool) {
+	if !wl.previewModeEnabled() {
+		return
+	}
 	if !force && wl.previewWorkflowID == w.ID && wl.previewRunID == w.RunID {
 		return
 	}

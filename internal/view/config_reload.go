@@ -68,11 +68,13 @@ func (a *App) applyReloadedConfig(cfg *config.Config) {
 
 	oldTheme := ""
 	oldProfile := a.activeProfile
+	oldPreview := false
 	var oldConn config.ConnectionConfig
 	var oldCols []config.WorkflowColumnConfig
 	if old != nil {
 		oldTheme = old.Theme
 		oldCols = old.WorkflowColumnLayout()
+		oldPreview = old.ShouldPreviewMode()
 		if conn, ok := old.GetProfile(oldProfile); ok {
 			oldConn = conn
 		}
@@ -86,6 +88,7 @@ func (a *App) applyReloadedConfig(cfg *config.Config) {
 	needReconnect := hasConn && (newProfile != oldProfile || !config.ConnectionSettingsEqual(oldConn, newConn))
 	needTheme := cfg.Theme != "" && cfg.Theme != oldTheme
 	needColumns := !workflowColumnsEqual(cfg.WorkflowColumnLayout(), oldCols)
+	needPreview := cfg.ShouldPreviewMode() != oldPreview
 
 	a.config = cfg
 
@@ -95,10 +98,13 @@ func (a *App) applyReloadedConfig(cfg *config.Config) {
 				theme.SetProvider(selected)
 			}
 		}
-		if needColumns {
-			if current := a.app.Pages().Current(); current != nil {
-				if wl, ok := current.(*WorkflowList); ok {
+		if current := a.app.Pages().Current(); current != nil {
+			if wl, ok := current.(*WorkflowList); ok {
+				if needColumns {
 					wl.populateTable()
+				}
+				if needPreview {
+					wl.applyPreviewLayout()
 				}
 			}
 		}

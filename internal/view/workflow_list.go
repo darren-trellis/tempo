@@ -126,9 +126,7 @@ func (wl *WorkflowList) setup() {
 	wl.rightFlex.AddItem(wl.eventsPanel, 0, 3, false)
 	wl.rightFlex.AddItem(wl.eventDetailPanel, 0, 2, false)
 
-	wl.AddItem(wl.workflowsPanel, 0, 11, true)
-	wl.AddItem(wl.rightFlex, 0, 9, false)
-	wl.applyFocusStyles()
+	wl.applyPreviewLayout()
 
 	emptyInputCapture := func(event *tcell.EventKey) *tcell.EventKey {
 		switch event.Rune() {
@@ -150,6 +148,9 @@ func (wl *WorkflowList) setup() {
 		case '|':
 			wl.showColumnEditor()
 			return nil
+		case 'p':
+			wl.togglePreviewMode()
+			return nil
 		}
 		return event
 	}
@@ -169,16 +170,22 @@ func (wl *WorkflowList) setup() {
 	wl.clearPreview()
 
 	wl.table.SetSelectionChangedFunc(func(row, col int) {
-		if row > 0 && row-1 < len(wl.workflows) {
+		if wl.previewModeEnabled() && row > 0 && row-1 < len(wl.workflows) {
 			wl.schedulePreview(wl.workflows[row-1], false)
 		}
 	})
 
 	wl.table.SetOnSelect(func(row int) {
-		if row >= 0 && row < len(wl.workflows) {
-			wl.schedulePreview(wl.workflows[row], false)
-			wl.setFocusPane(focusEvents)
+		if row < 0 || row >= len(wl.workflows) {
+			return
 		}
+		wf := wl.workflows[row]
+		if wl.previewModeEnabled() {
+			wl.schedulePreview(wf, false)
+			wl.setFocusPane(focusEvents)
+			return
+		}
+		wl.app.NavigateToWorkflowDetail(wf.ID, wf.RunID)
 	})
 }
 
@@ -325,6 +332,10 @@ func (wl *WorkflowList) Start() {
 			wl.showColumnEditor()
 			return true
 		}).
+		OnRune('p', func(e *tcell.EventKey) bool {
+			wl.togglePreviewMode()
+			return true
+		}).
 		OnRune('e', func(e *tcell.EventKey) bool {
 			row := wl.table.SelectedRow()
 			if row >= 0 && row < len(wl.workflows) {
@@ -335,10 +346,16 @@ func (wl *WorkflowList) Start() {
 			return false
 		}).
 		On(tcell.KeyTab, func(e *tcell.EventKey) bool {
+			if !wl.previewModeEnabled() {
+				return false
+			}
 			wl.cycleFocus(1)
 			return true
 		}).
 		On(tcell.KeyBacktab, func(e *tcell.EventKey) bool {
+			if !wl.previewModeEnabled() {
+				return false
+			}
 			wl.cycleFocus(-1)
 			return true
 		})
@@ -381,33 +398,46 @@ func (wl *WorkflowList) Hints() []KeyHint {
 		return hints
 	}
 
-	switch wl.focusPane {
-	case focusEvents:
-		return []KeyHint{
-			{Key: "j/k", Description: "Events"},
-			{Key: "tab", Description: "Details"},
-			{Key: "e", Description: "Event Graph"},
-			{Key: "esc", Description: "Workflows"},
-		}
-	case focusEventDetail:
-		return []KeyHint{
-			{Key: "j/k", Description: "Scroll"},
-			{Key: "tab", Description: "Workflows"},
-			{Key: "esc", Description: "Workflows"},
+	if wl.previewModeEnabled() {
+		switch wl.focusPane {
+		case focusEvents:
+			return []KeyHint{
+				{Key: "j/k", Description: "Events"},
+				{Key: "tab", Description: "Details"},
+				{Key: "p", Description: "Preview"},
+				{Key: "e", Description: "Event Graph"},
+				{Key: "esc", Description: "Workflows"},
+			}
+		case focusEventDetail:
+			return []KeyHint{
+				{Key: "j/k", Description: "Scroll"},
+				{Key: "tab", Description: "Workflows"},
+				{Key: "p", Description: "Preview"},
+				{Key: "esc", Description: "Workflows"},
+			}
 		}
 	}
 
 	hints := []KeyHint{
-		{Key: "enter", Description: "Events"},
-		{Key: "tab", Description: "Events"},
-		{Key: "e", Description: "Event Graph"},
-		{Key: "h/l", Description: "Scroll"},
-		{Key: "|", Description: "Columns"},
-		{Key: "/", Description: "Filter"},
-		{Key: "F", Description: "Query"},
-		{Key: "f", Description: "Templates"},
-		{Key: "D", Description: "Date Range"},
+		{Key: "enter", Description: "Detail"},
+		{Key: "p", Description: "Preview"},
 	}
+	if wl.previewModeEnabled() {
+		hints = []KeyHint{
+			{Key: "enter", Description: "Events"},
+			{Key: "tab", Description: "Events"},
+			{Key: "p", Description: "Preview"},
+		}
+	}
+	hints = append(hints,
+		KeyHint{Key: "e", Description: "Event Graph"},
+		KeyHint{Key: "h/l", Description: "Scroll"},
+		KeyHint{Key: "|", Description: "Columns"},
+		KeyHint{Key: "/", Description: "Filter"},
+		KeyHint{Key: "F", Description: "Query"},
+		KeyHint{Key: "f", Description: "Templates"},
+		KeyHint{Key: "D", Description: "Date Range"},
+	)
 	if wl.visibilityQuery != "" {
 		hints = append(hints,
 			KeyHint{Key: "C", Description: "Clear Query"},
