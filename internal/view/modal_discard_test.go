@@ -118,3 +118,105 @@ func TestColumnEditorEnterSavesEdits(t *testing.T) {
 		t.Fatal("saved config is empty")
 	}
 }
+
+// The app's own key capture dismisses a modal on escape before the modal or its
+// content sees the key, and that route runs OnDismiss rather than OnCancel.
+// These cover it by dismissing the way that capture does.
+func TestThemeSelectorDismissDiscardsPreview(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	a := NewAppWithProvider(nil, "default", config.DefaultConfig(), "local")
+	a.applyTheme("gruvbox-dark")
+	before := theme.Bg()
+
+	a.showThemeSelector()
+	behavior := a.app.Pages().CurrentModalBehavior()
+	if behavior == nil || !behavior.DismissOnEsc {
+		t.Fatal("escape is handled by the app's dismiss path, so that is the path the revert must cover")
+	}
+	for i := 0; i < 3; i++ {
+		pressModal(a, tcell.NewEventKey(tcell.KeyRune, 'j', tcell.ModNone))
+	}
+	if theme.Bg() == before {
+		t.Fatal("browsing should preview the highlighted theme")
+	}
+
+	a.app.Pages().DismissModal()
+	if theme.Bg() != before {
+		t.Fatalf("dismissing should discard the preview: bg=%v want %v", theme.Bg(), before)
+	}
+	if a.config.Theme != "gruvbox-dark" {
+		t.Fatalf("dismissing should leave the remembered theme alone, got %q", a.config.Theme)
+	}
+}
+
+func TestThemeSelectorDismissKeepsChosenTheme(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	a := NewAppWithProvider(nil, "default", config.DefaultConfig(), "local")
+	a.applyTheme("gruvbox-dark")
+
+	a.showThemeSelector()
+	pressModal(a, tcell.NewEventKey(tcell.KeyRune, 'j', tcell.ModNone))
+	pressModal(a, tcell.NewEventKey(tcell.KeyEnter, 0, tcell.ModNone))
+
+	chosen := a.config.Theme
+	if chosen == "gruvbox-dark" {
+		t.Fatalf("enter should have chosen the highlighted theme, still %q", chosen)
+	}
+	kept := theme.Bg()
+	// Choosing already closed the modal; a stray dismiss must not undo it.
+	a.app.Pages().DismissModal()
+	if theme.Bg() != kept || a.config.Theme != chosen {
+		t.Fatalf("a chosen theme must survive: bg=%v theme=%q", theme.Bg(), a.config.Theme)
+	}
+}
+
+func TestColumnEditorDismissDiscardsEdits(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", dir)
+	cfg := config.DefaultConfig()
+	a := NewAppWithProvider(nil, "default", cfg, "local")
+	wl := NewWorkflowList(a, "default")
+	a.app.Pages().Push(wl)
+
+	wl.showColumnEditor()
+	behavior := a.app.Pages().CurrentModalBehavior()
+	if behavior == nil || !behavior.DismissOnEsc {
+		t.Fatal("escape is handled by the app's dismiss path, so that is the path the revert must cover")
+	}
+	pressModal(a, tcell.NewEventKey(tcell.KeyRune, '+', tcell.ModNone))
+	pressModal(a, tcell.NewEventKey(tcell.KeyRune, ' ', tcell.ModNone))
+	if cfg.WorkflowColumns == nil {
+		t.Fatal("edits should apply to the list behind the modal")
+	}
+
+	a.app.Pages().DismissModal()
+	if cfg.WorkflowColumns != nil {
+		t.Fatalf("dismissing should discard the edits, got %+v", cfg.WorkflowColumns)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "tempo", "config.yaml")); !os.IsNotExist(err) {
+		t.Fatalf("dismissing must not write the config, stat err = %v", err)
+	}
+}
+
+func TestColumnEditorDismissKeepsSavedEdits(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", dir)
+	cfg := config.DefaultConfig()
+	a := NewAppWithProvider(nil, "default", cfg, "local")
+	wl := NewWorkflowList(a, "default")
+	a.app.Pages().Push(wl)
+
+	wl.showColumnEditor()
+	pressModal(a, tcell.NewEventKey(tcell.KeyRune, ' ', tcell.ModNone))
+	pressModal(a, tcell.NewEventKey(tcell.KeyEnter, 0, tcell.ModNone))
+	saved := append([]config.WorkflowColumnConfig(nil), cfg.WorkflowColumns...)
+	if len(saved) == 0 {
+		t.Fatal("enter should have saved a layout")
+	}
+
+	// A stray dismiss after saving must not roll the save back.
+	a.app.Pages().DismissModal()
+	if len(cfg.WorkflowColumns) != len(saved) {
+		t.Fatalf("a saved layout must survive: %+v", cfg.WorkflowColumns)
+	}
+}

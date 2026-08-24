@@ -194,7 +194,12 @@ func (wl *WorkflowList) showColumnEditor() {
 		wl.previewColumns(editedColumns())
 	}
 
+	committed := false
+
 	restore := func() {
+		if committed {
+			return
+		}
 		wl.restoreColumns(original)
 	}
 
@@ -288,6 +293,7 @@ func (wl *WorkflowList) showColumnEditor() {
 				return
 			}
 		}
+		committed = true
 		wl.closeModal()
 		wl.populateTable()
 		wl.app.ToastSuccess("Saved workflow columns")
@@ -377,6 +383,12 @@ func (wl *WorkflowList) showColumnEditor() {
 	}
 	modal.SetHints(hints)
 	modal.SetOnSubmit(save)
+	// The app dismisses a modal on escape before the content's own capture runs,
+	// and that route skips OnCancel, so the revert hangs off OnDismiss too.
+	modal.SetOnDismiss(func() bool {
+		restore()
+		return true
+	})
 	modal.SetOnCancel(func() {
 		restore()
 		wl.closeModal()

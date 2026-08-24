@@ -961,6 +961,28 @@ func (a *App) showThemeSelector() {
 		currentTheme = a.config.Theme
 	}
 	originalTheme := currentTheme
+	originalProvider := theme.Get()
+	committed := false
+
+	// restorePreview undoes whatever browsing the list previewed.
+	restorePreview := func() {
+		if committed {
+			return
+		}
+		if originalProvider != nil {
+			theme.SetProvider(originalProvider) // Auto-refreshes all registered views
+			return
+		}
+		if origTheme := themes.Get(originalTheme); origTheme != nil {
+			theme.SetProvider(origTheme)
+		}
+	}
+
+	selectTheme := func(name string) {
+		a.applyTheme(name)
+		committed = true
+		a.closeThemeSelector()
+	}
 
 	// Separate themes into dark and light categories
 	allThemes := config.ThemeNames()
@@ -1021,8 +1043,7 @@ func (a *App) showThemeSelector() {
 		}
 		listToTheme[listIdx] = name
 		list.AddItem(prefix+name, "", 0, func() {
-			a.applyTheme(name)
-			a.closeThemeSelector()
+			selectTheme(name)
 		})
 		listIdx++
 	}
@@ -1041,8 +1062,7 @@ func (a *App) showThemeSelector() {
 		}
 		listToTheme[listIdx] = name
 		list.AddItem(prefix+name, "", 0, func() {
-			a.applyTheme(name)
-			a.closeThemeSelector()
+			selectTheme(name)
 		})
 		listIdx++
 	}
@@ -1084,13 +1104,16 @@ func (a *App) showThemeSelector() {
 			{Key: "Esc", Description: "Cancel"},
 		}).
 		SetOnCancel(func() {
-			// Restore original theme on cancel
-			origTheme := themes.Get(originalTheme)
-			if origTheme != nil {
-				theme.SetProvider(origTheme) // Auto-refreshes all registered views
-			}
+			restorePreview()
 			a.closeThemeSelector()
 		})
+
+	// The app dismisses a modal on escape before this capture ever runs, so the
+	// revert hangs off OnDismiss and covers both routes.
+	modal.SetOnDismiss(func() bool {
+		restorePreview()
+		return true
+	})
 
 	// Handle vim navigation and escape in the list
 	list.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
@@ -1098,11 +1121,7 @@ func (a *App) showThemeSelector() {
 
 		// Handle Escape and q to cancel
 		if event.Key() == tcell.KeyEscape || event.Rune() == 'q' {
-			// Restore original theme on cancel
-			origTheme := themes.Get(originalTheme)
-			if origTheme != nil {
-				theme.SetProvider(origTheme) // Auto-refreshes all registered views
-			}
+			restorePreview()
 			a.closeThemeSelector()
 			return nil
 		}
