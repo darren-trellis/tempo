@@ -934,6 +934,26 @@ func (a *App) showCommandBar() {
 	a.app.SetFocus(a.statusBar.GetCommandInput())
 }
 
+// applyTheme switches the live theme, remembers it in the running config and
+// persists it. Without the in-memory update, a later cancel would restore the
+// theme the app started with rather than the one on screen.
+func (a *App) applyTheme(name string) {
+	if selected := themes.Get(name); selected != nil {
+		theme.SetProvider(selected) // Auto-refreshes all registered views
+	}
+	if a.config != nil {
+		a.config.Theme = name
+	}
+	go func() {
+		cfg, _ := config.Load()
+		if cfg == nil {
+			cfg = config.DefaultConfig()
+		}
+		cfg.Theme = name
+		_ = config.Save(cfg)
+	}()
+}
+
 func (a *App) showThemeSelector() {
 	// Get current theme name from config
 	currentTheme := "tokyonight-night"
@@ -1001,19 +1021,7 @@ func (a *App) showThemeSelector() {
 		}
 		listToTheme[listIdx] = name
 		list.AddItem(prefix+name, "", 0, func() {
-			newTheme := themes.Get(name)
-			if newTheme != nil {
-				theme.SetProvider(newTheme) // Auto-refreshes all registered views
-			}
-			// Save theme to config
-			go func() {
-				cfg, _ := config.Load()
-				if cfg == nil {
-					cfg = config.DefaultConfig()
-				}
-				cfg.Theme = name
-				_ = config.Save(cfg)
-			}()
+			a.applyTheme(name)
 			a.closeThemeSelector()
 		})
 		listIdx++
@@ -1033,19 +1041,7 @@ func (a *App) showThemeSelector() {
 		}
 		listToTheme[listIdx] = name
 		list.AddItem(prefix+name, "", 0, func() {
-			newTheme := themes.Get(name)
-			if newTheme != nil {
-				theme.SetProvider(newTheme) // Auto-refreshes all registered views
-			}
-			// Save theme to config
-			go func() {
-				cfg, _ := config.Load()
-				if cfg == nil {
-					cfg = config.DefaultConfig()
-				}
-				cfg.Theme = name
-				_ = config.Save(cfg)
-			}()
+			a.applyTheme(name)
 			a.closeThemeSelector()
 		})
 		listIdx++
