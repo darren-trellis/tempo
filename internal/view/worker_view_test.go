@@ -17,13 +17,24 @@ func TestWorkerViewListsInstancesFlat(t *testing.T) {
 	if wv.table.RowCount() != len(wv.allWorkers) {
 		t.Fatalf("table rows: %d", wv.table.RowCount())
 	}
-	// The host moved from a grouping row into its own column.
+	// No host column: a worker identity already carries its host.
 	headers := workerTableHeaders()
-	if headers[0] != "INSTANCE" || headers[1] != "HOST" {
+	if headers[0] != "INSTANCE" || headers[1] != "STATUS" {
 		t.Fatalf("headers: %v", headers)
 	}
-	if got := wv.table.GetCell(1, 1).Text; got != "host-001" {
-		t.Fatalf("host column: %q", got)
+	for _, header := range headers {
+		if header == "HOST" {
+			t.Fatalf("the host is part of the identity, not its own column: %v", headers)
+		}
+	}
+	if got := len(headers); got != wv.table.GetColumnCount() {
+		t.Fatalf("%d headers but %d columns", got, wv.table.GetColumnCount())
+	}
+	// It stays available in the detail pane.
+	wv.table.SelectRow(0)
+	wv.updatePreview()
+	if infoRowValue(wv.detailRows, "host") != "host-001" {
+		t.Fatalf("the detail pane should still name the host: %+v", wv.detailRows)
 	}
 }
 

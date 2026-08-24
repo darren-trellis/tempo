@@ -108,7 +108,7 @@ func (wv *WorkerView) setup() {
 }
 
 func workerTableHeaders() []string {
-	return []string{"INSTANCE", "HOST", "STATUS", "TASK QUEUE", "HEARTBEAT", "START", "BUILD ID", "PID", "CPU", "MEM"}
+	return []string{"INSTANCE", "STATUS", "TASK QUEUE", "HEARTBEAT", "START", "BUILD ID", "PID", "CPU", "MEM"}
 }
 
 func (wv *WorkerView) RefreshTheme() {
@@ -285,7 +285,7 @@ func (wv *WorkerView) loadMockData() {
 func (wv *WorkerView) showError(err error) {
 	wv.table.ClearRows()
 	wv.table.SetHeaders(workerTableHeaders()...)
-	wv.table.AddRowWithColor(theme.Error(), "Error loading workers", err.Error(), "", "", "", "", "", "", "")
+	wv.table.AddRowWithColor(theme.Error(), "Error loading workers", err.Error(), "", "", "", "", "", "")
 	wv.setDetailRows(nil)
 }
 
@@ -393,7 +393,6 @@ func (wv *WorkerView) addInstanceRow(now time.Time, w temporal.Worker) {
 	status := temporal.GetWorkerStatus(w.Status)
 	cells := []string{
 		theme.IconUser + " " + instanceLabel(w),
-		dashIfEmpty(w.Host),
 		w.Status,
 		w.TaskQueue,
 		formatWorkerTime(now, w.LastHeartbeat),
@@ -403,7 +402,7 @@ func (wv *WorkerView) addInstanceRow(now time.Time, w temporal.Worker) {
 		formatWorkerResource(w),
 		formatWorkerMemory(w),
 	}
-	wv.table.AddRowWithStatus(status, 2, cells...)
+	wv.table.AddRowWithStatus(status, 1, cells...)
 }
 
 func (wv *WorkerView) selectedRow() (workerRow, bool) {
