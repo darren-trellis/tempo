@@ -44,16 +44,16 @@ func (g EventGroupType) String() string {
 
 // EventTreeNode represents a node in the event tree.
 type EventTreeNode struct {
-	Name      string                 // Display name (e.g., "Activity: ValidateOrder")
-	Type      EventGroupType         // Group type
-	Status    string                 // Running, Completed, Failed, Canceled, TimedOut, Pending
-	StartTime time.Time              // When this group started
-	EndTime   *time.Time             // When this group ended (nil if still running)
-	Duration  time.Duration          // Computed duration
+	Name      string                  // Display name (e.g., "Activity: ValidateOrder")
+	Type      EventGroupType          // Group type
+	Status    string                  // Running, Completed, Failed, Canceled, TimedOut, Pending
+	StartTime time.Time               // When this group started
+	EndTime   *time.Time              // When this group ended (nil if still running)
+	Duration  time.Duration           // Computed duration
 	Events    []*EnhancedHistoryEvent // Raw events in this node
-	Children  []*EventTreeNode       // Child nodes (for attempts/nested)
-	Collapsed bool                   // UI state for expand/collapse
-	Attempts  int                    // Number of retry attempts
+	Children  []*EventTreeNode        // Child nodes (for attempts/nested)
+	Collapsed bool                    // UI state for expand/collapse
+	Attempts  int                     // Number of retry attempts
 }
 
 // IsLeaf returns true if this node has no children.

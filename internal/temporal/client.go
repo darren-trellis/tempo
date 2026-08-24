@@ -181,6 +181,17 @@ func (c *Client) Close() error {
 	return nil
 }
 
+// conn returns the active connection. Callers must go through this rather than
+// reading c.client directly: a profile switch swaps the connection under them.
+func (c *Client) conn() (client.Client, error) {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	if c.client == nil {
+		return nil, fmt.Errorf("client not connected")
+	}
+	return c.client, nil
+}
+
 // IsConnected returns true if the client has an active connection.
 func (c *Client) IsConnected() bool {
 	c.mu.RLock()
@@ -235,14 +246,9 @@ func (c *Client) ReconnectWithConfig(ctx context.Context, newConfig ConnectionCo
 
 // reconnectWithConfig is the internal implementation for reconnection.
 func (c *Client) reconnectWithConfig(ctx context.Context, connConfig ConnectionConfig) error {
-	c.mu.Lock()
-	// Close existing client if any
-	if c.client != nil {
-		c.client.Close()
-		c.client = nil
-	}
-	c.connected = false
-	c.mu.Unlock()
+	// The old connection stays in place until the new one is dialed. Clearing it
+	// first left every in-flight call dereferencing a nil client for the length of
+	// the dial, and a failed switch dropped a working connection.
 
 	opts := client.Options{
 		HostPort:  connConfig.Address,
@@ -279,10 +285,17 @@ func (c *Client) reconnectWithConfig(ctx context.Context, connConfig ConnectionC
 	}
 
 	c.mu.Lock()
+	previous := c.client
 	c.client = newClient
 	c.config = connConfig // Update stored config
 	c.connected = true
 	c.mu.Unlock()
+
+	// Calls still running on the old connection now fail with an error rather
+	// than crashing on a nil client.
+	if previous != nil {
+		previous.Close()
+	}
 
 	return nil
 }
@@ -296,15 +309,16 @@ func (c *Client) Config() ConnectionConfig {
 
 // ListNamespaces returns all namespaces visible to the client.
 func (c *Client) ListNamespaces(ctx context.Context) ([]Namespace, error) {
-	if c.client == nil {
-		return nil, fmt.Errorf("client not connected")
+	cl, err := c.conn()
+	if err != nil {
+		return nil, err
 	}
 
 	var namespaces []Namespace
 	var nextPageToken []byte
 
 	for {
-		resp, err := c.client.WorkflowService().ListNamespaces(ctx, &workflowservice.ListNamespacesRequest{
+		resp, err := cl.WorkflowService().ListNamespaces(ctx, &workflowservice.ListNamespacesRequest{
 			PageSize:      100,
 			NextPageToken: nextPageToken,
 		})
@@ -341,13 +355,17 @@ func (c *Client) ListNamespaces(ctx context.Context) ([]Namespace, error) {
 
 // CreateNamespace registers a new namespace with the Temporal server.
 func (c *Client) CreateNamespace(ctx context.Context, req NamespaceCreateRequest) error {
+	cl, err := c.conn()
+	if err != nil {
+		return err
+	}
 	if req.RetentionDays < 1 {
 		return fmt.Errorf("retention period must be at least 1 day")
 	}
 
 	retention := durationpb.New(time.Duration(req.RetentionDays) * 24 * time.Hour)
 
-	_, err := c.client.WorkflowService().RegisterNamespace(ctx, &workflowservice.RegisterNamespaceRequest{
+	_, err = cl.WorkflowService().RegisterNamespace(ctx, &workflowservice.RegisterNamespaceRequest{
 		Namespace:                        req.Name,
 		Description:                      req.Description,
 		OwnerEmail:                       req.OwnerEmail,
@@ -361,7 +379,11 @@ func (c *Client) CreateNamespace(ctx context.Context, req NamespaceCreateRequest
 
 // DescribeNamespace returns detailed information about a namespace.
 func (c *Client) DescribeNamespace(ctx context.Context, name string) (*NamespaceDetail, error) {
-	resp, err := c.client.WorkflowService().DescribeNamespace(ctx, &workflowservice.DescribeNamespaceRequest{
+	cl, err := c.conn()
+	if err != nil {
+		return nil, err
+	}
+	resp, err := cl.WorkflowService().DescribeNamespace(ctx, &workflowservice.DescribeNamespaceRequest{
 		Namespace: name,
 	})
 	if err != nil {
@@ -414,8 +436,12 @@ func (c *Client) DescribeNamespace(ctx context.Context, name string) (*Namespace
 
 // UpdateNamespace modifies an existing namespace's configuration.
 func (c *Client) UpdateNamespace(ctx context.Context, req NamespaceUpdateRequest) error {
+	cl, err := c.conn()
+	if err != nil {
+		return err
+	}
 	// First describe to get current state
-	current, err := c.client.WorkflowService().DescribeNamespace(ctx, &workflowservice.DescribeNamespaceRequest{
+	current, err := cl.WorkflowService().DescribeNamespace(ctx, &workflowservice.DescribeNamespaceRequest{
 		Namespace: req.Name,
 	})
 	if err != nil {
@@ -448,7 +474,7 @@ func (c *Client) UpdateNamespace(ctx context.Context, req NamespaceUpdateRequest
 		}
 	}
 
-	_, err = c.client.WorkflowService().UpdateNamespace(ctx, updateReq)
+	_, err = cl.WorkflowService().UpdateNamespace(ctx, updateReq)
 	if err != nil {
 		return fmt.Errorf("failed to update namespace: %w", err)
 	}
@@ -457,7 +483,11 @@ func (c *Client) UpdateNamespace(ctx context.Context, req NamespaceUpdateRequest
 
 // DeprecateNamespace marks a namespace as deprecated (soft delete).
 func (c *Client) DeprecateNamespace(ctx context.Context, name string) error {
-	_, err := c.client.WorkflowService().DeprecateNamespace(ctx, &workflowservice.DeprecateNamespaceRequest{
+	cl, err := c.conn()
+	if err != nil {
+		return err
+	}
+	_, err = cl.WorkflowService().DeprecateNamespace(ctx, &workflowservice.DeprecateNamespaceRequest{
 		Namespace: name,
 	})
 	if err != nil {
@@ -468,7 +498,11 @@ func (c *Client) DeprecateNamespace(ctx context.Context, name string) error {
 
 // DeleteNamespace permanently deletes a namespace.
 func (c *Client) DeleteNamespace(ctx context.Context, name string) error {
-	_, err := c.client.OperatorService().DeleteNamespace(ctx, &operatorservice.DeleteNamespaceRequest{
+	cl, err := c.conn()
+	if err != nil {
+		return err
+	}
+	_, err = cl.OperatorService().DeleteNamespace(ctx, &operatorservice.DeleteNamespaceRequest{
 		Namespace: name,
 	})
 	if err != nil {
@@ -495,8 +529,9 @@ func formatArchivalState(state enums.ArchivalState, uri string) string {
 
 // ListWorkflows returns workflows for a namespace with optional filtering.
 func (c *Client) ListWorkflows(ctx context.Context, namespace string, opts ListOptions) ([]Workflow, string, error) {
-	if c.client == nil {
-		return nil, "", fmt.Errorf("client not connected")
+	cl, err := c.conn()
+	if err != nil {
+		return nil, "", err
 	}
 
 	pageSize := opts.PageSize
@@ -514,7 +549,7 @@ func (c *Client) ListWorkflows(ctx context.Context, namespace string, opts ListO
 		req.Query = opts.Query
 	}
 
-	resp, err := c.client.WorkflowService().ListWorkflowExecutions(ctx, req)
+	resp, err := cl.WorkflowService().ListWorkflowExecutions(ctx, req)
 	if err != nil {
 		return nil, "", fmt.Errorf("failed to list workflows: %w", err)
 	}
@@ -567,11 +602,12 @@ func (c *Client) ListWorkflows(ctx context.Context, namespace string, opts ListO
 
 // GetWorkflow returns details for a specific workflow execution.
 func (c *Client) GetWorkflow(ctx context.Context, namespace, workflowID, runID string) (*Workflow, error) {
-	if c.client == nil {
-		return nil, fmt.Errorf("client not connected")
+	cl, err := c.conn()
+	if err != nil {
+		return nil, err
 	}
 
-	resp, err := c.client.WorkflowService().DescribeWorkflowExecution(ctx, &workflowservice.DescribeWorkflowExecutionRequest{
+	resp, err := cl.WorkflowService().DescribeWorkflowExecution(ctx, &workflowservice.DescribeWorkflowExecutionRequest{
 		Namespace: namespace,
 		Execution: &commonpb.WorkflowExecution{
 			WorkflowId: workflowID,
@@ -611,15 +647,16 @@ func (c *Client) GetWorkflow(ctx context.Context, namespace, workflowID, runID s
 
 // GetWorkflowHistory returns the event history for a workflow execution.
 func (c *Client) GetWorkflowHistory(ctx context.Context, namespace, workflowID, runID string) ([]HistoryEvent, error) {
-	if c.client == nil {
-		return nil, fmt.Errorf("client not connected")
+	cl, err := c.conn()
+	if err != nil {
+		return nil, err
 	}
 
 	var events []HistoryEvent
 	var nextPageToken []byte
 
 	for {
-		resp, err := c.client.WorkflowService().GetWorkflowExecutionHistory(ctx, &workflowservice.GetWorkflowExecutionHistoryRequest{
+		resp, err := cl.WorkflowService().GetWorkflowExecutionHistory(ctx, &workflowservice.GetWorkflowExecutionHistoryRequest{
 			Namespace: namespace,
 			Execution: &commonpb.WorkflowExecution{
 				WorkflowId: workflowID,
@@ -654,15 +691,16 @@ func (c *Client) GetWorkflowHistory(ctx context.Context, namespace, workflowID, 
 
 // GetEnhancedWorkflowHistory returns event history with relational data for tree/timeline views.
 func (c *Client) GetEnhancedWorkflowHistory(ctx context.Context, namespace, workflowID, runID string) ([]EnhancedHistoryEvent, error) {
-	if c.client == nil {
-		return nil, fmt.Errorf("client not connected")
+	cl, err := c.conn()
+	if err != nil {
+		return nil, err
 	}
 
 	var events []EnhancedHistoryEvent
 	var nextPageToken []byte
 
 	for {
-		resp, err := c.client.WorkflowService().GetWorkflowExecutionHistory(ctx, &workflowservice.GetWorkflowExecutionHistoryRequest{
+		resp, err := cl.WorkflowService().GetWorkflowExecutionHistory(ctx, &workflowservice.GetWorkflowExecutionHistoryRequest{
 			Namespace: namespace,
 			Execution: &commonpb.WorkflowExecution{
 				WorkflowId: workflowID,
@@ -1465,8 +1503,12 @@ func formatPayloads(payloads *commonpb.Payloads) string {
 
 // DescribeTaskQueue returns task queue info and active pollers.
 func (c *Client) DescribeTaskQueue(ctx context.Context, namespace, taskQueue string) (*TaskQueueInfo, []Poller, error) {
+	cl, err := c.conn()
+	if err != nil {
+		return nil, nil, err
+	}
 	// Query workflow task queue
-	wfResp, err := c.client.WorkflowService().DescribeTaskQueue(ctx, &workflowservice.DescribeTaskQueueRequest{
+	wfResp, err := cl.WorkflowService().DescribeTaskQueue(ctx, &workflowservice.DescribeTaskQueueRequest{
 		Namespace: namespace,
 		TaskQueue: &taskqueue.TaskQueue{
 			Name: taskQueue,
@@ -1479,7 +1521,7 @@ func (c *Client) DescribeTaskQueue(ctx context.Context, namespace, taskQueue str
 	}
 
 	// Query activity task queue
-	actResp, err := c.client.WorkflowService().DescribeTaskQueue(ctx, &workflowservice.DescribeTaskQueueRequest{
+	actResp, err := cl.WorkflowService().DescribeTaskQueue(ctx, &workflowservice.DescribeTaskQueueRequest{
 		Namespace: namespace,
 		TaskQueue: &taskqueue.TaskQueue{
 			Name: taskQueue,
@@ -1523,10 +1565,14 @@ func (c *Client) DescribeTaskQueue(ctx context.Context, namespace, taskQueue str
 }
 
 func (c *Client) ListWorkers(ctx context.Context, namespace string) ([]Worker, error) {
+	cl, err := c.conn()
+	if err != nil {
+		return nil, err
+	}
 	var workers []Worker
 	var token []byte
 	for {
-		resp, err := c.client.WorkflowService().ListWorkers(ctx, &workflowservice.ListWorkersRequest{
+		resp, err := cl.WorkflowService().ListWorkers(ctx, &workflowservice.ListWorkersRequest{
 			Namespace:     namespace,
 			PageSize:      100,
 			NextPageToken: token,
@@ -1608,21 +1654,37 @@ func formatDuration(d *durationpb.Duration) string {
 
 // CancelWorkflow requests graceful cancellation of a workflow execution.
 func (c *Client) CancelWorkflow(ctx context.Context, namespace, workflowID, runID, reason string) error {
-	return c.client.CancelWorkflow(ctx, workflowID, runID)
+	cl, err := c.conn()
+	if err != nil {
+		return err
+	}
+	return cl.CancelWorkflow(ctx, workflowID, runID)
 }
 
 // TerminateWorkflow forcefully terminates a workflow execution immediately.
 func (c *Client) TerminateWorkflow(ctx context.Context, namespace, workflowID, runID, reason string) error {
-	return c.client.TerminateWorkflow(ctx, workflowID, runID, reason)
+	cl, err := c.conn()
+	if err != nil {
+		return err
+	}
+	return cl.TerminateWorkflow(ctx, workflowID, runID, reason)
 }
 
 // SignalWorkflow sends a signal to a running workflow execution.
 func (c *Client) SignalWorkflow(ctx context.Context, namespace, workflowID, runID, signalName string, input []byte) error {
-	return c.client.SignalWorkflow(ctx, workflowID, runID, signalName, json.RawMessage(input))
+	cl, err := c.conn()
+	if err != nil {
+		return err
+	}
+	return cl.SignalWorkflow(ctx, workflowID, runID, signalName, json.RawMessage(input))
 }
 
 // StartWorkflow starts a new workflow execution.
 func (c *Client) StartWorkflow(ctx context.Context, namespace string, req StartWorkflowRequest) (string, error) {
+	cl, err := c.conn()
+	if err != nil {
+		return "", err
+	}
 	opts := client.StartWorkflowOptions{
 		ID:        req.WorkflowID,
 		TaskQueue: req.TaskQueue,
@@ -1633,7 +1695,7 @@ func (c *Client) StartWorkflow(ctx context.Context, namespace string, req StartW
 		args = append(args, json.RawMessage(req.Input))
 	}
 
-	run, err := c.client.ExecuteWorkflow(ctx, opts, req.WorkflowType, args...)
+	run, err := cl.ExecuteWorkflow(ctx, opts, req.WorkflowType, args...)
 	if err != nil {
 		return "", fmt.Errorf("failed to start workflow: %w", err)
 	}
@@ -1642,12 +1704,16 @@ func (c *Client) StartWorkflow(ctx context.Context, namespace string, req StartW
 
 // SignalWithStartWorkflow starts a workflow if it doesn't exist and sends a signal to it.
 func (c *Client) SignalWithStartWorkflow(ctx context.Context, namespace string, req SignalWithStartRequest) (string, error) {
+	cl, err := c.conn()
+	if err != nil {
+		return "", err
+	}
 	opts := client.StartWorkflowOptions{
 		ID:        req.WorkflowID,
 		TaskQueue: req.TaskQueue,
 	}
 
-	run, err := c.client.SignalWithStartWorkflow(
+	run, err := cl.SignalWithStartWorkflow(
 		ctx,
 		req.WorkflowID,
 		req.SignalName,
@@ -1664,7 +1730,11 @@ func (c *Client) SignalWithStartWorkflow(ctx context.Context, namespace string, 
 
 // DeleteWorkflow permanently deletes a workflow execution and its history.
 func (c *Client) DeleteWorkflow(ctx context.Context, namespace, workflowID, runID string) error {
-	_, err := c.client.WorkflowService().DeleteWorkflowExecution(ctx,
+	cl, err := c.conn()
+	if err != nil {
+		return err
+	}
+	_, err = cl.WorkflowService().DeleteWorkflowExecution(ctx,
 		&workflowservice.DeleteWorkflowExecutionRequest{
 			Namespace: namespace,
 			WorkflowExecution: &commonpb.WorkflowExecution{
@@ -1677,7 +1747,11 @@ func (c *Client) DeleteWorkflow(ctx context.Context, namespace, workflowID, runI
 
 // ResetWorkflow resets a workflow to a previous state, creating a new run.
 func (c *Client) ResetWorkflow(ctx context.Context, namespace, workflowID, runID string, eventID int64, reason string) (string, error) {
-	resp, err := c.client.WorkflowService().ResetWorkflowExecution(ctx, &workflowservice.ResetWorkflowExecutionRequest{
+	cl, err := c.conn()
+	if err != nil {
+		return "", err
+	}
+	resp, err := cl.WorkflowService().ResetWorkflowExecution(ctx, &workflowservice.ResetWorkflowExecutionRequest{
 		Namespace: namespace,
 		WorkflowExecution: &commonpb.WorkflowExecution{
 			WorkflowId: workflowID,
@@ -1694,12 +1768,16 @@ func (c *Client) ResetWorkflow(ctx context.Context, namespace, workflowID, runID
 
 // ListSchedules returns all schedules in a namespace.
 func (c *Client) ListSchedules(ctx context.Context, namespace string, opts ListOptions) ([]Schedule, string, error) {
+	cl, err := c.conn()
+	if err != nil {
+		return nil, "", err
+	}
 	pageSize := opts.PageSize
 	if pageSize <= 0 {
 		pageSize = 100
 	}
 
-	resp, err := c.client.ScheduleClient().List(ctx, client.ScheduleListOptions{
+	resp, err := cl.ScheduleClient().List(ctx, client.ScheduleListOptions{
 		PageSize: pageSize,
 	})
 	if err != nil {
@@ -1745,7 +1823,11 @@ func (c *Client) ListSchedules(ctx context.Context, namespace string, opts ListO
 
 // GetSchedule returns details for a specific schedule.
 func (c *Client) GetSchedule(ctx context.Context, namespace, scheduleID string) (*Schedule, error) {
-	handle := c.client.ScheduleClient().GetHandle(ctx, scheduleID)
+	cl, err := c.conn()
+	if err != nil {
+		return nil, err
+	}
+	handle := cl.ScheduleClient().GetHandle(ctx, scheduleID)
 	desc, err := handle.Describe(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to describe schedule: %w", err)
@@ -1792,7 +1874,11 @@ func (c *Client) GetSchedule(ctx context.Context, namespace, scheduleID string) 
 
 // PauseSchedule pauses a schedule.
 func (c *Client) PauseSchedule(ctx context.Context, namespace, scheduleID, reason string) error {
-	handle := c.client.ScheduleClient().GetHandle(ctx, scheduleID)
+	cl, err := c.conn()
+	if err != nil {
+		return err
+	}
+	handle := cl.ScheduleClient().GetHandle(ctx, scheduleID)
 	return handle.Pause(ctx, client.SchedulePauseOptions{
 		Note: reason,
 	})
@@ -1800,7 +1886,11 @@ func (c *Client) PauseSchedule(ctx context.Context, namespace, scheduleID, reaso
 
 // UnpauseSchedule unpauses a schedule.
 func (c *Client) UnpauseSchedule(ctx context.Context, namespace, scheduleID, reason string) error {
-	handle := c.client.ScheduleClient().GetHandle(ctx, scheduleID)
+	cl, err := c.conn()
+	if err != nil {
+		return err
+	}
+	handle := cl.ScheduleClient().GetHandle(ctx, scheduleID)
 	return handle.Unpause(ctx, client.ScheduleUnpauseOptions{
 		Note: reason,
 	})
@@ -1808,13 +1898,21 @@ func (c *Client) UnpauseSchedule(ctx context.Context, namespace, scheduleID, rea
 
 // TriggerSchedule immediately triggers a scheduled workflow execution.
 func (c *Client) TriggerSchedule(ctx context.Context, namespace, scheduleID string) error {
-	handle := c.client.ScheduleClient().GetHandle(ctx, scheduleID)
+	cl, err := c.conn()
+	if err != nil {
+		return err
+	}
+	handle := cl.ScheduleClient().GetHandle(ctx, scheduleID)
 	return handle.Trigger(ctx, client.ScheduleTriggerOptions{})
 }
 
 // DeleteSchedule permanently deletes a schedule.
 func (c *Client) DeleteSchedule(ctx context.Context, namespace, scheduleID string) error {
-	handle := c.client.ScheduleClient().GetHandle(ctx, scheduleID)
+	cl, err := c.conn()
+	if err != nil {
+		return err
+	}
+	handle := cl.ScheduleClient().GetHandle(ctx, scheduleID)
 	return handle.Delete(ctx)
 }
 
@@ -1872,6 +1970,10 @@ func formatScheduleSpec(spec *client.ScheduleSpec) string {
 
 // QueryWorkflow executes a query against a running workflow and returns the result.
 func (c *Client) QueryWorkflow(ctx context.Context, namespace, workflowID, runID, queryType string, args []byte) (*QueryResult, error) {
+	cl, err := c.conn()
+	if err != nil {
+		return nil, err
+	}
 	// Build query input if args provided
 	var queryArgs interface{}
 	if len(args) > 0 {
@@ -1882,7 +1984,7 @@ func (c *Client) QueryWorkflow(ctx context.Context, namespace, workflowID, runID
 	}
 
 	// Execute the query
-	response, err := c.client.QueryWorkflow(ctx, workflowID, runID, queryType, queryArgs)
+	response, err := cl.QueryWorkflow(ctx, workflowID, runID, queryType, queryArgs)
 	if err != nil {
 		return &QueryResult{
 			QueryType: queryType,
@@ -1916,10 +2018,14 @@ func (c *Client) QueryWorkflow(ctx context.Context, namespace, workflowID, runID
 
 // CancelWorkflows cancels multiple workflows and returns results for each.
 func (c *Client) CancelWorkflows(ctx context.Context, namespace string, workflows []WorkflowIdentifier) ([]BatchResult, error) {
+	cl, err := c.conn()
+	if err != nil {
+		return nil, err
+	}
 	results := make([]BatchResult, len(workflows))
 
 	for i, wf := range workflows {
-		err := c.client.CancelWorkflow(ctx, wf.WorkflowID, wf.RunID)
+		err := cl.CancelWorkflow(ctx, wf.WorkflowID, wf.RunID)
 		results[i] = BatchResult{
 			WorkflowID: wf.WorkflowID,
 			RunID:      wf.RunID,
@@ -1935,10 +2041,14 @@ func (c *Client) CancelWorkflows(ctx context.Context, namespace string, workflow
 
 // TerminateWorkflows terminates multiple workflows and returns results for each.
 func (c *Client) TerminateWorkflows(ctx context.Context, namespace string, workflows []WorkflowIdentifier, reason string) ([]BatchResult, error) {
+	cl, err := c.conn()
+	if err != nil {
+		return nil, err
+	}
 	results := make([]BatchResult, len(workflows))
 
 	for i, wf := range workflows {
-		err := c.client.TerminateWorkflow(ctx, wf.WorkflowID, wf.RunID, reason)
+		err := cl.TerminateWorkflow(ctx, wf.WorkflowID, wf.RunID, reason)
 		results[i] = BatchResult{
 			WorkflowID: wf.WorkflowID,
 			RunID:      wf.RunID,
