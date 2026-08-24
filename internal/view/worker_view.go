@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/atterpac/jig/components"
@@ -30,6 +31,9 @@ type workerRow struct {
 // workerUtilizationHeight fits two bars plus a spacer inside the panel border.
 const workerUtilizationHeight = 5
 
+// workerReloadDebounce keeps rapid tab switches from re-running the whole sweep.
+const workerReloadDebounce = 3 * time.Second
+
 type WorkerView struct {
 	app          *App
 	table        *components.Table
@@ -48,6 +52,7 @@ type WorkerView struct {
 	collapsed    map[string]bool
 	searchText   string
 	loading      bool
+	lastLoad     time.Time
 	pending      *workerInstanceRequest // Selection waiting on a load
 }
 
@@ -146,6 +151,7 @@ func (wv *WorkerView) showSearch() {
 }
 
 func (wv *WorkerView) loadData() {
+	wv.lastLoad = time.Now()
 	provider := wv.app.Provider()
 	if provider == nil {
 		wv.loadMockData()
@@ -184,28 +190,74 @@ func (wv *WorkerView) loadData() {
 	}()
 }
 
-func loadWorkers(ctx context.Context, provider temporal.Provider, namespace string) ([]temporal.Worker, error) {
-	listed, listErr := provider.ListWorkers(ctx, namespace)
-	if listErr == nil && len(listed) > 0 {
-		return listed, nil
-	}
+// workerQueueSweepConcurrency bounds the DescribeTaskQueue calls that collect
+// poll registries, so a namespace with many queues stays roughly one round trip.
+const workerQueueSweepConcurrency = 8
 
+// loadWorkers combines the two views the server offers of a worker: heartbeats
+// from ListWorkers, and the poll registries of every task queue. Heartbeats carry
+// the detail, the poll registries prove who is actually polling, and neither is a
+// superset of the other, so the tab shows the union.
+func loadWorkers(ctx context.Context, provider temporal.Provider, namespace string) ([]temporal.Worker, error) {
+	heartbeats, listErr := provider.ListWorkers(ctx, namespace)
+	polled, pollErr := loadPolledWorkers(ctx, provider, namespace)
+	if listErr != nil && pollErr != nil {
+		return nil, listErr
+	}
+	return temporal.MergeWorkerSources(heartbeats, polled, time.Now()), nil
+}
+
+// loadPolledWorkers derives instances from every task queue's poll registry.
+func loadPolledWorkers(ctx context.Context, provider temporal.Provider, namespace string) ([]temporal.Worker, error) {
 	names, err := provider.ListTaskQueueNames(ctx, namespace)
 	if err != nil {
-		if listErr != nil {
-			return nil, listErr
-		}
 		return nil, err
 	}
-	var workers []temporal.Worker
-	for _, name := range names {
-		_, pollers, descErr := provider.DescribeTaskQueue(ctx, namespace, name)
-		if descErr != nil {
-			continue
-		}
-		workers = append(workers, temporal.WorkersFromPollers(name, pollers)...)
+
+	type result struct {
+		index   int
+		workers []temporal.Worker
 	}
-	return workers, nil
+	results := make([][]temporal.Worker, len(names))
+	queue := make(chan int)
+	out := make(chan result)
+	workers := workerQueueSweepConcurrency
+	if len(names) < workers {
+		workers = len(names)
+	}
+
+	var wg sync.WaitGroup
+	for i := 0; i < workers; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for idx := range queue {
+				_, pollers, descErr := provider.DescribeTaskQueue(ctx, namespace, names[idx])
+				if descErr != nil {
+					continue
+				}
+				out <- result{index: idx, workers: temporal.WorkersFromPollers(names[idx], pollers)}
+			}
+		}()
+	}
+	go func() {
+		for i := range names {
+			queue <- i
+		}
+		close(queue)
+		wg.Wait()
+		close(out)
+	}()
+	for r := range out {
+		results[r.index] = r.workers
+	}
+
+	// Keep task queue order stable so the tree does not shuffle between loads.
+	var all []temporal.Worker
+	for _, group := range results {
+		all = append(all, group...)
+	}
+	return all, nil
 }
 
 func (wv *WorkerView) loadMockData() {
@@ -548,9 +600,14 @@ func (wv *WorkerView) setUtilization(cpu, mem float32, known bool) {
 }
 
 func (wv *WorkerView) Start() {
+	// Re-enter means re-read: heartbeat records outlive the process they describe,
+	// so a cached list quietly shows dead workers after a restart. Show what we
+	// have straight away, then refresh unless we just did.
 	if len(wv.allWorkers) > 0 {
 		wv.applyFilter(wv.searchText)
-		return
+		if !wv.lastLoad.IsZero() && time.Since(wv.lastLoad) < workerReloadDebounce {
+			return
+		}
 	}
 	wv.loadData()
 }

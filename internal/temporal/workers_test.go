@@ -93,3 +93,101 @@ func TestWorkersFromPollers(t *testing.T) {
 		t.Fatalf("heartbeat: %v", got[0].LastHeartbeat)
 	}
 }
+
+func TestWorkersFromPollersMarkPolling(t *testing.T) {
+	workers := WorkersFromPollers("orders", []Poller{
+		{Identity: "51067@laptop", TaskQueueType: "Workflow"},
+		{Identity: "51067@laptop", TaskQueueType: "Activity"},
+	})
+	if len(workers) != 1 {
+		t.Fatalf("one identity polling one queue is one instance, got %d", len(workers))
+	}
+	if workers[0].Status != WorkerStatusPolling {
+		t.Fatalf("status: %q", workers[0].Status)
+	}
+	if len(workers[0].Types) != 2 {
+		t.Fatalf("both poller types should fold into the instance: %v", workers[0].Types)
+	}
+}
+
+func TestMergeWorkerSourcesUnionsBothViews(t *testing.T) {
+	now := time.Date(2026, 8, 23, 12, 0, 0, 0, time.UTC)
+	heartbeats := []Worker{
+		{Identity: "49027@laptop", TaskQueue: "orders", Status: WorkerStatusRunning, LastHeartbeat: now.Add(-10 * time.Second)},
+		{Identity: "49027@laptop", TaskQueue: "payments", Status: WorkerStatusRunning, LastHeartbeat: now.Add(-10 * time.Second)},
+	}
+	polled := []Worker{
+		{Identity: "49027@laptop", TaskQueue: "orders", Status: WorkerStatusPolling, LastHeartbeat: now.Add(-2 * time.Second)},
+		{Identity: "51067@laptop", TaskQueue: "orders", Status: WorkerStatusPolling, LastHeartbeat: now.Add(-1 * time.Second)},
+	}
+
+	merged := MergeWorkerSources(heartbeats, polled, now)
+	if len(merged) != 3 {
+		t.Fatalf("expected the two heartbeats plus the poller-only instance, got %d: %+v", len(merged), merged)
+	}
+	byKey := map[string]Worker{}
+	for _, w := range merged {
+		byKey[WorkerKey(w)] = w
+	}
+	if got := byKey["51067@laptop|orders"]; got.Status != WorkerStatusPolling {
+		t.Fatalf("a poller with no heartbeat should show as polling: %+v", got)
+	}
+	if got := byKey["49027@laptop|orders"]; got.Status != WorkerStatusRunning {
+		t.Fatalf("a heartbeat that is still polling stays running: %+v", got)
+	}
+	// The duplicate is the heartbeat row, not the derived one: it keeps its detail.
+	if got := byKey["49027@laptop|orders"]; got.LastHeartbeat != now.Add(-10*time.Second) {
+		t.Fatalf("heartbeat detail should win over the derived row: %+v", got)
+	}
+}
+
+func TestMergeWorkerSourcesFlagsOutrunHeartbeat(t *testing.T) {
+	now := time.Date(2026, 8, 23, 12, 0, 0, 0, time.UTC)
+	// The restart case: 49027 heartbeated, then died; 51067 polls the queue now.
+	heartbeats := []Worker{
+		{Identity: "49027@laptop", TaskQueue: "orders", Status: WorkerStatusRunning, LastHeartbeat: now.Add(-30 * time.Second)},
+	}
+	polled := []Worker{
+		{Identity: "51067@laptop", TaskQueue: "orders", Status: WorkerStatusPolling, LastHeartbeat: now.Add(-1 * time.Second)},
+	}
+	merged := MergeWorkerSources(heartbeats, polled, now)
+	if merged[0].Status != WorkerStatusStale {
+		t.Fatalf("a heartbeat outrun by newer poll activity is stale: %+v", merged[0])
+	}
+	if merged[1].Identity != "51067@laptop" {
+		t.Fatalf("the live poller should be listed: %+v", merged[1])
+	}
+}
+
+func TestMergeWorkerSourcesStaleWhenQuiet(t *testing.T) {
+	now := time.Date(2026, 8, 23, 12, 0, 0, 0, time.UTC)
+	quiet := []Worker{
+		{Identity: "a@laptop", TaskQueue: "idle", Status: WorkerStatusRunning, LastHeartbeat: now.Add(-WorkerStaleAfter - time.Second)},
+	}
+	if got := MergeWorkerSources(quiet, nil, now); got[0].Status != WorkerStatusStale {
+		t.Fatalf("a heartbeat quiet for longer than the window is stale: %+v", got[0])
+	}
+
+	fresh := []Worker{
+		{Identity: "a@laptop", TaskQueue: "idle", Status: WorkerStatusRunning, LastHeartbeat: now.Add(-time.Second)},
+	}
+	if got := MergeWorkerSources(fresh, nil, now); got[0].Status != WorkerStatusRunning {
+		t.Fatalf("a recent heartbeat on an idle queue stays running: %+v", got[0])
+	}
+
+	// A worker that told us it is going away is reported as it asked.
+	for _, status := range []string{WorkerStatusShuttingDown, WorkerStatusShutdown} {
+		leaving := []Worker{
+			{Identity: "a@laptop", TaskQueue: "idle", Status: status, LastHeartbeat: now.Add(-time.Hour)},
+		}
+		if got := MergeWorkerSources(leaving, nil, now); got[0].Status != status {
+			t.Fatalf("%s should not be relabelled: %+v", status, got[0])
+		}
+	}
+
+	// No heartbeat time at all is not evidence of anything.
+	unknown := []Worker{{Identity: "a@laptop", TaskQueue: "idle", Status: WorkerStatusRunning}}
+	if got := MergeWorkerSources(unknown, nil, now); got[0].Status != WorkerStatusRunning {
+		t.Fatalf("a heartbeat with no timestamp should not be guessed at: %+v", got[0])
+	}
+}

@@ -144,12 +144,18 @@ var (
 	WorkerStatusRunningHandle      = theme.DefineStatus("Running", theme.Success, theme.IconRunning)
 	WorkerStatusShuttingDownHandle = theme.DefineStatus("Shutting Down", theme.Warning, theme.IconWarning)
 	WorkerStatusShutdownHandle     = theme.DefineStatus("Shutdown", theme.FgDim, theme.IconStop)
+	// Polling is an instance seen in a task queue's poll registry but sending no
+	// heartbeat; Stale is a heartbeat that newer poll activity has outrun.
+	WorkerStatusPollingHandle = theme.DefineStatus("Polling", theme.Info, theme.IconConnected)
+	WorkerStatusStaleHandle   = theme.DefineStatus("Stale", theme.Warning, theme.IconTimer)
 )
 
 const (
 	WorkerStatusRunning      = "Running"
 	WorkerStatusShuttingDown = "Shutting Down"
 	WorkerStatusShutdown     = "Shutdown"
+	WorkerStatusPolling      = "Polling"
+	WorkerStatusStale        = "Stale"
 )
 
 func MapWorkerStatus(status enums.WorkerStatus) string {
@@ -173,6 +179,10 @@ func GetWorkerStatus(status string) *theme.Status {
 		return WorkerStatusShuttingDownHandle
 	case WorkerStatusShutdown:
 		return WorkerStatusShutdownHandle
+	case WorkerStatusPolling:
+		return WorkerStatusPollingHandle
+	case WorkerStatusStale:
+		return WorkerStatusStaleHandle
 	default:
 		return StatusUnknown
 	}
