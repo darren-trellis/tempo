@@ -111,6 +111,7 @@ tempo --address localhost:7233 // default dev server address loads without flag
 | `T` | Theme selector |
 | `P` | Profile selector |
 | `:` | Command mode |
+| `Ctrl+O` | Toggle mouse support (off allows terminal text selection) |
 | `/` | Filter (in workflow list) |
 
 **Workflow Actions**

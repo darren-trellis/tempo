@@ -56,6 +56,9 @@ type App struct {
 
 	// Dev mode
 	devMode bool
+
+	// mouseEnabled tracks terminal mouse reporting so ctrl+o can toggle it.
+	mouseEnabled bool
 }
 
 // NewApp creates a new application controller with no provider (uses mock data).
@@ -115,6 +118,7 @@ func (a *App) buildApp() {
 
 	tviewApp := a.app.GetApplication()
 	enableAppMouse(tviewApp, a.menu, a.statusBar, a.app.Crumbs())
+	a.mouseEnabled = true
 	bindModalMouse(tviewApp, func() tview.Primitive {
 		if a.app == nil || a.app.Pages() == nil {
 			return nil
@@ -153,6 +157,13 @@ func (a *App) setup() {
 		// Skip global handling when command bar is active
 		if a.statusBar.IsCommandMode() {
 			return event
+		}
+
+		// Mouse toggle (ctrl+o) - works everywhere, modals included, so the
+		// terminal's own selection can be reached from any view.
+		if event.Key() == tcell.KeyCtrlO {
+			a.toggleMouse()
+			return nil
 		}
 
 		// Check if we're on a modal page that should handle its own escape
@@ -602,6 +613,25 @@ func (a *App) ToastWarning(message string) {
 	a.toasts.Warning(message)
 }
 
+// ToastInfo displays an info toast (call from within QueueUpdateDraw).
+func (a *App) ToastInfo(message string) {
+	if a.toasts == nil {
+		return
+	}
+	a.toasts.Info(message)
+}
+
+// toggleMouse flips terminal mouse reporting. Turning it off hands clicks and
+// drags back to the terminal, so text can be selected and copied natively.
+func (a *App) toggleMouse() bool {
+	a.mouseEnabled = !a.mouseEnabled
+	if a.app != nil {
+		setAppMouse(a.app.GetApplication(), a.mouseEnabled)
+	}
+	a.ToastInfo(mouseToggleMessage(a.mouseEnabled))
+	return a.mouseEnabled
+}
+
 // connectionMonitor periodically checks the connection and attempts reconnection if needed.
 func (a *App) connectionMonitor() {
 	ticker := time.NewTicker(connectionCheckInterval)
@@ -784,6 +814,7 @@ func (a *App) showHintSheet() {
 		{Key: "?", Description: "Help"},
 		{Key: "T", Description: "Theme"},
 		{Key: "P", Description: "Profile"},
+		{Key: "Ctrl+O", Description: "Mouse on/off"},
 		{Key: "Esc", Description: "Back"},
 		{Key: "q", Description: "Quit"},
 	}

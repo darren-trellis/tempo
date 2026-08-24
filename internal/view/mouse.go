@@ -24,6 +24,22 @@ func enableAppMouse(app *tview.Application, chrome ...mouseCapturer) {
 	}
 }
 
+// setAppMouse turns terminal mouse reporting on or off at runtime.
+func setAppMouse(app *tview.Application, enabled bool) {
+	if app == nil {
+		return
+	}
+	app.EnableMouse(enabled)
+}
+
+// mouseToggleMessage describes the new mouse state for a toast.
+func mouseToggleMessage(enabled bool) string {
+	if enabled {
+		return "Mouse enabled"
+	}
+	return "Mouse disabled - terminal selection available"
+}
+
 func ignoreMouseFocus(box mouseCapturer) {
 	box.SetMouseCapture(func(action tview.MouseAction, event *tcell.EventMouse) (tview.MouseAction, *tcell.EventMouse) {
 		switch action {

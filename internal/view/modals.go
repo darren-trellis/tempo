@@ -153,10 +153,12 @@ func (m *HelpModal) updateContent() {
 [%s]?[-]          Show help
 [%s]T[-]          Change theme
 [%s]P[-]          Switch profile
+[%s]ctrl+o[-]     Toggle mouse (off allows terminal selection)
 [%s]esc[-]        Go back / Close modal
 [%s]q[-]          Quit application
 
 `, theme.TagAccent(),
+		theme.TagAccent(),
 		theme.TagAccent(),
 		theme.TagAccent(),
 		theme.TagAccent(),

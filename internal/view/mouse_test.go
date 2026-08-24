@@ -119,3 +119,26 @@ func TestBindTableDoubleClick(t *testing.T) {
 		t.Fatal("double-click should activate the selected row")
 	}
 }
+
+func TestMouseToggleMessage(t *testing.T) {
+	if got := mouseToggleMessage(true); got != "Mouse enabled" {
+		t.Fatalf("enabled message = %q", got)
+	}
+	if got := mouseToggleMessage(false); got == mouseToggleMessage(true) {
+		t.Fatal("disabled message should differ from enabled")
+	}
+}
+
+func TestToggleMouseFlipsState(t *testing.T) {
+	a := &App{mouseEnabled: true}
+	if a.toggleMouse() {
+		t.Fatal("first toggle should disable the mouse")
+	}
+	if !a.toggleMouse() {
+		t.Fatal("second toggle should re-enable the mouse")
+	}
+}
+
+func TestSetAppMouseIgnoresNilApp(t *testing.T) {
+	setAppMouse(nil, true)
+}
