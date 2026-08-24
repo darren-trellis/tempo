@@ -154,12 +154,44 @@ func (wl *WorkflowList) bindTaskQueueKeys() {
 		if handleTableCharScroll(tq.pollerScroll, tq.pollerTable, event) {
 			return nil
 		}
+		if event.Key() == tcell.KeyEnter {
+			wl.showPollerWorker()
+			return nil
+		}
 		if event.Rune() == 'r' {
 			tq.refreshCurrentQueue()
 			return nil
 		}
 		return event
 	})
+	bindTableDoubleClick(tq.pollerTable)
+}
+
+// showPollerWorker opens the workers tab on the instance behind the selected
+// poller.
+func (wl *WorkflowList) showPollerWorker() {
+	if wl.taskQueues == nil {
+		return
+	}
+	poller, ok := wl.taskQueues.selectedPoller()
+	if !ok || poller.Identity == "" {
+		return
+	}
+	queue := wl.taskQueues.selectedQueue
+	wl.setListKind(listWorkers)
+	if wl.workers == nil {
+		return
+	}
+	found := wl.workers.RevealInstance(poller.Identity, queue)
+	wl.setFocusPane(focusWorkflows)
+	if found || wl.app == nil {
+		return
+	}
+	if wl.workers.loading || len(wl.workers.allWorkers) == 0 {
+		// The pending request is applied once the worker list lands.
+		return
+	}
+	wl.app.ToastWarning("No worker instance is reporting as " + poller.Identity)
 }
 
 func (wl *WorkflowList) bindScheduleKeys() {

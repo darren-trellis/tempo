@@ -35,6 +35,7 @@ type TaskQueueView struct {
 	allQueues      []taskQueueEntry // Full unfiltered list
 	queues         []taskQueueEntry // Filtered list for display
 	pollers        []temporal.Poller
+	visiblePollers []temporal.Poller // Rows currently in the poller table
 	selectedQueue  string
 	loading        bool
 	suppressSelect bool
@@ -428,6 +429,7 @@ func (tq *TaskQueueView) loadMockPollers(queue taskQueueEntry) {
 func (tq *TaskQueueView) populatePollerTable(queueType string) {
 	tq.pollerTable.ClearRows()
 	tq.pollerTable.SetHeaders("IDENTITY", "TYPE", "LAST ACCESS")
+	tq.visiblePollers = nil
 
 	now := time.Now()
 	for _, p := range tq.pollers {
@@ -435,6 +437,7 @@ func (tq *TaskQueueView) populatePollerTable(queueType string) {
 		if queueType != "" && p.TaskQueueType != queueType {
 			continue
 		}
+		tq.visiblePollers = append(tq.visiblePollers, p)
 
 		typeIcon := theme.IconWorkflow
 		if p.TaskQueueType == "Activity" {
@@ -450,9 +453,22 @@ func (tq *TaskQueueView) populatePollerTable(queueType string) {
 	}
 }
 
+// selectedPoller returns the poller under the cursor in the poller table.
+func (tq *TaskQueueView) selectedPoller() (temporal.Poller, bool) {
+	if tq == nil || tq.pollerTable == nil {
+		return temporal.Poller{}, false
+	}
+	idx := tq.pollerTable.SelectedRow()
+	if idx < 0 || idx >= len(tq.visiblePollers) {
+		return temporal.Poller{}, false
+	}
+	return tq.visiblePollers[idx], true
+}
+
 func (tq *TaskQueueView) showPollerError(err error) {
 	tq.pollerTable.ClearRows()
 	tq.pollerTable.SetHeaders("IDENTITY", "TYPE", "LAST ACCESS")
+	tq.visiblePollers = nil
 	tq.pollerTable.AddRowWithColor(theme.Error(),
 		theme.IconError+" Error loading pollers",
 		err.Error(),

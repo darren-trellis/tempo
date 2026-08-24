@@ -508,6 +508,12 @@ func (wl *WorkflowList) Stop() {
 // Hints returns keybinding hints for this view.
 func (wl *WorkflowList) Hints() []KeyHint {
 	if wl.taskQueuesActive() {
+		if wl.focusPane == focusPollers {
+			return []KeyHint{
+				{Key: "Enter", Description: "Show Worker"},
+				{Key: "r", Description: "Refresh"},
+			}
+		}
 		return []KeyHint{
 			{Key: "/", Description: "Search"},
 			{Key: "r", Description: "Refresh"},

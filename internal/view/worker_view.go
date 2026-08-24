@@ -48,6 +48,13 @@ type WorkerView struct {
 	collapsed    map[string]bool
 	searchText   string
 	loading      bool
+	pending      *workerInstanceRequest // Selection waiting on a load
+}
+
+// workerInstanceRequest is a poller we were asked to reveal in the worker tree.
+type workerInstanceRequest struct {
+	Identity  string
+	TaskQueue string
 }
 
 func NewWorkerView(app *App) *WorkerView {
@@ -245,8 +252,8 @@ func (wv *WorkerView) rebuildRows() {
 	wv.rows = flattenWorkerRows(wv.groups, wv.collapsed)
 }
 
-func (wv *WorkerView) populateTable() {
-	current := wv.selectedKey()
+// renderRows redraws the tree without touching the selection.
+func (wv *WorkerView) renderRows() {
 	wv.table.ClearRows()
 	wv.table.SetHeaders(workerTableHeaders()...)
 	now := time.Now()
@@ -257,10 +264,21 @@ func (wv *WorkerView) populateTable() {
 		}
 		wv.addInstanceRow(now, row.Worker)
 	}
+}
+
+func (wv *WorkerView) populateTable() {
+	current := wv.selectedKey()
+	wv.renderRows()
 	if wv.table.RowCount() == 0 {
 		wv.setDetailRows(nil)
 		wv.setUtilization(0, 0, false)
 		return
+	}
+	if pending := wv.pending; pending != nil {
+		if wv.selectInstance(pending.Identity, pending.TaskQueue) {
+			wv.pending = nil
+			return
+		}
 	}
 	if idx := wv.rowIndexByKey(current); idx >= 0 {
 		wv.table.SelectRow(idx)
@@ -268,6 +286,79 @@ func (wv *WorkerView) populateTable() {
 		wv.table.SelectRow(0)
 	}
 	wv.updatePreview()
+}
+
+// RevealInstance selects the worker instance behind a poller identity, expanding
+// its host group. When the workers have not loaded yet the request is remembered
+// and applied once they arrive. It reports whether a row was selected now.
+func (wv *WorkerView) RevealInstance(identity, taskQueue string) bool {
+	if wv == nil || identity == "" {
+		return false
+	}
+	if wv.selectInstance(identity, taskQueue) {
+		wv.pending = nil
+		return true
+	}
+	wv.pending = &workerInstanceRequest{Identity: identity, TaskQueue: taskQueue}
+	return false
+}
+
+// selectInstance moves the cursor onto the matching instance, if there is one.
+func (wv *WorkerView) selectInstance(identity, taskQueue string) bool {
+	match := matchWorkerInstance(wv.groups, identity, taskQueue)
+	if match == nil {
+		return false
+	}
+	host := match.Host
+	if host == "" {
+		host = temporal.HostFromIdentity(match.Identity)
+	}
+	if wv.collapsed[host] {
+		wv.collapsed[host] = false
+		wv.rebuildRows()
+		wv.renderRows()
+	}
+	key := workerRowKey(workerRow{Host: host, Worker: *match})
+	idx := wv.rowIndexByKey(key)
+	if idx < 0 {
+		return false
+	}
+	wv.table.SelectRow(idx)
+	wv.updatePreview()
+	return true
+}
+
+// matchWorkerInstance finds the worker a poller identity belongs to. An identity
+// match beats a same-host match, and within each, the instance polling the same
+// task queue wins.
+func matchWorkerInstance(groups []workerHostGroup, identity, taskQueue string) *temporal.Worker {
+	if identity == "" {
+		return nil
+	}
+	host := temporal.HostFromIdentity(identity)
+	var best *temporal.Worker
+	bestScore := 0
+	for i := range groups {
+		for j := range groups[i].Workers {
+			w := &groups[i].Workers[j]
+			score := 0
+			switch {
+			case w.Identity == identity || w.InstanceKey == identity:
+				score = 3
+			case host != "" && (w.Host == host || temporal.HostFromIdentity(w.Identity) == host):
+				score = 1
+			default:
+				continue
+			}
+			if taskQueue != "" && w.TaskQueue == taskQueue {
+				score++
+			}
+			if score > bestScore {
+				best, bestScore = w, score
+			}
+		}
+	}
+	return best
 }
 
 func (wv *WorkerView) addHostRow(host string) {
