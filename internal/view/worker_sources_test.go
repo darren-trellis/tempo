@@ -42,7 +42,8 @@ func TestLoadWorkersMergesHeartbeatsWithPollRegistries(t *testing.T) {
 	now := time.Now()
 	provider := &fakeWorkerProvider{
 		heartbeats: []temporal.Worker{
-			{Identity: "49027@laptop", TaskQueue: "orders", Status: temporal.WorkerStatusRunning, LastHeartbeat: now.Add(-30 * time.Second)},
+			// Stopped a few minutes ago; the server still returns the record.
+			{Identity: "49027@laptop", TaskQueue: "orders", Status: temporal.WorkerStatusRunning, LastHeartbeat: now.Add(-5 * time.Minute)},
 		},
 		queues: []string{"orders", "payments"},
 		pollers: map[string][]temporal.Poller{
@@ -70,7 +71,7 @@ func TestLoadWorkersMergesHeartbeatsWithPollRegistries(t *testing.T) {
 		t.Fatalf("the live poller should be listed as polling: %+v", got)
 	}
 	if got := byKey["49027@laptop|orders"]; got.Status != temporal.WorkerStatusStale {
-		t.Fatalf("the outrun heartbeat should read as stale: %+v", got)
+		t.Fatalf("a heartbeat that stopped moving should read as stale: %+v", got)
 	}
 }
 

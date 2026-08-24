@@ -141,28 +141,50 @@ func TestMergeWorkerSourcesUnionsBothViews(t *testing.T) {
 	}
 }
 
-func TestMergeWorkerSourcesFlagsOutrunHeartbeat(t *testing.T) {
+func TestMergeWorkerSourcesFlagsStoppedWorkers(t *testing.T) {
 	now := time.Date(2026, 8, 23, 12, 0, 0, 0, time.UTC)
-	// The restart case: 49027 heartbeated, then died; 51067 polls the queue now.
+	// A worker killed a few minutes ago: the server still lists both its heartbeat
+	// and its poll registry entry, but neither has moved since.
 	heartbeats := []Worker{
-		{Identity: "49027@laptop", TaskQueue: "orders", Status: WorkerStatusRunning, LastHeartbeat: now.Add(-30 * time.Second)},
+		{Identity: "49027@laptop", TaskQueue: "orders", Status: WorkerStatusRunning, LastHeartbeat: now.Add(-4 * time.Minute)},
 	}
 	polled := []Worker{
-		{Identity: "51067@laptop", TaskQueue: "orders", Status: WorkerStatusPolling, LastHeartbeat: now.Add(-1 * time.Second)},
+		{Identity: "49027@laptop", TaskQueue: "orders", Status: WorkerStatusPolling, LastHeartbeat: now.Add(-4 * time.Minute)},
+		{Identity: "51067@laptop", TaskQueue: "orders", Status: WorkerStatusPolling, LastHeartbeat: now.Add(-3 * time.Minute)},
 	}
+
 	merged := MergeWorkerSources(heartbeats, polled, now)
 	if merged[0].Status != WorkerStatusStale {
-		t.Fatalf("a heartbeat outrun by newer poll activity is stale: %+v", merged[0])
+		t.Fatalf("a lingering registry entry must not vouch for a dead heartbeat: %+v", merged[0])
 	}
-	if merged[1].Identity != "51067@laptop" {
-		t.Fatalf("the live poller should be listed: %+v", merged[1])
+	if merged[1].Status != WorkerStatusStale {
+		t.Fatalf("a poll registry entry that stopped moving is stale too: %+v", merged[1])
+	}
+
+	// Still polling, so still running, however old the heartbeat is.
+	live := MergeWorkerSources(
+		[]Worker{{Identity: "49027@laptop", TaskQueue: "orders", Status: WorkerStatusRunning, LastHeartbeat: now.Add(-70 * time.Second)}},
+		[]Worker{{Identity: "49027@laptop", TaskQueue: "orders", Status: WorkerStatusPolling, LastHeartbeat: now.Add(-20 * time.Second)}},
+		now,
+	)
+	if live[0].Status != WorkerStatusRunning {
+		t.Fatalf("a worker whose polls are fresh is running: %+v", live[0])
+	}
+
+	// A poll one long-poll cycle old is normal, not death.
+	polling := MergeWorkerSources(nil,
+		[]Worker{{Identity: "51067@laptop", TaskQueue: "orders", Status: WorkerStatusPolling, LastHeartbeat: now.Add(-time.Minute)}},
+		now,
+	)
+	if polling[0].Status != WorkerStatusPolling {
+		t.Fatalf("a poll within the long-poll cycle is still polling: %+v", polling[0])
 	}
 }
 
 func TestMergeWorkerSourcesStaleWhenQuiet(t *testing.T) {
 	now := time.Date(2026, 8, 23, 12, 0, 0, 0, time.UTC)
 	quiet := []Worker{
-		{Identity: "a@laptop", TaskQueue: "idle", Status: WorkerStatusRunning, LastHeartbeat: now.Add(-WorkerStaleAfter - time.Second)},
+		{Identity: "a@laptop", TaskQueue: "idle", Status: WorkerStatusRunning, LastHeartbeat: now.Add(-WorkerHeartbeatQuietAfter - time.Second)},
 	}
 	if got := MergeWorkerSources(quiet, nil, now); got[0].Status != WorkerStatusStale {
 		t.Fatalf("a heartbeat quiet for longer than the window is stale: %+v", got[0])
