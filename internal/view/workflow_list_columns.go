@@ -287,7 +287,7 @@ func (wl *WorkflowList) showColumnEditor() {
 		saving = true
 		if cfg := wl.app.Config(); cfg != nil {
 			cfg.SetWorkflowColumns(editedColumns())
-			if err := cfg.Save(); err != nil {
+			if err := wl.app.SaveConfig(); err != nil {
 				saving = false
 				wl.app.ToastError("Failed to save columns: " + err.Error())
 				return

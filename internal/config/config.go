@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -122,9 +123,58 @@ type Config struct {
 	PreviewCacheSize *int                        `yaml:"preview_cache_size,omitempty"`
 	MouseScrollStep  *int                        `yaml:"mouse_scroll_step,omitempty"`
 	// How long a worker may go unseen before the workers tab calls it stale,
-	// written as a duration such as "45s" or "2m".
-	WorkerPollQuiet      *string `yaml:"worker_poll_quiet_after,omitempty"`
-	WorkerHeartbeatQuiet *string `yaml:"worker_heartbeat_quiet_after,omitempty"`
+	// written as a duration such as "45s" or "2m", or as a plain number of
+	// seconds.
+	WorkerPollQuiet      *Setting `yaml:"worker_poll_quiet_after,omitempty"`
+	WorkerHeartbeatQuiet *Setting `yaml:"worker_heartbeat_quiet_after,omitempty"`
+}
+
+// Setting is a duration that tolerates how people actually write one: "45s",
+// "2m30s", or a bare number of seconds. A single mistyped value must never make
+// the whole config unparseable, so anything else is kept verbatim and reported
+// as unusable rather than failing the load.
+type Setting struct {
+	text string
+}
+
+func (s *Setting) UnmarshalYAML(value *yaml.Node) error {
+	var text string
+	if err := value.Decode(&text); err != nil {
+		var seconds float64
+		if err := value.Decode(&seconds); err != nil {
+			// Keep the raw scalar; the accessor falls back to its default.
+			s.text = value.Value
+			return nil
+		}
+		s.text = strconv.FormatFloat(seconds, 'f', -1, 64) + "s"
+		return nil
+	}
+	s.text = text
+	return nil
+}
+
+func (s Setting) MarshalYAML() (interface{}, error) {
+	return s.text, nil
+}
+
+// Duration parses the setting, returning ok=false when it is not a usable
+// duration.
+func (s *Setting) Duration() (time.Duration, bool) {
+	if s == nil {
+		return 0, false
+	}
+	value := strings.TrimSpace(s.text)
+	if value == "" {
+		return 0, false
+	}
+	if d, err := time.ParseDuration(value); err == nil {
+		return d, true
+	}
+	// A bare number means seconds.
+	if seconds, err := strconv.ParseFloat(value, 64); err == nil {
+		return time.Duration(seconds * float64(time.Second)), true
+	}
+	return 0, false
 }
 
 // IsExternalProfile returns true if the given profile name is an external
@@ -232,18 +282,11 @@ func (c *Config) WorkerHeartbeatQuietAfter() time.Duration {
 	return workerQuietWindow(c.WorkerHeartbeatQuiet, DefaultWorkerHeartbeatQuietAfter)
 }
 
-// workerQuietWindow parses a configured duration, falling back to the default
+// workerQuietWindow reads a configured duration, falling back to the default
 // when it is missing or unusable, and clamps it to a sane range.
-func workerQuietWindow(raw *string, fallback time.Duration) time.Duration {
-	if raw == nil {
-		return fallback
-	}
-	value := strings.TrimSpace(*raw)
-	if value == "" {
-		return fallback
-	}
-	d, err := time.ParseDuration(value)
-	if err != nil || d <= 0 {
+func workerQuietWindow(raw *Setting, fallback time.Duration) time.Duration {
+	d, ok := raw.Duration()
+	if !ok || d <= 0 {
 		return fallback
 	}
 	if d < MinWorkerQuietAfter {
@@ -307,7 +350,10 @@ func (c *Config) loadExternalProfiles() {
 
 // ensureDefaults ensures the config has valid profiles and active profile.
 func (c *Config) ensureDefaults() {
-	if c.Profiles == nil || len(c.Profiles) == 0 {
+	if c.Theme == "" {
+		c.Theme = DefaultTheme
+	}
+	if len(c.Profiles) == 0 {
 		c.Profiles = map[string]ConnectionConfig{
 			"default": {
 				Address:   "localhost:7233",
@@ -332,19 +378,47 @@ func (c *Config) ensureDefaults() {
 	}
 }
 
+// marshal renders the config as it would be written to disk.
+func (c *Config) marshal() ([]byte, error) {
+	data, err := yaml.Marshal(c)
+	if err != nil {
+		return nil, fmt.Errorf("marshaling config: %w", err)
+	}
+	return data, nil
+}
+
 // Save writes the config to disk.
 func (c *Config) Save() error {
 	if err := EnsureConfigDir(); err != nil {
 		return fmt.Errorf("creating config dir: %w", err)
 	}
 
-	data, err := yaml.Marshal(c)
+	data, err := c.marshal()
 	if err != nil {
-		return fmt.Errorf("marshaling config: %w", err)
+		return err
 	}
 
 	path := ConfigPath()
-	if err := os.WriteFile(path, data, 0644); err != nil {
+	tmp, err := os.CreateTemp(filepath.Dir(path), ".config-*.yaml")
+	if err != nil {
+		return fmt.Errorf("writing config: %w", err)
+	}
+	tmpName := tmp.Name()
+	if _, err := tmp.Write(data); err != nil {
+		tmp.Close()
+		os.Remove(tmpName)
+		return fmt.Errorf("writing config: %w", err)
+	}
+	if err := tmp.Close(); err != nil {
+		os.Remove(tmpName)
+		return fmt.Errorf("writing config: %w", err)
+	}
+	if err := os.Chmod(tmpName, 0o644); err != nil {
+		os.Remove(tmpName)
+		return fmt.Errorf("writing config: %w", err)
+	}
+	if err := os.Rename(tmpName, path); err != nil {
+		os.Remove(tmpName)
 		return fmt.Errorf("writing config: %w", err)
 	}
 	noteFileHash(data)

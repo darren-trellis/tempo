@@ -2,6 +2,7 @@ package config
 
 import (
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -197,7 +198,7 @@ func TestWorkerQuietWindows(t *testing.T) {
 		t.Fatalf("nil config poll window = %s", got)
 	}
 
-	poll, beat := "30s", "2m30s"
+	poll, beat := Setting{text: "30s"}, Setting{text: "2m30s"}
 	cfg := &Config{WorkerPollQuiet: &poll, WorkerHeartbeatQuiet: &beat}
 	if got := cfg.WorkerPollQuietAfter(); got != 30*time.Second {
 		t.Fatalf("configured poll window = %s", got)
@@ -208,18 +209,59 @@ func TestWorkerQuietWindows(t *testing.T) {
 
 	// Unusable values fall back rather than making everything look stale.
 	for _, bad := range []string{"", "   ", "soon", "0s", "-5s"} {
-		value := bad
+		value := Setting{text: bad}
 		if got := (&Config{WorkerPollQuiet: &value}).WorkerPollQuietAfter(); got != DefaultWorkerPollQuietAfter {
 			t.Fatalf("%q should fall back, got %s", bad, got)
 		}
 	}
 
-	tiny, huge := "1ms", "48h"
+	tiny, huge := Setting{text: "1ms"}, Setting{text: "48h"}
 	if got := (&Config{WorkerPollQuiet: &tiny}).WorkerPollQuietAfter(); got != MinWorkerQuietAfter {
 		t.Fatalf("tiny window should clamp, got %s", got)
 	}
 	if got := (&Config{WorkerPollQuiet: &huge}).WorkerPollQuietAfter(); got != MaxWorkerQuietAfter {
 		t.Fatalf("huge window should clamp, got %s", got)
+	}
+}
+
+// A mistyped setting must never cost someone their whole config.
+func TestSettingToleratesHowPeopleWriteDurations(t *testing.T) {
+	cases := map[string]time.Duration{
+		"worker_poll_quiet_after: 45s":   45 * time.Second,
+		"worker_poll_quiet_after: 2m30s": 150 * time.Second,
+		"worker_poll_quiet_after: 45":    45 * time.Second,
+		"worker_poll_quiet_after: 45.5":  45500 * time.Millisecond,
+		`worker_poll_quiet_after: "60s"`: time.Minute,
+	}
+	for doc, want := range cases {
+		cfg, err := parseConfig([]byte(doc + "\n"))
+		if err != nil {
+			t.Fatalf("%s: %v", doc, err)
+		}
+		if got := cfg.WorkerPollQuietAfter(); got != want {
+			t.Fatalf("%s: got %s want %s", doc, got, want)
+		}
+	}
+
+	// Nonsense is ignored, and crucially the rest of the file still loads.
+	cfg, err := parseConfig([]byte("theme: kanagawa\nworker_poll_quiet_after: whenever\n"))
+	if err != nil {
+		t.Fatalf("a bad duration should not fail the load: %v", err)
+	}
+	if cfg.Theme != "kanagawa" {
+		t.Fatalf("the rest of the config should survive, theme=%q", cfg.Theme)
+	}
+	if got := cfg.WorkerPollQuietAfter(); got != DefaultWorkerPollQuietAfter {
+		t.Fatalf("nonsense should fall back, got %s", got)
+	}
+
+	// A written-out value round-trips.
+	out, err := yaml.Marshal(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(out), "worker_poll_quiet_after: whenever") {
+		t.Fatalf("the value should be preserved verbatim:\n%s", out)
 	}
 }
 

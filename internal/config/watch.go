@@ -27,7 +27,10 @@ func hashBytes(data []byte) string {
 }
 
 func parseConfig(data []byte) (*Config, error) {
-	cfg := DefaultConfig()
+	// Parse into an empty config, not onto the defaults: yaml merges into a
+	// populated map, which resurrected the built-in "default" profile every time
+	// someone removed it, and wrote it back on the next save.
+	cfg := &Config{}
 	if err := yaml.Unmarshal(data, cfg); err != nil {
 		return nil, fmt.Errorf("parsing config: %w", err)
 	}

@@ -61,8 +61,12 @@ func main() {
 
 	// Load configuration from file
 	cfg, err := config.Load()
+	configUnreadable := err != nil
 	if err != nil {
-		// Config load error is non-fatal, use defaults
+		// Non-fatal: run on defaults, but say so, and never write them back over
+		// the file we could not read.
+		fmt.Fprintf(os.Stderr, "Warning: could not read %s: %v\n", config.ConfigPath(), err)
+		fmt.Fprintln(os.Stderr, "Running with default settings. Fix the file to keep your settings; tempo will not overwrite it.")
 		cfg = config.DefaultConfig()
 	}
 
@@ -149,6 +153,9 @@ func main() {
 
 	// Launch main application with config for profile management
 	app := view.NewAppWithProvider(provider, connConfig.Namespace, cfg, activeProfileName)
+	if configUnreadable {
+		app.MarkConfigUnreadable()
+	}
 	app.SetDevMode(*devMode)
 	if err := app.Run(); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)

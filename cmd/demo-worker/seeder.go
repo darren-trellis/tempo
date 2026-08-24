@@ -309,4 +309,3 @@ func startWorkflowWithTimeout(ctx context.Context, c client.Client, workflowType
 
 	return workflowRef{id: run.GetID(), runID: run.GetRunID()}, nil
 }
-

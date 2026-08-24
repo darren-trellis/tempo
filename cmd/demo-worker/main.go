@@ -485,7 +485,7 @@ func DataImport(ctx workflow.Context, input map[string]interface{}) (map[string]
 	}
 
 	return map[string]interface{}{
-		"status":      "imported",
+		"status":       "imported",
 		"rowsImported": loadResult["rowCount"],
 	}, nil
 }
@@ -602,7 +602,7 @@ func EmailCampaign(ctx workflow.Context, input map[string]interface{}) (map[stri
 	}
 
 	return map[string]interface{}{
-		"status":    "sent",
+		"status":      "sent",
 		"batchesSent": 5,
 	}, nil
 }
@@ -720,9 +720,9 @@ func BatchProcessor(ctx workflow.Context, input map[string]interface{}) (map[str
 	}
 
 	return map[string]interface{}{
-		"status":    "completed",
-		"success":   successCount,
-		"failed":    failCount,
+		"status":     "completed",
+		"success":    successCount,
+		"failed":     failCount,
 		"totalItems": itemCount,
 	}, nil
 }
@@ -835,7 +835,7 @@ func ProcessPayment(ctx context.Context, input map[string]interface{}) (map[stri
 func ReserveInventory(ctx context.Context, input map[string]interface{}) (map[string]interface{}, error) {
 	simulateWork(100, 300)
 	return map[string]interface{}{
-		"reserved": true,
+		"reserved":  true,
 		"warehouse": "WH-01",
 	}, nil
 }
@@ -1412,9 +1412,9 @@ func GanttDemoWorkflow(ctx workflow.Context, input map[string]interface{}) (map[
 	}
 
 	return map[string]interface{}{
-		"status":           "completed",
-		"totalActivities":  len(fetchSources) + len(processingSteps) + len(outputs) + len(channels) + len(cleanupSteps) + 3,
-		"phases":           6,
+		"status":          "completed",
+		"totalActivities": len(fetchSources) + len(processingSteps) + len(outputs) + len(channels) + len(cleanupSteps) + 3,
+		"phases":          6,
 	}, nil
 }
 
@@ -1744,9 +1744,9 @@ func PaymentProcessingChild(ctx workflow.Context, input map[string]interface{}) 
 	}
 
 	return map[string]interface{}{
-		"status":      "paid",
-		"fraudCheck":  fraudResult,
-		"chargeId":    chargeResult["chargeId"],
+		"status":     "paid",
+		"fraudCheck": fraudResult,
+		"chargeId":   chargeResult["chargeId"],
 	}, nil
 }
 

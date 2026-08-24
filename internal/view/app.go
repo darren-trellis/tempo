@@ -50,6 +50,9 @@ type App struct {
 
 	// Profile management
 	config *config.Config
+	// configUnreadable records that the config file on disk could not be parsed,
+	// so what is in memory is a fallback and must not be written over it.
+	configUnreadable bool
 
 	// Dev mode
 	devMode bool
@@ -944,10 +947,17 @@ func (a *App) applyTheme(name string) {
 	if a.config != nil {
 		a.config.Theme = name
 	}
+	if a.configUnreadable {
+		// The file could not be parsed; writing would replace it with defaults.
+		a.ToastError("Theme applied, but not saved: " + config.ConfigPath() + " could not be read")
+		return
+	}
 	go func() {
-		cfg, _ := config.Load()
-		if cfg == nil {
-			cfg = config.DefaultConfig()
+		// Re-read so a concurrent edit is not clobbered, but never fall back to
+		// defaults: that used to overwrite the whole config with a fresh one.
+		cfg, err := config.Load()
+		if err != nil || cfg == nil {
+			return
 		}
 		cfg.Theme = name
 		_ = config.Save(cfg)
@@ -1227,7 +1237,7 @@ func (a *App) showProfileForm(editName string) {
 			// Log error but continue
 			return
 		}
-		if err := a.config.Save(); err != nil {
+		if err := a.SaveConfig(); err != nil {
 			// Log error but continue
 		}
 		a.SwitchProfile(name)
@@ -1251,7 +1261,25 @@ func (a *App) deleteProfile(name string) {
 	if err := a.config.DeleteProfile(name); err != nil {
 		return
 	}
-	_ = a.config.Save()
+	_ = a.SaveConfig()
+}
+
+// SaveConfig persists the running config, unless the file on disk could not be
+// read: overwriting it then would replace the user's settings with defaults.
+func (a *App) SaveConfig() error {
+	if a == nil || a.config == nil {
+		return nil
+	}
+	if a.configUnreadable {
+		a.ToastError("Not saving: " + config.ConfigPath() + " could not be read")
+		return nil
+	}
+	return a.config.Save()
+}
+
+// MarkConfigUnreadable records that the config file could not be parsed.
+func (a *App) MarkConfigUnreadable() {
+	a.configUnreadable = true
 }
 
 // SwitchProfile switches to a different connection profile.
@@ -1310,7 +1338,7 @@ func (a *App) applyProfile(name string, persist bool) {
 
 			a.config.SetActiveProfile(name)
 			if persist {
-				_ = a.config.Save()
+				_ = a.SaveConfig()
 			}
 		}
 
