@@ -260,19 +260,8 @@ func (wl *WorkflowList) bindWorkerKeys() {
 			return nil
 		}
 		if event.Key() == tcell.KeyEnter {
-			if !wl.workerDetailVisible {
-				wl.setWorkerDetailVisible(true)
-				wl.setFocusPane(focusWorkerDetail)
-				return nil
-			}
-			row, ok := wv.selectedRow()
-			if ok && row.IsHost {
-				wv.toggleSelectedHost()
-				return nil
-			}
-			if ok {
-				wl.setFocusPane(focusWorkerDetail)
-			}
+			wl.setWorkerDetailVisible(true)
+			wl.setFocusPane(focusWorkerDetail)
 			return nil
 		}
 		switch event.Rune() {
@@ -281,9 +270,6 @@ func (wl *WorkflowList) bindWorkerKeys() {
 			return nil
 		case 'r':
 			wv.loadData()
-			return nil
-		case ' ':
-			wv.toggleSelectedHost()
 			return nil
 		}
 		return event

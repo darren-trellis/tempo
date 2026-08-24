@@ -125,15 +125,25 @@ func TestWorkerViewStartRereadsInsteadOfTrustingItsCache(t *testing.T) {
 		{Identity: "gone", Host: "retired-host", TaskQueue: "orders", Status: temporal.WorkerStatusRunning},
 	}
 	wv.applyFilter("")
-	if wv.hostGroup("retired-host") == nil {
+	if !wv.hasInstance("gone") {
 		t.Fatal("the stale worker should be showing before the reload")
 	}
 
 	wv.Start()
-	if wv.hostGroup("retired-host") != nil {
+	if wv.hasInstance("gone") {
 		t.Fatal("entering the tab should re-read, dropping a worker the server no longer reports")
 	}
-	if len(wv.groups) == 0 {
-		t.Fatal("the reload should have populated the tree")
+	if len(wv.workers) == 0 {
+		t.Fatal("the reload should have populated the list")
 	}
+}
+
+// hasInstance reports whether an identity is currently listed.
+func (wv *WorkerView) hasInstance(identity string) bool {
+	for _, w := range wv.workers {
+		if w.Identity == identity {
+			return true
+		}
+	}
+	return false
 }

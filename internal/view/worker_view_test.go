@@ -8,79 +8,48 @@ import (
 	"github.com/galaxy-io/tempo/internal/temporal"
 )
 
-func TestWorkerViewMockTree(t *testing.T) {
+func TestWorkerViewListsInstancesFlat(t *testing.T) {
 	wv := NewWorkerView(&App{})
 	wv.loadMockData()
-	if len(wv.groups) != 2 {
-		t.Fatalf("hosts: %d", len(wv.groups))
+	if len(wv.rows) != len(wv.allWorkers) {
+		t.Fatalf("every worker is one row: %d rows for %d workers", len(wv.rows), len(wv.allWorkers))
 	}
-	if len(wv.rows) != 5 || !wv.rows[0].IsHost || wv.rows[1].IsHost {
-		t.Fatalf("tree: %+v", wv.rows)
+	if wv.table.RowCount() != len(wv.allWorkers) {
+		t.Fatalf("table rows: %d", wv.table.RowCount())
 	}
-	rows := workerHostInfoRows(time.Now(), wv.groups[0])
-	if infoRowValue(rows, "host") != "host-001" {
-		t.Fatalf("host detail should name the host: %+v", rows)
+	// The host moved from a grouping row into its own column.
+	headers := workerTableHeaders()
+	if headers[0] != "INSTANCE" || headers[1] != "HOST" {
+		t.Fatalf("headers: %v", headers)
 	}
-	if infoRowValue(rows, "instances") != "2" {
-		t.Fatalf("host detail should count instances: %+v", rows)
+	if got := wv.table.GetCell(1, 1).Text; got != "host-001" {
+		t.Fatalf("host column: %q", got)
 	}
 }
 
-func TestGroupWorkersByHost(t *testing.T) {
-	workers := []temporal.Worker{
+func TestSortWorkerInstances(t *testing.T) {
+	sorted := sortWorkerInstances([]temporal.Worker{
 		{Host: "host-b", Identity: "b1", TaskQueue: "q2"},
 		{Host: "host-a", Identity: "a2", TaskQueue: "q1"},
+		{Host: "host-a", Identity: "a1", TaskQueue: "q9"},
 		{Host: "host-a", Identity: "a1", TaskQueue: "q1"},
 		{Identity: "solo@host-c", TaskQueue: "q3"},
-	}
-	groups := groupWorkersByHost(workers)
-	if len(groups) != 3 {
-		t.Fatalf("groups: %d", len(groups))
-	}
-	if groups[0].Host != "host-a" || len(groups[0].Workers) != 2 {
-		t.Fatalf("host-a: %+v", groups[0])
-	}
-	if groups[0].Workers[0].Identity != "a1" || groups[0].Workers[1].Identity != "a2" {
-		t.Fatalf("host-a order: %+v", groups[0].Workers)
-	}
-	if groups[1].Host != "host-b" || groups[2].Host != "host-c" {
-		t.Fatalf("hosts: %q %q", groups[1].Host, groups[2].Host)
-	}
-}
-
-func TestFlattenWorkerRowsCollapsed(t *testing.T) {
-	groups := groupWorkersByHost([]temporal.Worker{
-		{Host: "host-a", Identity: "a1", TaskQueue: "q1"},
-		{Host: "host-a", Identity: "a2", TaskQueue: "q1"},
-		{Host: "host-b", Identity: "b1", TaskQueue: "q2"},
 	})
-	rows := flattenWorkerRows(groups, nil)
-	if len(rows) != 5 {
-		t.Fatalf("expanded: %d", len(rows))
+	var got []string
+	for _, w := range sorted {
+		got = append(got, workerHost(w)+"/"+w.Identity+"/"+w.TaskQueue)
 	}
-	if !rows[0].IsHost || rows[1].IsHost || rows[1].Worker.Identity != "a1" {
-		t.Fatalf("expanded rows: %+v", rows)
+	want := []string{
+		"host-a/a1/q1",
+		"host-a/a1/q9",
+		"host-a/a2/q1",
+		"host-b/b1/q2",
+		"host-c/solo@host-c/q3",
 	}
-
-	rows = flattenWorkerRows(groups, map[string]bool{"host-a": true})
-	if len(rows) != 3 {
-		t.Fatalf("collapsed: %d", len(rows))
-	}
-	if !rows[0].IsHost || rows[0].Host != "host-a" || !rows[1].IsHost {
-		t.Fatalf("collapsed rows: %+v", rows)
-	}
-}
-
-func TestWorkerMatches(t *testing.T) {
-	w := temporal.Worker{
-		Host: "host-a", Identity: "worker-1", TaskQueue: "orders",
-		Status: temporal.WorkerStatusRunning, BuildID: "build-9", ProcessID: "4122",
-	}
-	if !workerMatches(w, "host-a") || !workerMatches(w, "build-9") || !workerMatches(w, "4122") {
-		t.Fatal("expected match")
-	}
-	if workerMatches(w, "payments") {
-		t.Fatal("unexpected match")
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("order:\n got %v\nwant %v", got, want)
+		}
 	}
 }
 

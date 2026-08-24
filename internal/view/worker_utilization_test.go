@@ -17,7 +17,7 @@ func drawWorkerView(t *testing.T, width, height int) (tcell.SimulationScreen, *W
 
 	wv := NewWorkerView(&App{})
 	wv.loadMockData()
-	wv.table.SelectRow(1) // first instance under host-001
+	wv.table.SelectRow(0)
 	wv.updatePreview()
 	wv.detailFlex.SetRect(0, 0, width, height)
 	wv.detailFlex.Draw(screen)
@@ -69,13 +69,17 @@ func TestWorkerUtilizationTracksSelection(t *testing.T) {
 		t.Fatalf("memory bar should follow the selected instance, got %v", wv.memBar.value)
 	}
 
-	// A host row shows the host aggregate.
-	wv.table.SelectRow(0)
+	// Another row swaps the bars over to that instance.
+	wv.table.SelectRow(2)
 	wv.updatePreview()
-	if !wv.cpuBar.known || wv.cpuBar.value != wv.groups[0].CPU {
-		t.Fatalf("host row should show the host aggregate, got %v", wv.cpuBar.value)
+	row, ok := wv.selectedRow()
+	if !ok {
+		t.Fatal("no row selected")
 	}
-	if infoRowValue(wv.detailRows, "host") != "host-001" {
-		t.Fatalf("host row should load host detail rows: %+v", wv.detailRows)
+	if wv.cpuBar.value != row.Worker.CPU || wv.memBar.value != row.Worker.Memory {
+		t.Fatalf("bars should follow the selected instance, got %v/%v", wv.cpuBar.value, wv.memBar.value)
+	}
+	if infoRowValue(wv.detailRows, "identity") != row.Worker.Identity {
+		t.Fatalf("the detail pane should follow too: %+v", wv.detailRows)
 	}
 }

@@ -527,7 +527,7 @@ func (wl *WorkflowList) Hints() []KeyHint {
 			}
 		}
 		return []KeyHint{
-			{Key: "space", Description: "Collapse/Expand"},
+			{Key: "Enter", Description: "Detail"},
 			{Key: "/", Description: "Search"},
 			{Key: "r", Description: "Refresh"},
 		}

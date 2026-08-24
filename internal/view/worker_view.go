@@ -14,25 +14,16 @@ import (
 	"github.com/rivo/tview"
 )
 
-type workerHostGroup struct {
-	Host      string
-	CPU       float32
-	Memory    float32
-	Resources bool
-	Workers   []temporal.Worker
-}
-
-type workerRow struct {
-	Host   string
-	IsHost bool
-	Worker temporal.Worker
-}
-
 // workerUtilizationHeight fits two bars plus a spacer inside the panel border.
 const workerUtilizationHeight = 5
 
 // workerReloadDebounce keeps rapid tab switches from re-running the whole sweep.
 const workerReloadDebounce = 3 * time.Second
+
+// workerRow is one worker instance: an identity polling one task queue.
+type workerRow struct {
+	Worker temporal.Worker
+}
 
 type WorkerView struct {
 	app          *App
@@ -47,9 +38,8 @@ type WorkerView struct {
 	utilPanel    *components.Panel
 	detailFlex   *tview.Flex
 	allWorkers   []temporal.Worker
-	groups       []workerHostGroup
+	workers      []temporal.Worker // Filtered instances, in display order
 	rows         []workerRow
-	collapsed    map[string]bool
 	searchText   string
 	loading      bool
 	lastLoad     time.Time
@@ -64,10 +54,9 @@ type workerInstanceRequest struct {
 
 func NewWorkerView(app *App) *WorkerView {
 	wv := &WorkerView{
-		app:       app,
-		table:     components.NewTable(),
-		detail:    components.NewTable(),
-		collapsed: map[string]bool{},
+		app:    app,
+		table:  components.NewTable(),
+		detail: components.NewTable(),
 	}
 	wv.setup()
 	return wv
@@ -119,7 +108,7 @@ func (wv *WorkerView) setup() {
 }
 
 func workerTableHeaders() []string {
-	return []string{"INSTANCE", "STATUS", "TASK QUEUE", "HEARTBEAT", "START", "BUILD ID", "PID", "CPU", "MEM"}
+	return []string{"INSTANCE", "HOST", "STATUS", "TASK QUEUE", "HEARTBEAT", "START", "BUILD ID", "PID", "CPU", "MEM"}
 }
 
 func (wv *WorkerView) RefreshTheme() {
@@ -130,7 +119,7 @@ func (wv *WorkerView) RefreshTheme() {
 
 func (wv *WorkerView) applyFilter(query string) {
 	wv.searchText = query
-	wv.groups = groupWorkersByHost(filterWorkers(wv.allWorkers, query))
+	wv.workers = sortWorkerInstances(filterWorkers(wv.allWorkers, query))
 	wv.rebuildRows()
 	wv.populateTable()
 }
@@ -301,7 +290,10 @@ func (wv *WorkerView) showError(err error) {
 }
 
 func (wv *WorkerView) rebuildRows() {
-	wv.rows = flattenWorkerRows(wv.groups, wv.collapsed)
+	wv.rows = make([]workerRow, 0, len(wv.workers))
+	for _, w := range wv.workers {
+		wv.rows = append(wv.rows, workerRow{Worker: w})
+	}
 }
 
 // renderRows redraws the tree without touching the selection.
@@ -310,10 +302,6 @@ func (wv *WorkerView) renderRows() {
 	wv.table.SetHeaders(workerTableHeaders()...)
 	now := time.Now()
 	for _, row := range wv.rows {
-		if row.IsHost {
-			wv.addHostRow(row.Host)
-			continue
-		}
 		wv.addInstanceRow(now, row.Worker)
 	}
 }
@@ -357,21 +345,11 @@ func (wv *WorkerView) RevealInstance(identity, taskQueue string) bool {
 
 // selectInstance moves the cursor onto the matching instance, if there is one.
 func (wv *WorkerView) selectInstance(identity, taskQueue string) bool {
-	match := matchWorkerInstance(wv.groups, identity, taskQueue)
+	match := matchWorkerInstance(wv.workers, identity, taskQueue)
 	if match == nil {
 		return false
 	}
-	host := match.Host
-	if host == "" {
-		host = temporal.HostFromIdentity(match.Identity)
-	}
-	if wv.collapsed[host] {
-		wv.collapsed[host] = false
-		wv.rebuildRows()
-		wv.renderRows()
-	}
-	key := workerRowKey(workerRow{Host: host, Worker: *match})
-	idx := wv.rowIndexByKey(key)
+	idx := wv.rowIndexByKey(workerRowKey(workerRow{Worker: *match}))
 	if idx < 0 {
 		return false
 	}
@@ -383,59 +361,39 @@ func (wv *WorkerView) selectInstance(identity, taskQueue string) bool {
 // matchWorkerInstance finds the worker a poller identity belongs to. An identity
 // match beats a same-host match, and within each, the instance polling the same
 // task queue wins.
-func matchWorkerInstance(groups []workerHostGroup, identity, taskQueue string) *temporal.Worker {
+func matchWorkerInstance(workers []temporal.Worker, identity, taskQueue string) *temporal.Worker {
 	if identity == "" {
 		return nil
 	}
 	host := temporal.HostFromIdentity(identity)
 	var best *temporal.Worker
 	bestScore := 0
-	for i := range groups {
-		for j := range groups[i].Workers {
-			w := &groups[i].Workers[j]
-			score := 0
-			switch {
-			case w.Identity == identity || w.InstanceKey == identity:
-				score = 3
-			case host != "" && (w.Host == host || temporal.HostFromIdentity(w.Identity) == host):
-				score = 1
-			default:
-				continue
-			}
-			if taskQueue != "" && w.TaskQueue == taskQueue {
-				score++
-			}
-			if score > bestScore {
-				best, bestScore = w, score
-			}
+	for i := range workers {
+		w := &workers[i]
+		score := 0
+		switch {
+		case w.Identity == identity || w.InstanceKey == identity:
+			score = 3
+		case host != "" && (w.Host == host || temporal.HostFromIdentity(w.Identity) == host):
+			score = 1
+		default:
+			continue
+		}
+		if taskQueue != "" && w.TaskQueue == taskQueue {
+			score++
+		}
+		if score > bestScore {
+			best, bestScore = w, score
 		}
 	}
 	return best
 }
 
-func (wv *WorkerView) addHostRow(host string) {
-	group := wv.hostGroup(host)
-	chevron := theme.IconChevronD
-	if wv.collapsed[host] {
-		chevron = theme.IconChevronR
-	}
-	count := 0
-	if group != nil {
-		count = len(group.Workers)
-	}
-	label := fmt.Sprintf("%s %s %s (%d)", chevron, theme.IconServer, host, count)
-	cpu, mem := "-", "-"
-	if group != nil && group.Resources {
-		cpu = formatWorkerPercent(group.CPU)
-		mem = formatWorkerPercent(group.Memory)
-	}
-	wv.table.AddRow(label, "", "", "", "", "", "", cpu, mem)
-}
-
 func (wv *WorkerView) addInstanceRow(now time.Time, w temporal.Worker) {
 	status := temporal.GetWorkerStatus(w.Status)
 	cells := []string{
-		workflowTreePrefix(1) + theme.IconUser + " " + instanceLabel(w),
+		theme.IconUser + " " + instanceLabel(w),
+		dashIfEmpty(w.Host),
 		w.Status,
 		w.TaskQueue,
 		formatWorkerTime(now, w.LastHeartbeat),
@@ -445,16 +403,7 @@ func (wv *WorkerView) addInstanceRow(now time.Time, w temporal.Worker) {
 		formatWorkerResource(w),
 		formatWorkerMemory(w),
 	}
-	wv.table.AddRowWithStatus(status, 1, cells...)
-}
-
-func (wv *WorkerView) hostGroup(host string) *workerHostGroup {
-	for i := range wv.groups {
-		if wv.groups[i].Host == host {
-			return &wv.groups[i]
-		}
-	}
-	return nil
+	wv.table.AddRowWithStatus(status, 2, cells...)
 }
 
 func (wv *WorkerView) selectedRow() (workerRow, bool) {
@@ -485,41 +434,6 @@ func (wv *WorkerView) rowIndexByKey(key string) int {
 	return -1
 }
 
-func (wv *WorkerView) toggleSelectedHost() bool {
-	row, ok := wv.selectedRow()
-	if !ok {
-		return false
-	}
-	host := row.Host
-	if host == "" {
-		return false
-	}
-	wv.collapsed[host] = !wv.collapsed[host]
-	wv.rebuildRows()
-	wv.populateTable()
-	if idx := wv.rowIndexByKey(workerHostKey(host)); idx >= 0 {
-		wv.table.SelectRow(idx)
-	}
-	return true
-}
-
-func (wv *WorkerView) setHostCollapsed(collapsed bool) bool {
-	row, ok := wv.selectedRow()
-	if !ok || row.Host == "" {
-		return false
-	}
-	if wv.collapsed[row.Host] == collapsed {
-		return true
-	}
-	wv.collapsed[row.Host] = collapsed
-	wv.rebuildRows()
-	wv.populateTable()
-	if idx := wv.rowIndexByKey(workerHostKey(row.Host)); idx >= 0 {
-		wv.table.SelectRow(idx)
-	}
-	return true
-}
-
 func (wv *WorkerView) updatePreview() {
 	row, ok := wv.selectedRow()
 	if !ok {
@@ -528,13 +442,6 @@ func (wv *WorkerView) updatePreview() {
 		return
 	}
 	now := time.Now()
-	if row.IsHost {
-		if group := wv.hostGroup(row.Host); group != nil {
-			wv.setDetailRows(workerHostInfoRows(now, *group))
-			wv.setUtilization(group.CPU, group.Memory, group.Resources)
-			return
-		}
-	}
 	wv.setDetailRows(workerInfoRows(now, row.Worker))
 	wv.setUtilization(row.Worker.CPU, row.Worker.Memory, row.Worker.HasHostInfo)
 }
@@ -651,65 +558,34 @@ func workerMatches(w temporal.Worker, q string) bool {
 	return false
 }
 
-func groupWorkersByHost(workers []temporal.Worker) []workerHostGroup {
-	index := map[string]int{}
-	var groups []workerHostGroup
-	for _, w := range workers {
-		host := w.Host
-		if host == "" {
-			host = temporal.HostFromIdentity(w.Identity)
+// sortWorkerInstances keeps same-machine instances next to each other now that
+// the tab lists them flat.
+func sortWorkerInstances(workers []temporal.Worker) []temporal.Worker {
+	out := make([]temporal.Worker, len(workers))
+	copy(out, workers)
+	sort.Slice(out, func(i, j int) bool {
+		left, right := out[i], out[j]
+		leftHost, rightHost := workerHost(left), workerHost(right)
+		if leftHost != rightHost {
+			return leftHost < rightHost
 		}
-		i, ok := index[host]
-		if !ok {
-			i = len(groups)
-			index[host] = i
-			groups = append(groups, workerHostGroup{Host: host})
-		}
-		groups[i].Workers = append(groups[i].Workers, w)
-		if w.HasHostInfo {
-			groups[i].Resources = true
-			groups[i].CPU = w.CPU
-			groups[i].Memory = w.Memory
-		}
-	}
-	sort.Slice(groups, func(i, j int) bool {
-		return groups[i].Host < groups[j].Host
-	})
-	for i := range groups {
-		sort.Slice(groups[i].Workers, func(a, b int) bool {
-			left, right := groups[i].Workers[a], groups[i].Workers[b]
-			if left.Identity == right.Identity {
-				return left.TaskQueue < right.TaskQueue
-			}
+		if left.Identity != right.Identity {
 			return left.Identity < right.Identity
-		})
-	}
-	return groups
+		}
+		return left.TaskQueue < right.TaskQueue
+	})
+	return out
 }
 
-func flattenWorkerRows(groups []workerHostGroup, collapsed map[string]bool) []workerRow {
-	var rows []workerRow
-	for _, group := range groups {
-		rows = append(rows, workerRow{Host: group.Host, IsHost: true})
-		if collapsed[group.Host] {
-			continue
-		}
-		for _, w := range group.Workers {
-			rows = append(rows, workerRow{Host: group.Host, Worker: w})
-		}
+func workerHost(w temporal.Worker) string {
+	if w.Host != "" {
+		return w.Host
 	}
-	return rows
+	return temporal.HostFromIdentity(w.Identity)
 }
 
 func workerRowKey(row workerRow) string {
-	if row.IsHost {
-		return workerHostKey(row.Host)
-	}
 	return "inst:" + row.Worker.InstanceKey + "|" + row.Worker.Identity + "|" + row.Worker.TaskQueue
-}
-
-func workerHostKey(host string) string {
-	return "host:" + host
 }
 
 func instanceLabel(w temporal.Worker) string {
@@ -751,31 +627,6 @@ func formatWorkerMemory(w temporal.Worker) string {
 		return "-"
 	}
 	return formatWorkerPercent(w.Memory)
-}
-
-// workerHostInfoRows describes a host group as label/value rows for the detail table.
-func workerHostInfoRows(now time.Time, group workerHostGroup) []workflowInfoRow {
-	cpu, mem := "-", "-"
-	if group.Resources {
-		cpu = formatWorkerPercent(group.CPU)
-		mem = formatWorkerPercent(group.Memory)
-	}
-	rows := []workflowInfoRow{
-		{Key: "host", Label: "Host", Value: dashIfEmpty(group.Host), Color: theme.Fg()},
-		{Key: "instances", Label: "Instances", Value: fmt.Sprintf("%d", len(group.Workers)), Color: theme.Fg()},
-		{Key: "cpu", Label: "CPU", Value: cpu, Color: theme.Fg()},
-		{Key: "memory", Label: "Memory", Value: mem, Color: theme.Fg()},
-	}
-	for _, w := range group.Workers {
-		status := dashIfEmpty(w.Status)
-		rows = append(rows, workflowInfoRow{
-			Key:   "worker:" + workerRowKey(workerRow{Host: group.Host, Worker: w}),
-			Label: instanceLabel(w),
-			Value: fmt.Sprintf("%s  %s  %s", status, dashIfEmpty(w.TaskQueue), formatWorkerTime(now, w.LastHeartbeat)),
-			Color: temporal.GetWorkerStatus(w.Status).Color(),
-		})
-	}
-	return rows
 }
 
 // workerInfoRows describes one worker instance as label/value rows for the detail table.
