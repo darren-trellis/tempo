@@ -38,6 +38,30 @@ func workflowIOFromEvents(events []temporal.EnhancedHistoryEvent) (input, output
 	return input, output
 }
 
+// workflowRunning reports whether a workflow may still produce more history.
+func workflowRunning(w temporal.Workflow) bool {
+	return w.Status == "" || w.Status == "Running"
+}
+
+// workflowHistoryComplete reports whether these events carry the workflow's
+// terminal event, i.e. whether its output can be read off them at all.
+func workflowHistoryComplete(events []temporal.EnhancedHistoryEvent) bool {
+	for _, event := range events {
+		switch {
+		case strings.Contains(event.Type, "ChildWorkflowExecution"):
+			continue
+		case strings.Contains(event.Type, "WorkflowExecutionCompleted"),
+			strings.Contains(event.Type, "WorkflowExecutionFailed"),
+			strings.Contains(event.Type, "WorkflowExecutionCanceled"),
+			strings.Contains(event.Type, "WorkflowExecutionTerminated"),
+			strings.Contains(event.Type, "WorkflowExecutionTimedOut"),
+			strings.Contains(event.Type, "WorkflowExecutionContinuedAsNew"):
+			return true
+		}
+	}
+	return false
+}
+
 func formatIOContent(label, content string) string {
 	if content == "" {
 		return fmt.Sprintf("[%s]No %s[-]", theme.TagFgDim(), strings.ToLower(label))

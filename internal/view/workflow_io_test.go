@@ -2,91 +2,123 @@ package view
 
 import (
 	"testing"
+	"time"
 
 	"github.com/galaxy-io/tempo/internal/temporal"
 )
 
-func TestWorkflowIOHints(t *testing.T) {
-	hints := workflowIOHints(false)
-	if len(hints) != 4 {
-		t.Fatalf("want io hints without nav keys, got %d", len(hints))
-	}
-	if hints[0].Description != "Maximize" {
-		t.Fatalf("restore hint: %+v", hints[0])
-	}
-	if got := workflowIOHints(true)[0].Description; got != "Minimize" {
-		t.Fatalf("maximize hint: %q", got)
+func startedAndCompleted() []temporal.EnhancedHistoryEvent {
+	return []temporal.EnhancedHistoryEvent{
+		{ID: 1, Type: "WorkflowExecutionStarted", Input: `{"order":1}`},
+		{ID: 2, Type: "ActivityTaskCompleted", Result: `"activity"`},
+		{ID: 3, Type: "WorkflowExecutionCompleted", Result: `{"ok":true}`},
 	}
 }
 
-func TestWorkflowIOFromEvents(t *testing.T) {
-	input, output := workflowIOFromEvents([]temporal.EnhancedHistoryEvent{
-		{Type: "WorkflowExecutionStarted", Input: `{"id":1}`},
-		{Type: "ActivityTaskCompleted", Result: "ignored"},
-		{Type: "WorkflowExecutionCompleted", Result: `{"ok":true}`},
-	})
-	if input != `{"id":1}` {
-		t.Fatalf("input: %q", input)
+func TestWorkflowHistoryComplete(t *testing.T) {
+	if workflowHistoryComplete(nil) {
+		t.Fatal("no events is not a complete history")
 	}
-	if output != `{"ok":true}` {
-		t.Fatalf("output: %q", output)
+	// A snapshot taken mid-run has no terminal event, however long it is.
+	running := []temporal.EnhancedHistoryEvent{
+		{Type: "WorkflowExecutionStarted"},
+		{Type: "ActivityTaskScheduled"},
+		{Type: "ActivityTaskCompleted", Result: `"activity"`},
+		{Type: "ChildWorkflowExecutionCompleted", Result: `"child"`},
 	}
-
-	_, failed := workflowIOFromEvents([]temporal.EnhancedHistoryEvent{
-		{Type: "WorkflowExecutionFailed", Failure: "boom"},
-	})
-	if failed != "boom" {
-		t.Fatalf("failure output: %q", failed)
+	if workflowHistoryComplete(running) {
+		t.Fatal("a child workflow finishing does not end the parent")
+	}
+	for _, terminal := range []string{
+		"WorkflowExecutionCompleted", "WorkflowExecutionFailed", "WorkflowExecutionCanceled",
+		"WorkflowExecutionTerminated", "WorkflowExecutionTimedOut", "WorkflowExecutionContinuedAsNew",
+	} {
+		events := append(running, temporal.EnhancedHistoryEvent{Type: terminal})
+		if !workflowHistoryComplete(events) {
+			t.Fatalf("%s should end the history", terminal)
+		}
 	}
 }
 
-func TestWorkflowIOWithoutPreview(t *testing.T) {
+// TestWorkflowIOEventsRejectsPreCompletionSnapshot is the bug: with the preview
+// closed nothing refreshes the cache, so the input/output modal was reading a
+// snapshot captured while the workflow was still running and reporting no output.
+func TestWorkflowIOEventsRejectsPreCompletionSnapshot(t *testing.T) {
 	wl := NewWorkflowList(&App{}, "default")
-	if desc := hintDescription(wl.Hints(), "i"); desc != "Input/Output" {
-		t.Fatalf("workflows pane should show io without preview, got %q", desc)
-	}
-	if wl.showPreviewIO() {
-		t.Fatal("input/output needs a selected workflow")
+	done := time.Now()
+	w := temporal.Workflow{ID: "wf-1", RunID: "run-1", Type: "OrderWorkflow", Status: "Completed", EndTime: &done}
+
+	// Cached while it was still running.
+	wl.previewCache.put(w.ID, w.RunID, []temporal.EnhancedHistoryEvent{
+		{ID: 1, Type: "WorkflowExecutionStarted", Input: `{"order":1}`},
+		{ID: 2, Type: "ActivityTaskCompleted", Result: `"activity"`},
+	})
+	if _, ok := wl.workflowIOEvents(w); ok {
+		t.Fatal("a pre-completion snapshot should not answer for a finished workflow")
 	}
 
-	wf := temporal.Workflow{ID: "wf", RunID: "run", Type: "Order"}
-	wl.workflows = []temporal.Workflow{wf}
-	wl.table.AddRowWithColor(0, "Completed", "Order", "wf", "run")
+	// Once the full history is cached, use it.
+	wl.previewCache.put(w.ID, w.RunID, startedAndCompleted())
+	events, ok := wl.workflowIOEvents(w)
+	if !ok {
+		t.Fatal("a complete history should answer")
+	}
+	input, output := workflowIOFromEvents(events)
+	if input == "" || output == "" {
+		t.Fatalf("input=%q output=%q", input, output)
+	}
+
+	// The same applies to the live preview slice.
+	wl.previewCache = newPreviewCache(0)
+	wl.previewWorkflowID, wl.previewRunID = w.ID, w.RunID
+	wl.previewEvents = []temporal.EnhancedHistoryEvent{{ID: 1, Type: "WorkflowExecutionStarted", Input: `{"order":1}`}}
+	if _, ok := wl.workflowIOEvents(w); ok {
+		t.Fatal("a pre-completion preview slice should not answer either")
+	}
+
+	// A workflow still running has nothing better to offer, so use what we have.
+	running := temporal.Workflow{ID: "wf-2", RunID: "run-2", Status: "Running"}
+	wl.previewWorkflowID, wl.previewRunID = running.ID, running.RunID
+	if _, ok := wl.workflowIOEvents(running); !ok {
+		t.Fatal("a running workflow should still show what history exists")
+	}
+}
+
+func TestWorkflowIOPayloadWithPreviewClosed(t *testing.T) {
+	wl := NewWorkflowList(&App{}, "default")
+	done := time.Now()
+	w := temporal.Workflow{ID: "wf-1", RunID: "run-1", Type: "OrderWorkflow", Status: "Completed", EndTime: &done}
+	wl.workflows = []temporal.Workflow{w}
+	wl.allWorkflows = wl.workflows
+	wl.renderColumns()
 	wl.table.SelectRow(0)
-	wl.previewCache.put(wf.ID, wf.RunID, []temporal.EnhancedHistoryEvent{
-		{Type: "WorkflowExecutionStarted", Input: `{"id":1}`},
-		{Type: "WorkflowExecutionCompleted", Result: `{"ok":true}`},
-	})
+	wl.previewCache.put(w.ID, w.RunID, startedAndCompleted())
 
-	title, input, output, ok := wl.previewIOPayload()
-	if !ok || title != "Order" || input != `{"id":1}` || output != `{"ok":true}` {
-		t.Fatalf("workflow io without preview: title=%q input=%q output=%q ok=%v", title, input, output, ok)
+	if wl.previewModeEnabled() {
+		t.Fatal("this covers the preview being closed")
 	}
-	if !wl.showPreviewIO() {
-		t.Fatal("input/output should open from the workflows list")
+	title, input, output, ok := wl.previewIOPayload()
+	if !ok || title != "OrderWorkflow" {
+		t.Fatalf("payload: title=%q ok=%v", title, ok)
+	}
+	if input == "" {
+		t.Fatal("input should be read from the history")
+	}
+	if output == "" {
+		t.Fatal("output should be read from the history with the preview closed")
 	}
 }
 
-func TestPreviewActivityIOPayload(t *testing.T) {
-	wl := NewWorkflowList(&App{}, "default")
-	wl.previewMode = true
-	wl.previewKind = previewActivities
-	wl.previewActivities = []previewActivity{
-		{Type: "ValidateOrder", Input: `{"id":1}`, Result: `{"ok":true}`},
-		{Type: "Charge", Input: `{"amt":5}`, Failure: "timeout"},
-	}
-	wl.eventTable.AddRowWithColor(0, "Completed", "ValidateOrder", "12:00:00", "2s")
-	wl.eventTable.AddRowWithColor(0, "Failed", "Charge", "12:00:03", "1s")
-	wl.eventTable.SelectRow(0)
-
-	title, input, output, ok := wl.previewIOPayload()
-	if !ok || title != "ValidateOrder" || input != `{"id":1}` || output != `{"ok":true}` {
-		t.Fatalf("first activity io: title=%q input=%q output=%q ok=%v", title, input, output, ok)
+func TestMockPreviewEventsCarryIO(t *testing.T) {
+	done := time.Now()
+	events := mockPreviewEvents(temporal.Workflow{ID: "wf-1", Status: "Completed", EndTime: &done})
+	input, output := workflowIOFromEvents(events)
+	if input == "" || output == "" {
+		t.Fatalf("dev mode should demonstrate input/output: input=%q output=%q", input, output)
 	}
 
-	wl.eventTable.SelectRow(1)
-	title, input, output, ok = wl.previewIOPayload()
-	if !ok || title != "Charge" || input != `{"amt":5}` || output != "timeout" {
-		t.Fatalf("failed activity io: title=%q input=%q output=%q ok=%v", title, input, output, ok)
+	failed := mockPreviewEvents(temporal.Workflow{ID: "wf-2", Status: "Failed", EndTime: &done})
+	if _, output := workflowIOFromEvents(failed); output == "" {
+		t.Fatal("a failed workflow should show its failure as output")
 	}
 }

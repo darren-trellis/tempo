@@ -80,11 +80,22 @@ func (wl *WorkflowList) previewIOPayload() (title, input, output string, ok bool
 	return w.Type, input, output, true
 }
 
+// workflowIOEvents returns history we already hold for a workflow, but only if it
+// can actually answer the question. A snapshot taken while the workflow was
+// running has no terminal event, so reading output off it would report none --
+// which is what happened whenever the preview was closed and so never refreshed
+// the cache. In that case say no and let the caller fetch.
 func (wl *WorkflowList) workflowIOEvents(w temporal.Workflow) ([]temporal.EnhancedHistoryEvent, bool) {
-	if w.ID != "" && wl.previewWorkflowID == w.ID && wl.previewRunID == w.RunID && wl.previewEvents != nil {
+	usable := func(events []temporal.EnhancedHistoryEvent) bool {
+		if len(events) == 0 {
+			return false
+		}
+		return workflowRunning(w) || workflowHistoryComplete(events)
+	}
+	if w.ID != "" && wl.previewWorkflowID == w.ID && wl.previewRunID == w.RunID && usable(wl.previewEvents) {
 		return wl.previewEvents, true
 	}
-	if events, ok := wl.previewCache.get(w.ID, w.RunID); ok {
+	if events, ok := wl.previewCache.get(w.ID, w.RunID); ok && usable(events) {
 		return events, true
 	}
 	return nil, false
@@ -1189,6 +1200,7 @@ func mockPreviewEvents(w temporal.Workflow) []temporal.EnhancedHistoryEvent {
 			Type:    "WorkflowExecutionStarted",
 			Time:    started,
 			Details: "taskQueue: " + w.TaskQueue,
+			Input:   `{"orderId":"` + w.ID + `","items":2}`,
 		},
 		{
 			ID:           5,
@@ -1220,12 +1232,18 @@ func mockPreviewEvents(w temporal.Workflow) []temporal.EnhancedHistoryEvent {
 		if w.Status == "Failed" {
 			endType = "WorkflowExecutionFailed"
 		}
-		events = append(events, temporal.EnhancedHistoryEvent{
+		end := temporal.EnhancedHistoryEvent{
 			ID:      8,
 			Type:    endType,
 			Time:    *w.EndTime,
 			Details: "status: " + w.Status,
-		})
+		}
+		if endType == "WorkflowExecutionFailed" {
+			end.Failure = "mock failure: activity exhausted its retries"
+		} else {
+			end.Result = `{"status":"ok","processed":2}`
+		}
+		events = append(events, end)
 	}
 	return events
 }
