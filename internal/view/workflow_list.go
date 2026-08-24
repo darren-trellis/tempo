@@ -20,6 +20,7 @@ const (
 	focusTimeline
 	focusPollers
 	focusScheduleDetail
+	focusScheduleRuns
 	focusWorkerDetail
 )
 
@@ -524,6 +525,19 @@ func (wl *WorkflowList) Hints() []KeyHint {
 		}
 	}
 	if wl.schedulesActive() {
+		switch wl.focusPane {
+		case focusScheduleDetail:
+			return []KeyHint{
+				{Key: "y", Description: "Yank"},
+				{Key: "r", Description: "Refresh"},
+			}
+		case focusScheduleRuns:
+			return []KeyHint{
+				{Key: "Enter", Description: "Open Run"},
+				{Key: "y", Description: "Copy ID"},
+				{Key: "r", Description: "Refresh"},
+			}
+		}
 		return []KeyHint{
 			{Key: "/", Description: "Search"},
 			{Key: "r", Description: "Refresh"},
@@ -672,7 +686,7 @@ func (wl *WorkflowList) HandleEscape() bool {
 		wl.setPollersVisible(false)
 		return true
 	}
-	if wl.schedulesActive() && wl.focusPane == focusScheduleDetail {
+	if wl.schedulesActive() && (wl.focusPane == focusScheduleDetail || wl.focusPane == focusScheduleRuns) {
 		wl.setFocusPane(focusWorkflows)
 		return true
 	}
@@ -710,8 +724,12 @@ func (wl *WorkflowList) Focus(delegate func(p tview.Primitive)) {
 		return
 	}
 	if wl.schedulesActive() && wl.schedules != nil {
-		if wl.focusPane == focusScheduleDetail {
-			delegate(wl.schedules.preview)
+		switch wl.focusPane {
+		case focusScheduleDetail:
+			delegate(wl.schedules.detail)
+			return
+		case focusScheduleRuns:
+			delegate(wl.schedules.runsTable)
 			return
 		}
 		delegate(wl.schedules.table)

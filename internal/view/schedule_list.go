@@ -23,8 +23,15 @@ type ScheduleList struct {
 	namespace    string
 	table        *components.Table
 	tableScroll  *charScrollView
-	preview      *tview.TextView
-	previewPanel *components.Panel
+	detail       *components.Table
+	detailScroll *charScrollView
+	detailRows   []workflowInfoRow
+	detailPanel  *components.Panel
+	runsTable    *components.Table
+	runsScroll   *charScrollView
+	runsPanel    *components.Panel
+	runs         []temporal.ScheduleRun // Newest first, matching the runs table
+	detailFlex   *tview.Flex
 	allSchedules []temporal.Schedule // Full unfiltered list
 	schedules    []temporal.Schedule // Filtered list for display
 	loading      bool
@@ -36,7 +43,8 @@ func NewScheduleList(app *App, namespace string) *ScheduleList {
 		app:       app,
 		namespace: namespace,
 		table:     components.NewTable(),
-		preview:   tview.NewTextView(),
+		detail:    components.NewTable(),
+		runsTable: components.NewTable(),
 		schedules: []temporal.Schedule{},
 	}
 	sl.setup()
@@ -54,20 +62,44 @@ func (sl *ScheduleList) setup() {
 	sl.table.SetEvaluateAllRows(true)
 	sl.tableScroll = attachTableCharScroll(sl.table, sl.app)
 
-	// Configure preview
-	sl.preview.SetDynamicColors(true)
-	sl.preview.SetBackgroundColor(theme.Bg())
-	sl.preview.SetTextColor(theme.Fg())
-	sl.preview.SetWordWrap(true)
-	sl.previewPanel = components.NewPanel().SetTitle(fmt.Sprintf("%s Preview", theme.IconInfo))
-	sl.previewPanel.SetContent(sl.preview)
+	// Details table
+	sl.detail.SetBorder(false)
+	sl.detail.SetBackgroundColor(theme.Bg())
+	sl.detail.SetEvaluateAllRows(true)
+	sl.detailScroll = newCharScrollView(sl.detail, func() int {
+		return workflowInfoContentWidth(sl.detailRows)
+	})
+	bindTableCharScroll(sl.detail, sl.detailScroll, func() int {
+		return mouseScrollStepFromApp(sl.app)
+	})
+	sl.detailPanel = components.NewPanel().SetTitle(fmt.Sprintf("%s Details", theme.IconInfo))
+	sl.detailPanel.SetContent(sl.detailScroll)
+
+	// Recent runs table
+	sl.runsTable.SetHeaders(scheduleRunHeaders()...)
+	sl.runsTable.SetBorder(false)
+	sl.runsTable.SetBackgroundColor(theme.Bg())
+	sl.runsTable.SetEvaluateAllRows(true)
+	sl.runsScroll = attachTableCharScroll(sl.runsTable, sl.app)
+	sl.runsTable.ConfigureEmpty(theme.IconInfo, "No Runs", "This schedule has no recent runs")
+	sl.runsPanel = components.NewPanel().SetTitle(fmt.Sprintf("%s Recent Runs", theme.IconHistory))
+	sl.runsPanel.SetContent(sl.runsScroll)
+	sl.runsTable.SetOnSelect(func(row int) {
+		sl.openSelectedRun()
+	})
+	bindTableDoubleClick(sl.runsTable)
+
+	sl.detailFlex = tview.NewFlex().SetDirection(tview.FlexRow)
+	sl.detailFlex.SetBackgroundColor(theme.Bg())
+	sl.detailFlex.AddItem(sl.detailPanel, 0, 3, false)
+	sl.detailFlex.AddItem(sl.runsPanel, 0, 2, false)
 
 	// Create MasterDetailView
 	sl.MasterDetailView = components.NewMasterDetailView().
 		SetMasterTitle(fmt.Sprintf("%s Schedules", theme.IconSchedule)).
-		SetDetailTitle(fmt.Sprintf("%s Preview", theme.IconInfo)).
+		SetDetailTitle(fmt.Sprintf("%s Details", theme.IconInfo)).
 		SetMasterContent(sl.tableScroll).
-		SetDetailContent(sl.preview).
+		SetDetailContent(sl.detailFlex).
 		SetRatio(0.6).
 		ConfigureEmpty(theme.IconInfo, "No Selection", "Select a schedule to view details").
 		EnableSearch(func(current string, cb components.SearchCallbacks) {
@@ -107,116 +139,212 @@ func (sl *ScheduleList) RefreshTheme() {
 	// Update table
 	sl.table.SetBackgroundColor(bg)
 
-	// Update preview
-	sl.preview.SetBackgroundColor(bg)
-	sl.preview.SetTextColor(theme.Fg())
+	// Update detail panes
+	sl.detail.SetBackgroundColor(bg)
+	sl.runsTable.SetBackgroundColor(bg)
 
 	// Re-render table with new theme colors
 	sl.populateTable()
 }
 
+// updatePreview renders the selected schedule into the details and runs panes.
 func (sl *ScheduleList) updatePreview(s temporal.Schedule) {
 	now := time.Now()
-	pauseStatus := "Active"
-	pauseColor := temporal.StatusCompleted.ColorTag()
-	if s.Paused {
-		pauseStatus = "Paused"
-		pauseColor = temporal.StatusCanceled.ColorTag()
-	}
+	sl.setDetailRows(scheduleInfoRows(now, s))
+	sl.setRuns(now, s.RecentRuns)
+}
 
+// scheduleInfoRows describes a schedule as label/value rows for the details table.
+func scheduleInfoRows(now time.Time, s temporal.Schedule) []workflowInfoRow {
+	status, statusColor := "Active", temporal.StatusCompleted.Color()
+	if s.Paused {
+		status, statusColor = "Paused", temporal.StatusCanceled.Color()
+	}
 	nextRun := "-"
 	if s.NextRunTime != nil {
 		nextRun = formatRelativeTime(now, *s.NextRunTime)
 	}
-
 	lastRun := "-"
 	if s.LastRunTime != nil {
 		lastRun = formatRelativeTime(now, *s.LastRunTime)
 	}
-
-	recentRuns := formatScheduleRecentRuns(now, s.RecentRuns)
-
-	text := fmt.Sprintf(`[%s::b]Schedule[-:-:-]
-[%s]%s[-]
-
-[%s]Status[-]
-[%s]%s[-]
-
-[%s]Workflow Type[-]
-[%s]%s[-]
-
-[%s]Spec[-]
-[%s]%s[-]
-
-[%s]Next Run[-]
-[%s]%s[-]
-
-[%s]Last Run[-]
-[%s]%s[-]
-
-[%s]Recent Runs[-]
-%s
-
-[%s]Total Actions[-]
-[%s]%d[-]
-
-[%s]Notes[-]
-[%s]%s[-]`,
-		theme.TagAccent(),
-		theme.TagFg(), s.ID,
-		theme.TagFgDim(),
-		pauseColor, pauseStatus,
-		theme.TagFgDim(),
-		theme.TagFg(), s.WorkflowType,
-		theme.TagFgDim(),
-		theme.TagFg(), s.Spec,
-		theme.TagFgDim(),
-		theme.TagFg(), nextRun,
-		theme.TagFgDim(),
-		theme.TagFg(), lastRun,
-		theme.TagFgDim(),
-		recentRuns,
-		theme.TagFgDim(),
-		theme.TagFg(), s.TotalActions,
-		theme.TagFgDim(),
-		theme.TagFgDim(), s.Notes,
-	)
-	sl.preview.SetText(text)
+	return []workflowInfoRow{
+		{Key: "id", Label: "Schedule", Value: dashIfEmpty(s.ID), Color: theme.Fg()},
+		{Key: "status", Label: "Status", Value: status, Color: statusColor},
+		{Key: "type", Label: "Workflow Type", Value: dashIfEmpty(s.WorkflowType), Color: theme.Fg()},
+		{Key: "workflowid", Label: "Workflow ID", Value: dashIfEmpty(s.WorkflowID), Color: theme.Fg()},
+		{Key: "taskqueue", Label: "Task Queue", Value: dashIfEmpty(s.TaskQueue), Color: theme.Fg()},
+		{Key: "spec", Label: "Spec", Value: dashIfEmpty(s.Spec), Color: theme.Fg()},
+		{Key: "overlap", Label: "Overlap Policy", Value: dashIfEmpty(s.OverlapPolicy), Color: theme.Fg()},
+		{Key: "nextrun", Label: "Next Run", Value: nextRun, Color: theme.Fg()},
+		{Key: "lastrun", Label: "Last Run", Value: lastRun, Color: theme.Fg()},
+		{Key: "laststatus", Label: "Last Status", Value: dashIfEmpty(s.LastRunStatus), Color: theme.Fg()},
+		{Key: "actions", Label: "Total Actions", Value: fmt.Sprintf("%d", s.TotalActions), Color: theme.Fg()},
+		{Key: "recentactions", Label: "Actions (24h)", Value: fmt.Sprintf("%d", s.RecentActions), Color: theme.Fg()},
+		{Key: "notes", Label: "Notes", Value: dashIfEmpty(s.Notes), Color: theme.FgDim()},
+	}
 }
 
-func formatScheduleRecentRuns(now time.Time, runs []temporal.ScheduleRun) string {
-	if len(runs) == 0 {
-		return fmt.Sprintf("[%s]No recent runs[-]", theme.TagFgDim())
+// setDetailRows renders the details table, keeping the selected row where it can.
+func (sl *ScheduleList) setDetailRows(rows []workflowInfoRow) {
+	selectedKey := ""
+	if row, ok := sl.selectedDetailRow(); ok {
+		selectedKey = row.Key
 	}
+	sl.detailRows = rows
+	if sl.detail == nil {
+		return
+	}
+	sl.detail.ClearRows()
+	for _, row := range rows {
+		sl.detail.AddStyledRow([]components.TableCell{
+			{Text: row.Label, Color: theme.FgDim(), Selectable: true},
+			{Text: row.displayText(), Color: row.Color, Selectable: true},
+		})
+	}
+	if idx := workflowInfoRowIndex(rows, selectedKey); idx >= 0 {
+		sl.detail.SelectRow(idx)
+	} else if len(rows) > 0 {
+		sl.detail.SelectRow(0)
+	}
+	if sl.detailScroll != nil {
+		sl.detailScroll.clamp()
+	}
+}
 
-	lines := make([]string, 0, len(runs)*2)
+func (sl *ScheduleList) selectedDetailRow() (workflowInfoRow, bool) {
+	if sl == nil || sl.detail == nil {
+		return workflowInfoRow{}, false
+	}
+	idx := sl.detail.SelectedRow()
+	if idx < 0 || idx >= len(sl.detailRows) {
+		return workflowInfoRow{}, false
+	}
+	return sl.detailRows[idx], true
+}
+
+func scheduleRunHeaders() []string {
+	return []string{"STARTED", "SCHEDULED", "WORKFLOW ID", "RUN ID"}
+}
+
+// setRuns fills the recent runs table, newest first.
+func (sl *ScheduleList) setRuns(now time.Time, runs []temporal.ScheduleRun) {
+	sl.runs = nil
 	for i := len(runs) - 1; i >= 0; i-- {
-		run := runs[i]
-
-		when := "-"
-		if !run.ActualTime.IsZero() {
-			when = formatRelativeTime(now, run.ActualTime)
-		} else if !run.ScheduleTime.IsZero() {
-			when = formatRelativeTime(now, run.ScheduleTime)
-		}
-
-		workflowID := run.WorkflowID
-		if workflowID == "" {
-			workflowID = "(workflow unavailable)"
-		}
-
-		runID := run.RunID
-		if runID == "" {
-			runID = "(run unavailable)"
-		}
-
-		lines = append(lines,
-			fmt.Sprintf("[%s]%s[-] [%s]%s[-]", theme.TagAccent(), when, theme.TagFg(), truncate(workflowID, 42)),
-			fmt.Sprintf("[%s]run[-] [%s]%s[-]", theme.TagFgDim(), theme.TagFgDim(), truncate(runID, 32)),
+		sl.runs = append(sl.runs, runs[i])
+	}
+	if sl.runsTable == nil {
+		return
+	}
+	sl.runsTable.ClearRows()
+	sl.runsTable.SetHeaders(scheduleRunHeaders()...)
+	for _, run := range sl.runs {
+		sl.runsTable.AddRow(
+			formatScheduleRunTime(now, run.ActualTime),
+			formatScheduleRunTime(now, run.ScheduleTime),
+			dashIfEmpty(run.WorkflowID),
+			dashIfEmpty(run.RunID),
 		)
 	}
+	if sl.runsTable.RowCount() > 0 {
+		sl.runsTable.SelectRow(0)
+	}
+	if sl.runsScroll != nil {
+		sl.runsScroll.clamp()
+	}
+}
 
-	return strings.Join(lines, "\n")
+func formatScheduleRunTime(now, t time.Time) string {
+	if t.IsZero() {
+		return "-"
+	}
+	return formatRelativeTime(now, t)
+}
+
+func (sl *ScheduleList) selectedRun() (temporal.ScheduleRun, bool) {
+	if sl == nil || sl.runsTable == nil {
+		return temporal.ScheduleRun{}, false
+	}
+	idx := sl.runsTable.SelectedRow()
+	if idx < 0 || idx >= len(sl.runs) {
+		return temporal.ScheduleRun{}, false
+	}
+	return sl.runs[idx], true
+}
+
+// openSelectedRun pushes the workflow detail for the selected run.
+func (sl *ScheduleList) openSelectedRun() {
+	run, ok := sl.selectedRun()
+	if !ok || sl.app == nil {
+		return
+	}
+	if run.WorkflowID == "" || run.RunID == "" {
+		sl.app.ToastWarning("This run has no workflow execution to open")
+		return
+	}
+	sl.app.NavigateToWorkflowDetail(run.WorkflowID, run.RunID)
+}
+
+// yankDetailRow copies the selected detail value to the clipboard.
+func (sl *ScheduleList) yankDetailRow() {
+	row, ok := sl.selectedDetailRow()
+	if !ok || row.Value == "" || sl.app == nil {
+		return
+	}
+	if err := copyToClipboard(row.Value); err != nil {
+		sl.app.ToastError("Failed to copy: " + err.Error())
+		return
+	}
+	sl.app.ToastSuccess("Copied " + row.Label)
+}
+
+// yankRun copies the selected run's workflow ID to the clipboard.
+func (sl *ScheduleList) yankRun() {
+	run, ok := sl.selectedRun()
+	if !ok || run.WorkflowID == "" || sl.app == nil {
+		return
+	}
+	if err := copyToClipboard(run.WorkflowID); err != nil {
+		sl.app.ToastError("Failed to copy: " + err.Error())
+		return
+	}
+	sl.app.ToastSuccess("Copied workflow ID")
+}
+
+// handleDetailKeys scrolls and yanks in the details pane.
+func (sl *ScheduleList) handleDetailKeys(event *tcell.EventKey) *tcell.EventKey {
+	if handleTableCharScroll(sl.detailScroll, sl.detail, event) {
+		return nil
+	}
+	switch event.Rune() {
+	case 'r':
+		sl.loadData()
+		return nil
+	case 'y':
+		sl.yankDetailRow()
+		return nil
+	}
+	return event
+}
+
+// handleRunsKeys scrolls the runs pane and opens the selected run.
+func (sl *ScheduleList) handleRunsKeys(event *tcell.EventKey) *tcell.EventKey {
+	if handleTableCharScroll(sl.runsScroll, sl.runsTable, event) {
+		return nil
+	}
+	if event.Key() == tcell.KeyEnter {
+		sl.openSelectedRun()
+		return nil
+	}
+	switch event.Rune() {
+	case 'r':
+		sl.loadData()
+		return nil
+	case 'y':
+		sl.yankRun()
+		return nil
+	}
+	return event
 }
 
 func (sl *ScheduleList) applyFilter(query string) {
@@ -817,12 +945,16 @@ func (sl *ScheduleList) Start() {
 		}
 		return event
 	})
+	sl.detail.SetInputCapture(sl.handleDetailKeys)
+	sl.runsTable.SetInputCapture(sl.handleRunsKeys)
 	sl.loadData()
 }
 
 // Stop is called when the view is deactivated.
 func (sl *ScheduleList) Stop() {
 	sl.table.SetInputCapture(nil)
+	sl.detail.SetInputCapture(nil)
+	sl.runsTable.SetInputCapture(nil)
 }
 
 // Hints returns keybinding hints for this view.
@@ -830,8 +962,8 @@ func (sl *ScheduleList) Hints() []KeyHint {
 	hints := []KeyHint{
 		{Key: "/", Description: "Search"},
 		{Key: "r", Description: "Refresh"},
-		{Key: "Enter", Description: "View runs"},
-		{Key: "p", Description: "Preview"},
+		{Key: "Enter", Description: "Recent Runs"},
+		{Key: "p", Description: "Details"},
 		{Key: "P", Description: "Pause/Unpause"},
 		{Key: "t", Description: "Trigger"},
 		{Key: "v", Description: "View runs"},
@@ -850,7 +982,7 @@ func (sl *ScheduleList) Focus(delegate func(p tview.Primitive)) {
 // Draw applies theme colors dynamically and draws the view.
 func (sl *ScheduleList) Draw(screen tcell.Screen) {
 	bg := theme.Bg()
-	sl.preview.SetBackgroundColor(bg)
-	sl.preview.SetTextColor(theme.Fg())
+	sl.detail.SetBackgroundColor(bg)
+	sl.runsTable.SetBackgroundColor(bg)
 	sl.MasterDetailView.Draw(screen)
 }

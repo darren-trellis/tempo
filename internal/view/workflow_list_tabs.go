@@ -174,6 +174,10 @@ func (wl *WorkflowList) bindScheduleKeys() {
 		if handleTableCharScroll(sl.tableScroll, sl.table, event) {
 			return nil
 		}
+		if event.Key() == tcell.KeyEnter {
+			wl.setFocusPane(focusScheduleRuns)
+			return nil
+		}
 		switch event.Rune() {
 		case '/':
 			sl.MasterDetailView.ShowSearch()
@@ -195,6 +199,18 @@ func (wl *WorkflowList) bindScheduleKeys() {
 			return nil
 		}
 		return event
+	})
+	sl.detail.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		if wl.handleFocusCycleKey(event) {
+			return nil
+		}
+		return sl.handleDetailKeys(event)
+	})
+	sl.runsTable.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		if wl.handleFocusCycleKey(event) {
+			return nil
+		}
+		return sl.handleRunsKeys(event)
 	})
 }
 
@@ -325,7 +341,8 @@ func (wl *WorkflowList) setListKind(kind listKind) {
 		wl.ensureWorkers()
 		wl.focusPane = focusWorkflows
 	default:
-		if wl.focusPane == focusPollers || wl.focusPane == focusScheduleDetail || wl.focusPane == focusWorkerDetail {
+		if wl.focusPane == focusPollers || wl.focusPane == focusScheduleDetail ||
+			wl.focusPane == focusScheduleRuns || wl.focusPane == focusWorkerDetail {
 			wl.focusPane = focusWorkflows
 		}
 	}

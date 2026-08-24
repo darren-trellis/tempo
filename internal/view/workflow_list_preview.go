@@ -209,8 +209,13 @@ func (wl *WorkflowList) paneAt(x, y int) (workflowFocusPane, bool) {
 		if wl.taskQueuesActive() && wl.pollersVisible && wl.taskQueues != nil && wl.taskQueues.pollerPanel != nil && wl.taskQueues.pollerPanel.InRect(x, y) {
 			return focusPollers, true
 		}
-		if wl.schedulesActive() && wl.schedules != nil && wl.schedules.previewPanel != nil && wl.schedules.previewPanel.InRect(x, y) {
-			return focusScheduleDetail, true
+		if wl.schedulesActive() && wl.schedules != nil {
+			if wl.schedules.runsPanel != nil && wl.schedules.runsPanel.InRect(x, y) {
+				return focusScheduleRuns, true
+			}
+			if wl.schedules.detailPanel != nil && wl.schedules.detailPanel.InRect(x, y) {
+				return focusScheduleDetail, true
+			}
 		}
 		if wl.workersActive() && wl.workerDetailVisible && wl.workers != nil && wl.workers.detailFlex != nil && wl.workers.detailFlex.InRect(x, y) {
 			return focusWorkerDetail, true
@@ -651,7 +656,7 @@ func (wl *WorkflowList) previewFocusOrder() []workflowFocusPane {
 		return []workflowFocusPane{focusWorkflows}
 	}
 	if wl.schedulesActive() {
-		return []workflowFocusPane{focusWorkflows, focusScheduleDetail}
+		return []workflowFocusPane{focusWorkflows, focusScheduleDetail, focusScheduleRuns}
 	}
 	if wl.workersActive() {
 		if wl.workerDetailVisible {
@@ -708,7 +713,11 @@ func (wl *WorkflowList) setFocusPane(pane workflowFocusPane) {
 		}
 	case focusScheduleDetail:
 		if wl.schedules != nil {
-			wl.app.JigApp().SetFocus(wl.schedules.preview)
+			wl.app.JigApp().SetFocus(wl.schedules.detail)
+		}
+	case focusScheduleRuns:
+		if wl.schedules != nil {
+			wl.app.JigApp().SetFocus(wl.schedules.runsTable)
 		}
 	case focusWorkerDetail:
 		if wl.workers != nil {
@@ -767,8 +776,11 @@ func (wl *WorkflowList) applyFocusStyles() {
 	if wl.taskQueues != nil && wl.taskQueues.pollerPanel != nil {
 		wl.taskQueues.pollerPanel.SetFocused(wl.focusPane == focusPollers)
 	}
-	if wl.schedules != nil && wl.schedules.previewPanel != nil {
-		wl.schedules.previewPanel.SetFocused(wl.focusPane == focusScheduleDetail)
+	if wl.schedules != nil && wl.schedules.detailPanel != nil {
+		wl.schedules.detailPanel.SetFocused(wl.focusPane == focusScheduleDetail)
+	}
+	if wl.schedules != nil && wl.schedules.runsPanel != nil {
+		wl.schedules.runsPanel.SetFocused(wl.focusPane == focusScheduleRuns)
 	}
 	if wl.workers != nil && wl.workers.previewPanel != nil {
 		wl.workers.previewPanel.SetFocused(wl.focusPane == focusWorkerDetail)
@@ -781,6 +793,12 @@ func (wl *WorkflowList) applyFocusStyles() {
 	}
 	if wl.schedules != nil && wl.schedules.table != nil {
 		wl.schedules.table.SetSelectable(wl.schedulesActive() && wl.focusPane == focusWorkflows, false)
+	}
+	if wl.schedules != nil && wl.schedules.detail != nil {
+		wl.schedules.detail.SetSelectable(wl.schedulesActive() && wl.focusPane == focusScheduleDetail, false)
+	}
+	if wl.schedules != nil && wl.schedules.runsTable != nil {
+		wl.schedules.runsTable.SetSelectable(wl.schedulesActive() && wl.focusPane == focusScheduleRuns, false)
 	}
 	if wl.workers != nil && wl.workers.table != nil {
 		wl.workers.table.SetSelectable(wl.workersActive() && wl.focusPane == focusWorkflows, false)
@@ -813,8 +831,10 @@ func (wl *WorkflowList) syncFocusFromPrimitives() {
 		pane = focusTimeline
 	case wl.taskQueues != nil && wl.taskQueues.pollerTable != nil && wl.taskQueues.pollerTable.HasFocus():
 		pane = focusPollers
-	case wl.schedules != nil && wl.schedules.preview != nil && wl.schedules.preview.HasFocus():
+	case wl.schedules != nil && wl.schedules.detail != nil && wl.schedules.detail.HasFocus():
 		pane = focusScheduleDetail
+	case wl.schedules != nil && wl.schedules.runsTable != nil && wl.schedules.runsTable.HasFocus():
+		pane = focusScheduleRuns
 	case wl.workers != nil && wl.workers.detail != nil && wl.workers.detail.HasFocus():
 		pane = focusWorkerDetail
 	case wl.taskQueues != nil && wl.taskQueues.queueTable != nil && wl.taskQueues.queueTable.HasFocus():
