@@ -50,11 +50,13 @@ func TestWorkflowListTaskQueueTab(t *testing.T) {
 		t.Fatalf("esc should stay off the footer, got %q", hintDescription(wl.Hints(), "esc"))
 	}
 
-	if !wl.HandleEscape() || wl.taskQueuesActive() {
-		t.Fatal("escape should return to workflows")
+	// Escape from the queue list is not a tab switch: it falls through to the
+	// app's own back navigation, leaving the tab where it was.
+	if wl.HandleEscape() {
+		t.Fatal("escape on the list should not be handled by the view")
 	}
-	if wl.workflowTab.Name != "Workflows (List)" {
-		t.Fatalf("workflows tab title: %q", wl.workflowTab.Name)
+	if !wl.taskQueuesActive() {
+		t.Fatal("escape should leave the task queues tab open")
 	}
 }
 
@@ -109,9 +111,10 @@ func TestWorkflowListSchedulesAndWorkersTabs(t *testing.T) {
 		t.Fatal("enter/esc should stay off the footer")
 	}
 
-	if !wl.HandleEscape() || !wl.workflowsActive() {
-		t.Fatal("escape should return to workflows")
+	if wl.HandleEscape() || !wl.schedulesActive() {
+		t.Fatal("escape on the schedule list should not switch tabs")
 	}
+	wl.setListKind(listWorkflows)
 
 	if !wl.handleListTabKey(tcell.NewEventKey(tcell.KeyRune, '4', 0)) {
 		t.Fatal("4 should switch to workers")
@@ -287,5 +290,85 @@ func TestTaskQueueKeysSurviveModalRestart(t *testing.T) {
 	}
 	if hintDescription(wl.Hints(), "[/]/1-2") != "" {
 		t.Fatalf("list tab keys should stay off the footer, got %q", hintDescription(wl.Hints(), "[/]/1-2"))
+	}
+}
+
+func TestEscapeKeepsTheOpenTab(t *testing.T) {
+	cases := []struct {
+		name    string
+		kind    listKind
+		active  func(*WorkflowList) bool
+		sidebar workflowFocusPane
+		closed  func(*WorkflowList) bool
+	}{
+		{
+			name:    "task queues",
+			kind:    listTaskQueues,
+			active:  func(wl *WorkflowList) bool { return wl.taskQueuesActive() },
+			sidebar: focusPollers,
+			closed:  func(wl *WorkflowList) bool { return !wl.pollersVisible },
+		},
+		{
+			name:    "schedules",
+			kind:    listSchedules,
+			active:  func(wl *WorkflowList) bool { return wl.schedulesActive() },
+			sidebar: focusScheduleDetail,
+			closed:  func(wl *WorkflowList) bool { return !wl.scheduleDetailVisible },
+		},
+		{
+			name:    "workers",
+			kind:    listWorkers,
+			active:  func(wl *WorkflowList) bool { return wl.workersActive() },
+			sidebar: focusWorkerDetail,
+			closed:  func(wl *WorkflowList) bool { return !wl.workerDetailVisible },
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			wl := NewWorkflowList(&App{}, "default")
+			wl.setListKind(tc.kind)
+
+			// Sidebar first: escape closes it and stays on the tab.
+			wl.setFocusPane(tc.sidebar)
+			if !wl.HandleEscape() || !tc.closed(wl) {
+				t.Fatal("escape should close the sidebar")
+			}
+			if !tc.active(wl) {
+				t.Fatal("closing the sidebar should not switch tabs")
+			}
+
+			// From the list itself, escape is the app's business, and the tab stays.
+			if wl.HandleEscape() {
+				t.Fatal("escape on the list should fall through to the app")
+			}
+			if !tc.active(wl) {
+				t.Fatal("escape on the list should not switch tabs")
+			}
+			if wl.workflowsActive() {
+				t.Fatal("escape should not reset the tab to workflows")
+			}
+		})
+	}
+}
+
+func TestEscapeStillClearsWorkflowFilters(t *testing.T) {
+	wl := NewWorkflowList(&App{}, "default")
+	wl.filterText = "orders"
+	if !wl.HandleEscape() {
+		t.Fatal("escape should clear a filter on the workflows tab")
+	}
+	if wl.filterText != "" {
+		t.Fatalf("filter should be cleared, got %q", wl.filterText)
+	}
+
+	// A workflow filter is not the schedule tab's business.
+	wl.filterText = "orders"
+	wl.setListKind(listSchedules)
+	if wl.HandleEscape() {
+		t.Fatal("escape on another tab should not reach the workflow filters")
+	}
+	if wl.filterText != "orders" {
+		t.Fatal("the workflow filter should be left alone")
 	}
 }

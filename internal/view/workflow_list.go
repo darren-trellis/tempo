@@ -702,10 +702,6 @@ func (wl *WorkflowList) HandleEscape() bool {
 		wl.setWorkerDetailVisible(false)
 		return true
 	}
-	if !wl.workflowsActive() {
-		wl.setListKind(listWorkflows)
-		return true
-	}
 	if wl.selectionMode {
 		wl.toggleSelectionMode()
 		return true
@@ -717,7 +713,7 @@ func (wl *WorkflowList) HandleEscape() bool {
 		wl.setFocusPane(focusWorkflows)
 		return true
 	}
-	if wl.filterText != "" || wl.visibilityQuery != "" || wl.originalWorkflows != nil {
+	if wl.workflowsActive() && (wl.filterText != "" || wl.visibilityQuery != "" || wl.originalWorkflows != nil) {
 		wl.clearAllFilters()
 		return true
 	}
