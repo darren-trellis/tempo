@@ -56,6 +56,16 @@ func (c *previewCache) put(workflowID, runID string, events []temporal.EnhancedH
 	c.order = append(c.order, key)
 }
 
+// clear drops every cached history. A refresh must not be answered from a
+// snapshot taken before it.
+func (c *previewCache) clear() {
+	if c == nil {
+		return
+	}
+	c.order = nil
+	c.items = make(map[string][]temporal.EnhancedHistoryEvent)
+}
+
 func (c *previewCache) evictOldest() {
 	if len(c.order) == 0 {
 		return

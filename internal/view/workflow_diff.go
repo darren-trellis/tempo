@@ -36,7 +36,6 @@ type WorkflowDiff struct {
 
 	// State
 	focusLeft bool
-	loading   bool
 }
 
 // NewWorkflowDiff creates a new workflow diff view.
@@ -275,13 +274,26 @@ func (wd *WorkflowDiff) closeModal() {
 	wd.app.JigApp().Pages().DismissModal()
 }
 
+// setLoading tracks a side of the diff so the status bar spinner runs while
+// either workflow is being fetched. Called off the UI thread, so it touches
+// nothing but the app-level indicator.
+func (wd *WorkflowDiff) setLoading(isLeft, loading bool) {
+	key := "workflow-diff-b"
+	if isLeft {
+		key = "workflow-diff-a"
+	}
+	wd.app.SetViewLoading(key, loading)
+}
+
 func (wd *WorkflowDiff) loadWorkflow(isLeft bool, workflowID, runID string) {
 	provider := wd.app.Provider()
 	if provider == nil {
 		return
 	}
 
+	wd.setLoading(isLeft, true)
 	go func() {
+		defer wd.setLoading(isLeft, false)
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 

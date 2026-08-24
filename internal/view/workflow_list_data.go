@@ -13,6 +13,27 @@ import (
 
 func (wl *WorkflowList) setLoading(loading bool) {
 	wl.loading = loading
+	wl.app.SetViewLoading("workflows", loading)
+}
+
+// refresh reloads the list from the server. Everything cached for the current
+// list is dropped first: an explicit refresh must never be answered from a
+// snapshot taken before it.
+func (wl *WorkflowList) refresh() {
+	wl.invalidateCaches()
+	wl.loadData()
+}
+
+// invalidateCaches drops the preview history and hierarchy held for this list.
+func (wl *WorkflowList) invalidateCaches() {
+	wl.previewCache.clear()
+	wl.previewEvents = nil
+	wl.previewActivities = nil
+	wl.previewWorkflowID = ""
+	wl.previewRunID = ""
+	if wl.hierarchyView != nil {
+		wl.hierarchyView.Invalidate()
+	}
 }
 
 func (wl *WorkflowList) loadData() {

@@ -209,6 +209,7 @@ func (eh *EventHistory) refreshCurrentView() {
 
 func (eh *EventHistory) setLoading(loading bool) {
 	eh.loading = loading
+	eh.app.SetViewLoading("event-history", loading)
 }
 
 func (eh *EventHistory) applyFilter(query string) {

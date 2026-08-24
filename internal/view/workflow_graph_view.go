@@ -102,7 +102,7 @@ func (wg *WorkflowGraphView) ShowWorkflow(namespace string, workflow temporal.Wo
 	wg.workflow = &wf
 	if wg.loading {
 		wg.loadGen++
-		wg.loading = false
+		wg.setLoading(false)
 		wg.relationships = nil
 	}
 	wg.loadData()
@@ -161,7 +161,7 @@ func (wg *WorkflowGraphView) handleGraphKeys(event *tcell.EventKey) bool {
 		wg.adjustDepth(-1)
 		return true
 	case 'r':
-		wg.loadData()
+		wg.refresh()
 		return true
 	case 'c':
 		if node := wg.tree.GetSelected(); node != nil {
@@ -206,11 +206,36 @@ func (wg *WorkflowGraphView) adjustDepth(delta int) {
 	}
 }
 
+// Invalidate drops the relationship graph held for the current workflow so the
+// next show refetches it. A load already in flight is abandoned, since its
+// answer predates the refresh.
+func (wg *WorkflowGraphView) Invalidate() {
+	if wg == nil {
+		return
+	}
+	wg.relationships = nil
+	if wg.loading {
+		wg.loadGen++
+		wg.setLoading(false)
+	}
+}
+
+// refresh refetches the relationship graph from the server.
+func (wg *WorkflowGraphView) refresh() {
+	wg.Invalidate()
+	wg.loadData()
+}
+
+func (wg *WorkflowGraphView) setLoading(loading bool) {
+	wg.loading = loading
+	wg.app.SetViewLoading("workflow-graph", loading)
+}
+
 func (wg *WorkflowGraphView) loadData() {
 	if wg.loading || wg.workflow == nil {
 		return
 	}
-	wg.loading = true
+	wg.setLoading(true)
 	wg.loadGen++
 	gen := wg.loadGen
 	id, runID := wg.workflow.ID, wg.workflow.RunID
@@ -237,7 +262,7 @@ func (wg *WorkflowGraphView) loadData() {
 		}
 
 		if wg.app == nil {
-			finish(func() { wg.loading = false })
+			finish(func() { wg.setLoading(false) })
 			return
 		}
 		provider := wg.app.Provider()
@@ -246,7 +271,7 @@ func (wg *WorkflowGraphView) loadData() {
 				if wg.app != nil {
 					wg.app.ToastError("No provider available")
 				}
-				wg.loading = false
+				wg.setLoading(false)
 			})
 			return
 		}
@@ -263,7 +288,7 @@ func (wg *WorkflowGraphView) loadData() {
 				if wg.app != nil {
 					wg.app.ToastError(fmt.Sprintf("Failed to load relationships: %v", err))
 				}
-				wg.loading = false
+				wg.setLoading(false)
 			})
 			return
 		}
@@ -272,7 +297,7 @@ func (wg *WorkflowGraphView) loadData() {
 			wg.relationships = relationships
 			wg.buildTreeData()
 			wg.buildGraphData()
-			wg.loading = false
+			wg.setLoading(false)
 		})
 	}()
 }

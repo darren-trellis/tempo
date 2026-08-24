@@ -171,6 +171,7 @@ func valueOrEmpty(s, fallback string) string {
 
 func (nl *NamespaceList) setLoading(loading bool) {
 	nl.loading = loading
+	nl.app.SetViewLoading("namespaces", loading)
 }
 
 func (nl *NamespaceList) loadData() {

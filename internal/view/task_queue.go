@@ -104,6 +104,7 @@ func (tq *TaskQueueView) setup() {
 
 func (tq *TaskQueueView) setLoading(loading bool) {
 	tq.loading = loading
+	tq.app.SetViewLoading("task-queues", loading)
 }
 
 func (tq *TaskQueueView) applyFilter(query string) {
@@ -312,11 +313,11 @@ func (tq *TaskQueueView) schedulePollers(queueIndex int, force bool) {
 	}
 	tq.selectedQueue = queue.Name
 
-	if !force {
-		if entry, ok := tq.cache.get(tq.namespace(), queue.Name); ok {
-			tq.applyPollerCache(queue.Name, entry)
-			return
-		}
+	if force {
+		tq.cache.remove(tq.namespace(), queue.Name)
+	} else if entry, ok := tq.cache.get(tq.namespace(), queue.Name); ok {
+		tq.applyPollerCache(queue.Name, entry)
+		return
 	}
 
 	provider := tq.app.Provider()
@@ -348,6 +349,9 @@ func (tq *TaskQueueView) fetchPollers(gen uint64, queue taskQueueEntry) {
 	if provider == nil {
 		return
 	}
+
+	tq.app.SetViewLoading("task-queue-pollers", true)
+	defer tq.app.SetViewLoading("task-queue-pollers", false)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -474,6 +478,13 @@ func (tq *TaskQueueView) showPollerError(err error) {
 		err.Error(),
 		"",
 	)
+}
+
+// refresh reloads the queue list and its pollers from the server, dropping
+// every cached queue first.
+func (tq *TaskQueueView) refresh() {
+	tq.cache.clear()
+	tq.loadData()
 }
 
 func (tq *TaskQueueView) refreshCurrentQueue() {

@@ -1042,6 +1042,9 @@ func (wl *WorkflowList) loadPreview(gen uint64, w temporal.Workflow) {
 		return
 	}
 
+	wl.app.SetViewLoading("workflow-preview", true)
+	defer wl.app.SetViewLoading("workflow-preview", false)
+
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
 	events, err := provider.GetEnhancedWorkflowHistory(ctx, wl.namespace, w.ID, w.RunID)

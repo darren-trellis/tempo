@@ -142,7 +142,7 @@ func (wl *WorkflowList) bindTaskQueueKeys() {
 			tq.showSearch()
 			return nil
 		case 'r':
-			tq.refreshCurrentQueue()
+			tq.refresh()
 			return nil
 		}
 		return event

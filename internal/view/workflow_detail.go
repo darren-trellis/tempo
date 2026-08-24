@@ -118,6 +118,7 @@ func (wd *WorkflowDetail) setup() {
 
 func (wd *WorkflowDetail) setLoading(loading bool) {
 	wd.loading = loading
+	wd.app.SetViewLoading("workflow-detail", loading)
 }
 
 func (wd *WorkflowDetail) applyFilter(query string) {

@@ -57,6 +57,34 @@ func (c *taskQueueCache) put(namespace, queue string, entry taskQueueCacheEntry)
 	c.order = append(c.order, key)
 }
 
+// clear drops every cached queue. A refresh must not be answered from a
+// snapshot taken before it.
+func (c *taskQueueCache) clear() {
+	if c == nil {
+		return
+	}
+	c.order = nil
+	c.items = make(map[string]taskQueueCacheEntry)
+}
+
+// remove drops one queue's cached pollers.
+func (c *taskQueueCache) remove(namespace, queue string) {
+	if c == nil {
+		return
+	}
+	key := taskQueueCacheKey(namespace, queue)
+	if _, ok := c.items[key]; !ok {
+		return
+	}
+	delete(c.items, key)
+	for i, existing := range c.order {
+		if existing == key {
+			c.order = append(c.order[:i], c.order[i+1:]...)
+			break
+		}
+	}
+}
+
 func (c *taskQueueCache) evictOldest() {
 	if len(c.order) == 0 {
 		return

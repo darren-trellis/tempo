@@ -310,7 +310,7 @@ func (wl *WorkflowList) Start() {
 			return true
 		}).
 		OnRune('r', func(e *tcell.EventKey) bool {
-			wl.loadData()
+			wl.refresh()
 			return true
 		}).
 		OnRune('y', func(e *tcell.EventKey) bool {

@@ -364,6 +364,11 @@ func (sl *ScheduleList) applyFilter(query string) {
 	sl.populateTable()
 }
 
+func (sl *ScheduleList) setLoading(loading bool) {
+	sl.loading = loading
+	sl.app.SetViewLoading("schedules", loading)
+}
+
 func (sl *ScheduleList) loadData() {
 	provider := sl.app.Provider()
 	if provider == nil {
@@ -371,7 +376,7 @@ func (sl *ScheduleList) loadData() {
 		return
 	}
 
-	sl.loading = true
+	sl.setLoading(true)
 	namespace := sl.namespace
 
 	async.NewLoader[[]temporal.Schedule]().
@@ -384,7 +389,7 @@ func (sl *ScheduleList) loadData() {
 			sl.showError(err)
 		}).
 		OnFinally(func() {
-			sl.loading = false
+			sl.setLoading(false)
 		}).
 		Run(func(ctx context.Context) ([]temporal.Schedule, error) {
 			schedules, _, err := provider.ListSchedules(ctx, namespace, temporal.ListOptions{PageSize: 100})

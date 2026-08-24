@@ -59,6 +59,12 @@ type App struct {
 
 	// mouseEnabled tracks terminal mouse reporting so ctrl+o can toggle it.
 	mouseEnabled bool
+
+	// Loading indicator - which views have a fetch in flight
+	loadMu       sync.Mutex
+	loadingViews map[string]bool
+	loadingFrame int
+	loadingStop  chan struct{}
 }
 
 // NewApp creates a new application controller with no provider (uses mock data).

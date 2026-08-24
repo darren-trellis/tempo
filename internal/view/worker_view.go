@@ -139,6 +139,11 @@ func (wv *WorkerView) showSearch() {
 	})
 }
 
+func (wv *WorkerView) setLoading(loading bool) {
+	wv.loading = loading
+	wv.app.SetViewLoading("workers", loading)
+}
+
 func (wv *WorkerView) loadData() {
 	wv.lastLoad = time.Now()
 	provider := wv.app.Provider()
@@ -147,7 +152,7 @@ func (wv *WorkerView) loadData() {
 		return
 	}
 
-	wv.loading = true
+	wv.setLoading(true)
 	windows := workerQuietWindowsFromApp(wv.app)
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
@@ -161,14 +166,14 @@ func (wv *WorkerView) loadData() {
 		if err != nil {
 			if wv.app != nil && wv.app.JigApp() != nil {
 				wv.app.JigApp().QueueUpdateDraw(func() {
-					wv.loading = false
+					wv.setLoading(false)
 					wv.showError(err)
 				})
 			}
 			return
 		}
 		apply := func() {
-			wv.loading = false
+			wv.setLoading(false)
 			wv.allWorkers = workers
 			wv.applyFilter(wv.searchText)
 		}

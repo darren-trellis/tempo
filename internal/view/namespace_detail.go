@@ -98,6 +98,11 @@ func (nd *NamespaceDetail) setup() {
 	nd.infoView.SetText(fmt.Sprintf("\n [%s]Loading...[-]", theme.TagFgDim()))
 }
 
+func (nd *NamespaceDetail) setLoading(loading bool) {
+	nd.loading = loading
+	nd.app.SetViewLoading("namespace-detail", loading)
+}
+
 func (nd *NamespaceDetail) loadData() {
 	provider := nd.app.Provider()
 	if provider == nil {
@@ -105,7 +110,7 @@ func (nd *NamespaceDetail) loadData() {
 		return
 	}
 
-	nd.loading = true
+	nd.setLoading(true)
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
@@ -113,7 +118,7 @@ func (nd *NamespaceDetail) loadData() {
 		detail, err := provider.DescribeNamespace(ctx, nd.namespace)
 
 		nd.app.JigApp().QueueUpdateDraw(func() {
-			nd.loading = false
+			nd.setLoading(false)
 			if err != nil {
 				nd.showError(err)
 				return
