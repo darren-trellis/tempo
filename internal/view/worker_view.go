@@ -148,6 +148,7 @@ func (wv *WorkerView) loadData() {
 	}
 
 	wv.loading = true
+	windows := workerQuietWindowsFromApp(wv.app)
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 		defer cancel()
@@ -156,7 +157,7 @@ func (wv *WorkerView) loadData() {
 		if wv.app != nil {
 			namespace = wv.app.CurrentNamespace()
 		}
-		workers, err := loadWorkers(ctx, provider, namespace)
+		workers, err := loadWorkers(ctx, provider, namespace, windows)
 		if err != nil {
 			if wv.app != nil && wv.app.JigApp() != nil {
 				wv.app.JigApp().QueueUpdateDraw(func() {
@@ -183,17 +184,29 @@ func (wv *WorkerView) loadData() {
 // poll registries, so a namespace with many queues stays roughly one round trip.
 const workerQueueSweepConcurrency = 8
 
+// workerQuietWindowsFromApp reads the configured staleness windows.
+func workerQuietWindowsFromApp(app *App) temporal.WorkerQuietWindows {
+	if app == nil {
+		return temporal.WorkerQuietWindows{}
+	}
+	cfg := app.Config()
+	return temporal.WorkerQuietWindows{
+		Poll:      cfg.WorkerPollQuietAfter(),
+		Heartbeat: cfg.WorkerHeartbeatQuietAfter(),
+	}
+}
+
 // loadWorkers combines the two views the server offers of a worker: heartbeats
 // from ListWorkers, and the poll registries of every task queue. Heartbeats carry
 // the detail, the poll registries prove who is actually polling, and neither is a
 // superset of the other, so the tab shows the union.
-func loadWorkers(ctx context.Context, provider temporal.Provider, namespace string) ([]temporal.Worker, error) {
+func loadWorkers(ctx context.Context, provider temporal.Provider, namespace string, windows temporal.WorkerQuietWindows) ([]temporal.Worker, error) {
 	heartbeats, listErr := provider.ListWorkers(ctx, namespace)
 	polled, pollErr := loadPolledWorkers(ctx, provider, namespace)
 	if listErr != nil && pollErr != nil {
 		return nil, listErr
 	}
-	return temporal.MergeWorkerSources(heartbeats, polled, time.Now()), nil
+	return temporal.MergeWorkerSources(heartbeats, polled, time.Now(), windows), nil
 }
 
 // loadPolledWorkers derives instances from every task queue's poll registry.

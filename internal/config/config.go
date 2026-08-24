@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
 	"gopkg.in/yaml.v3"
 )
@@ -120,6 +121,10 @@ type Config struct {
 	WorkflowColumns  []WorkflowColumnConfig      `yaml:"workflow_columns,omitempty"`
 	PreviewCacheSize *int                        `yaml:"preview_cache_size,omitempty"`
 	MouseScrollStep  *int                        `yaml:"mouse_scroll_step,omitempty"`
+	// How long a worker may go unseen before the workers tab calls it stale,
+	// written as a duration such as "45s" or "2m".
+	WorkerPollQuiet      *string `yaml:"worker_poll_quiet_after,omitempty"`
+	WorkerHeartbeatQuiet *string `yaml:"worker_heartbeat_quiet_after,omitempty"`
 }
 
 // IsExternalProfile returns true if the given profile name is an external
@@ -194,6 +199,60 @@ func (c *Config) MouseScrollStepSize() int {
 		return MaxMouseScrollStep
 	}
 	return n
+}
+
+const (
+	// DefaultWorkerPollQuietAfter is how long a task queue poll registry entry may
+	// go unchanged before its worker reads as stale. A live worker refreshes the
+	// entry every long poll, so this only has to clear one poll cycle.
+	DefaultWorkerPollQuietAfter = 90 * time.Second
+	// DefaultWorkerHeartbeatQuietAfter is the same allowance for worker
+	// heartbeats, which arrive about once a minute.
+	DefaultWorkerHeartbeatQuietAfter = 3 * time.Minute
+	MinWorkerQuietAfter              = 5 * time.Second
+	MaxWorkerQuietAfter              = time.Hour
+)
+
+// WorkerPollQuietAfter is how long a task queue poll registry entry may go
+// unchanged before the workers tab treats the instance as gone. Set
+// worker_poll_quiet_after to a duration such as "45s".
+func (c *Config) WorkerPollQuietAfter() time.Duration {
+	if c == nil {
+		return DefaultWorkerPollQuietAfter
+	}
+	return workerQuietWindow(c.WorkerPollQuiet, DefaultWorkerPollQuietAfter)
+}
+
+// WorkerHeartbeatQuietAfter is the same allowance for a worker heartbeat, used
+// when nothing is polling under that identity. Set worker_heartbeat_quiet_after.
+func (c *Config) WorkerHeartbeatQuietAfter() time.Duration {
+	if c == nil {
+		return DefaultWorkerHeartbeatQuietAfter
+	}
+	return workerQuietWindow(c.WorkerHeartbeatQuiet, DefaultWorkerHeartbeatQuietAfter)
+}
+
+// workerQuietWindow parses a configured duration, falling back to the default
+// when it is missing or unusable, and clamps it to a sane range.
+func workerQuietWindow(raw *string, fallback time.Duration) time.Duration {
+	if raw == nil {
+		return fallback
+	}
+	value := strings.TrimSpace(*raw)
+	if value == "" {
+		return fallback
+	}
+	d, err := time.ParseDuration(value)
+	if err != nil || d <= 0 {
+		return fallback
+	}
+	if d < MinWorkerQuietAfter {
+		return MinWorkerQuietAfter
+	}
+	if d > MaxWorkerQuietAfter {
+		return MaxWorkerQuietAfter
+	}
+	return d
 }
 
 // DefaultConfig returns a config with default values.

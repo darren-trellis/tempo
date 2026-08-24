@@ -3,6 +3,9 @@ package config
 import (
 	"os"
 	"testing"
+	"time"
+
+	"gopkg.in/yaml.v3"
 )
 
 func TestExpandEnvCodecEndpoint(t *testing.T) {
@@ -179,5 +182,56 @@ func TestConnectionSettingsEqual(t *testing.T) {
 	b.CodecEndpoint = "https://codec"
 	if ConnectionSettingsEqual(a, b) {
 		t.Fatal("expected codec change to differ")
+	}
+}
+
+func TestWorkerQuietWindows(t *testing.T) {
+	if got := DefaultConfig().WorkerPollQuietAfter(); got != DefaultWorkerPollQuietAfter {
+		t.Fatalf("default poll window = %s", got)
+	}
+	if got := DefaultConfig().WorkerHeartbeatQuietAfter(); got != DefaultWorkerHeartbeatQuietAfter {
+		t.Fatalf("default heartbeat window = %s", got)
+	}
+	var nilCfg *Config
+	if got := nilCfg.WorkerPollQuietAfter(); got != DefaultWorkerPollQuietAfter {
+		t.Fatalf("nil config poll window = %s", got)
+	}
+
+	poll, beat := "30s", "2m30s"
+	cfg := &Config{WorkerPollQuiet: &poll, WorkerHeartbeatQuiet: &beat}
+	if got := cfg.WorkerPollQuietAfter(); got != 30*time.Second {
+		t.Fatalf("configured poll window = %s", got)
+	}
+	if got := cfg.WorkerHeartbeatQuietAfter(); got != 150*time.Second {
+		t.Fatalf("configured heartbeat window = %s", got)
+	}
+
+	// Unusable values fall back rather than making everything look stale.
+	for _, bad := range []string{"", "   ", "soon", "0s", "-5s"} {
+		value := bad
+		if got := (&Config{WorkerPollQuiet: &value}).WorkerPollQuietAfter(); got != DefaultWorkerPollQuietAfter {
+			t.Fatalf("%q should fall back, got %s", bad, got)
+		}
+	}
+
+	tiny, huge := "1ms", "48h"
+	if got := (&Config{WorkerPollQuiet: &tiny}).WorkerPollQuietAfter(); got != MinWorkerQuietAfter {
+		t.Fatalf("tiny window should clamp, got %s", got)
+	}
+	if got := (&Config{WorkerPollQuiet: &huge}).WorkerPollQuietAfter(); got != MaxWorkerQuietAfter {
+		t.Fatalf("huge window should clamp, got %s", got)
+	}
+}
+
+func TestWorkerQuietWindowsRoundTripYAML(t *testing.T) {
+	var cfg Config
+	if err := yaml.Unmarshal([]byte("worker_poll_quiet_after: 45s\nworker_heartbeat_quiet_after: 4m\n"), &cfg); err != nil {
+		t.Fatal(err)
+	}
+	if got := cfg.WorkerPollQuietAfter(); got != 45*time.Second {
+		t.Fatalf("poll window from yaml = %s", got)
+	}
+	if got := cfg.WorkerHeartbeatQuietAfter(); got != 4*time.Minute {
+		t.Fatalf("heartbeat window from yaml = %s", got)
 	}
 }

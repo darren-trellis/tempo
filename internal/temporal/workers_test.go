@@ -1,6 +1,7 @@
 package temporal
 
 import (
+	"github.com/galaxy-io/tempo/internal/config"
 	"reflect"
 	"testing"
 	"time"
@@ -121,7 +122,7 @@ func TestMergeWorkerSourcesUnionsBothViews(t *testing.T) {
 		{Identity: "51067@laptop", TaskQueue: "orders", Status: WorkerStatusPolling, LastHeartbeat: now.Add(-1 * time.Second)},
 	}
 
-	merged := MergeWorkerSources(heartbeats, polled, now)
+	merged := MergeWorkerSources(heartbeats, polled, now, WorkerQuietWindows{})
 	if len(merged) != 3 {
 		t.Fatalf("expected the two heartbeats plus the poller-only instance, got %d: %+v", len(merged), merged)
 	}
@@ -153,7 +154,7 @@ func TestMergeWorkerSourcesFlagsStoppedWorkers(t *testing.T) {
 		{Identity: "51067@laptop", TaskQueue: "orders", Status: WorkerStatusPolling, LastHeartbeat: now.Add(-3 * time.Minute)},
 	}
 
-	merged := MergeWorkerSources(heartbeats, polled, now)
+	merged := MergeWorkerSources(heartbeats, polled, now, WorkerQuietWindows{})
 	if merged[0].Status != WorkerStatusStale {
 		t.Fatalf("a lingering registry entry must not vouch for a dead heartbeat: %+v", merged[0])
 	}
@@ -165,7 +166,7 @@ func TestMergeWorkerSourcesFlagsStoppedWorkers(t *testing.T) {
 	live := MergeWorkerSources(
 		[]Worker{{Identity: "49027@laptop", TaskQueue: "orders", Status: WorkerStatusRunning, LastHeartbeat: now.Add(-70 * time.Second)}},
 		[]Worker{{Identity: "49027@laptop", TaskQueue: "orders", Status: WorkerStatusPolling, LastHeartbeat: now.Add(-20 * time.Second)}},
-		now,
+		now, WorkerQuietWindows{},
 	)
 	if live[0].Status != WorkerStatusRunning {
 		t.Fatalf("a worker whose polls are fresh is running: %+v", live[0])
@@ -174,7 +175,7 @@ func TestMergeWorkerSourcesFlagsStoppedWorkers(t *testing.T) {
 	// A poll one long-poll cycle old is normal, not death.
 	polling := MergeWorkerSources(nil,
 		[]Worker{{Identity: "51067@laptop", TaskQueue: "orders", Status: WorkerStatusPolling, LastHeartbeat: now.Add(-time.Minute)}},
-		now,
+		now, WorkerQuietWindows{},
 	)
 	if polling[0].Status != WorkerStatusPolling {
 		t.Fatalf("a poll within the long-poll cycle is still polling: %+v", polling[0])
@@ -184,16 +185,16 @@ func TestMergeWorkerSourcesFlagsStoppedWorkers(t *testing.T) {
 func TestMergeWorkerSourcesStaleWhenQuiet(t *testing.T) {
 	now := time.Date(2026, 8, 23, 12, 0, 0, 0, time.UTC)
 	quiet := []Worker{
-		{Identity: "a@laptop", TaskQueue: "idle", Status: WorkerStatusRunning, LastHeartbeat: now.Add(-WorkerHeartbeatQuietAfter - time.Second)},
+		{Identity: "a@laptop", TaskQueue: "idle", Status: WorkerStatusRunning, LastHeartbeat: now.Add(-config.DefaultWorkerHeartbeatQuietAfter - time.Second)},
 	}
-	if got := MergeWorkerSources(quiet, nil, now); got[0].Status != WorkerStatusStale {
+	if got := MergeWorkerSources(quiet, nil, now, WorkerQuietWindows{}); got[0].Status != WorkerStatusStale {
 		t.Fatalf("a heartbeat quiet for longer than the window is stale: %+v", got[0])
 	}
 
 	fresh := []Worker{
 		{Identity: "a@laptop", TaskQueue: "idle", Status: WorkerStatusRunning, LastHeartbeat: now.Add(-time.Second)},
 	}
-	if got := MergeWorkerSources(fresh, nil, now); got[0].Status != WorkerStatusRunning {
+	if got := MergeWorkerSources(fresh, nil, now, WorkerQuietWindows{}); got[0].Status != WorkerStatusRunning {
 		t.Fatalf("a recent heartbeat on an idle queue stays running: %+v", got[0])
 	}
 
@@ -202,14 +203,14 @@ func TestMergeWorkerSourcesStaleWhenQuiet(t *testing.T) {
 		leaving := []Worker{
 			{Identity: "a@laptop", TaskQueue: "idle", Status: status, LastHeartbeat: now.Add(-time.Hour)},
 		}
-		if got := MergeWorkerSources(leaving, nil, now); got[0].Status != status {
+		if got := MergeWorkerSources(leaving, nil, now, WorkerQuietWindows{}); got[0].Status != status {
 			t.Fatalf("%s should not be relabelled: %+v", status, got[0])
 		}
 	}
 
 	// No heartbeat time at all is not evidence of anything.
 	unknown := []Worker{{Identity: "a@laptop", TaskQueue: "idle", Status: WorkerStatusRunning}}
-	if got := MergeWorkerSources(unknown, nil, now); got[0].Status != WorkerStatusRunning {
+	if got := MergeWorkerSources(unknown, nil, now, WorkerQuietWindows{}); got[0].Status != WorkerStatusRunning {
 		t.Fatalf("a heartbeat with no timestamp should not be guessed at: %+v", got[0])
 	}
 }

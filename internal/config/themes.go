@@ -79,9 +79,9 @@ type ParsedColors struct {
 
 // ParsedTheme combines theme metadata with parsed colors.
 type ParsedTheme struct {
-	Key    string       // Theme identifier (e.g., "tokyonight-night")
-	Name   string       // Display name (e.g., "TokyoNight Night")
-	Type   string       // "dark" or "light"
+	Key    string // Theme identifier (e.g., "tokyonight-night")
+	Name   string // Display name (e.g., "TokyoNight Night")
+	Type   string // "dark" or "light"
 	Colors ParsedColors
 	Tags   ThemeColors // Keep original hex for tview tags
 }

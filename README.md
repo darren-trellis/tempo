@@ -144,6 +144,18 @@ profiles:
       ca: /path/to/ca.pem
 ```
 
+The workers tab decides whether an instance is still alive from how recently it
+was last seen, because Temporal keeps listing a worker for minutes after it
+stops. Both allowances can be tuned:
+
+```yaml
+worker_poll_quiet_after: 90s      # task queue poll registry entry unchanged
+worker_heartbeat_quiet_after: 3m  # worker heartbeat unchanged, when nothing is polling
+```
+
+Past those, the instance reads as `Stale` instead of `Running` or `Polling`.
+Values are Go durations, clamped between 5s and 1h.
+
 `codec_endpoint` is the Temporal codec server base URL (the same value as `temporal --codec-endpoint`). Tempo POSTs to `/encode` and `/decode`, sends `X-Namespace`, and substitutes `{namespace}` in the URL when present. Environment variables are expanded (`${TEMPORAL_CODEC_URL}`).
 
 ## Themes

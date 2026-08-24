@@ -5,6 +5,7 @@ import (
 	"time"
 	"unicode"
 
+	"github.com/galaxy-io/tempo/internal/config"
 	workerpb "go.temporal.io/api/worker/v1"
 )
 
@@ -79,13 +80,27 @@ func WorkerFromHeartbeat(hb *workerpb.WorkerHeartbeat) (Worker, bool) {
 // entry lingers until the matching engine evicts it, and a heartbeat record
 // outlives the process that sent it. So liveness is judged by how recently the
 // instance was actually seen, never by whether it is still listed.
-const (
-	// A live worker re-polls continuously (a long poll returns and goes straight
-	// back out), so its registry entry going quiet is quick evidence it is gone.
-	WorkerPollQuietAfter = 90 * time.Second
-	// Heartbeats arrive about once a minute, so allow a couple of intervals.
-	WorkerHeartbeatQuietAfter = 3 * time.Minute
-)
+//
+// WorkerQuietWindows is how long each source may go unchanged first. A zero field
+// falls back to the configured default.
+type WorkerQuietWindows struct {
+	Poll      time.Duration
+	Heartbeat time.Duration
+}
+
+func (w WorkerQuietWindows) poll() time.Duration {
+	if w.Poll > 0 {
+		return w.Poll
+	}
+	return config.DefaultWorkerPollQuietAfter
+}
+
+func (w WorkerQuietWindows) heartbeat() time.Duration {
+	if w.Heartbeat > 0 {
+		return w.Heartbeat
+	}
+	return config.DefaultWorkerHeartbeatQuietAfter
+}
 
 // WorkersFromPollers derives one instance per identity polling a task queue.
 // These carry no heartbeat detail, so they are marked as polling only.
@@ -138,7 +153,7 @@ func WorkerKey(w Worker) string {
 // MergeWorkerSources folds instances seen only in task queue poll registries into
 // the heartbeat list, so the worker view is a superset of what is polling, and
 // marks the instances that have gone quiet.
-func MergeWorkerSources(heartbeats, polled []Worker, now time.Time) []Worker {
+func MergeWorkerSources(heartbeats, polled []Worker, now time.Time, windows WorkerQuietWindows) []Worker {
 	lastPoll := make(map[string]time.Time, len(polled))
 	for _, w := range polled {
 		key := WorkerKey(w)
@@ -152,7 +167,7 @@ func MergeWorkerSources(heartbeats, polled []Worker, now time.Time) []Worker {
 	for _, w := range heartbeats {
 		key := WorkerKey(w)
 		seen[key] = struct{}{}
-		if workerGoneQuiet(w, lastPoll[key], now) {
+		if workerGoneQuiet(w, lastPoll[key], now, windows) {
 			w.Status = WorkerStatusStale
 		}
 		out = append(out, w)
@@ -162,7 +177,7 @@ func MergeWorkerSources(heartbeats, polled []Worker, now time.Time) []Worker {
 			continue
 		}
 		// A derived row's heartbeat time is its last poll.
-		if workerGoneQuiet(w, w.LastHeartbeat, now) {
+		if workerGoneQuiet(w, w.LastHeartbeat, now, windows) {
 			w.Status = WorkerStatusStale
 		}
 		out = append(out, w)
@@ -173,7 +188,7 @@ func MergeWorkerSources(heartbeats, polled []Worker, now time.Time) []Worker {
 // workerGoneQuiet reports whether an instance has stopped being seen. Polling is
 // the stronger signal, since a live worker refreshes its registry entry every
 // long poll; only when there is no entry does the heartbeat clock decide.
-func workerGoneQuiet(w Worker, lastPoll, now time.Time) bool {
+func workerGoneQuiet(w Worker, lastPoll, now time.Time, windows WorkerQuietWindows) bool {
 	switch w.Status {
 	case WorkerStatusShutdown, WorkerStatusShuttingDown:
 		return false
@@ -182,12 +197,12 @@ func workerGoneQuiet(w Worker, lastPoll, now time.Time) bool {
 		return false
 	}
 	if !lastPoll.IsZero() {
-		return now.Sub(lastPoll) > WorkerPollQuietAfter
+		return now.Sub(lastPoll) > windows.poll()
 	}
 	if w.LastHeartbeat.IsZero() {
 		return false
 	}
-	return now.Sub(w.LastHeartbeat) > WorkerHeartbeatQuietAfter
+	return now.Sub(w.LastHeartbeat) > windows.heartbeat()
 }
 
 func HostFromIdentity(identity string) string {

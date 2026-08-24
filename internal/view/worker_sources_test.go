@@ -52,7 +52,7 @@ func TestLoadWorkersMergesHeartbeatsWithPollRegistries(t *testing.T) {
 		},
 	}
 
-	workers, err := loadWorkers(context.Background(), provider, "default")
+	workers, err := loadWorkers(context.Background(), provider, "default", temporal.WorkerQuietWindows{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -87,7 +87,7 @@ func TestLoadWorkersSurvivesEitherSourceFailing(t *testing.T) {
 			"orders": {{Identity: "51067@laptop", TaskQueueType: "Workflow", LastAccessTime: now}},
 		},
 	}
-	workers, err := loadWorkers(context.Background(), polledOnly, "default")
+	workers, err := loadWorkers(context.Background(), polledOnly, "default", temporal.WorkerQuietWindows{})
 	if err != nil || len(workers) != 1 || workers[0].Identity != "51067@laptop" {
 		t.Fatalf("workers=%+v err=%v", workers, err)
 	}
@@ -99,7 +99,7 @@ func TestLoadWorkersSurvivesEitherSourceFailing(t *testing.T) {
 		},
 		queuesErr: boom,
 	}
-	workers, err = loadWorkers(context.Background(), beatsOnly, "default")
+	workers, err = loadWorkers(context.Background(), beatsOnly, "default", temporal.WorkerQuietWindows{})
 	if err != nil || len(workers) != 1 || workers[0].Status != temporal.WorkerStatusRunning {
 		t.Fatalf("workers=%+v err=%v", workers, err)
 	}
@@ -110,12 +110,12 @@ func TestLoadWorkersSurvivesEitherSourceFailing(t *testing.T) {
 		queues:      []string{"orders"},
 		describeErr: boom,
 	}
-	if workers, err = loadWorkers(context.Background(), partial, "default"); err != nil || len(workers) != 0 {
+	if workers, err = loadWorkers(context.Background(), partial, "default", temporal.WorkerQuietWindows{}); err != nil || len(workers) != 0 {
 		t.Fatalf("workers=%+v err=%v", workers, err)
 	}
 
 	// Both sources down is an error.
-	if _, err = loadWorkers(context.Background(), &fakeWorkerProvider{heartbeatErr: boom, queuesErr: boom}, "default"); err == nil {
+	if _, err = loadWorkers(context.Background(), &fakeWorkerProvider{heartbeatErr: boom, queuesErr: boom}, "default", temporal.WorkerQuietWindows{}); err == nil {
 		t.Fatal("expected an error when neither source answers")
 	}
 }
