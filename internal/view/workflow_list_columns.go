@@ -126,6 +126,11 @@ func applyWorkflowColumnHeaders(table *components.Table, cols []workflowColumn) 
 		headers[i] = col.header
 	}
 	table.SetHeaders(headers...)
+	// SetHeaders only writes the columns it is given, so a narrower layout would
+	// leave the extra columns of the previous one on screen.
+	for col := table.GetColumnCount() - 1; col >= len(cols); col-- {
+		table.RemoveColumn(col)
+	}
 	for i, col := range cols {
 		cell := table.GetCell(0, i)
 		if cell == nil {
@@ -171,6 +176,27 @@ func (wl *WorkflowList) showColumnEditor() {
 	items := wl.columnEditorItems()
 	table := components.NewTable()
 	table.SetBorder(false)
+
+	original := wl.columnSnapshot()
+
+	editedColumns := func() []config.WorkflowColumnConfig {
+		var cols []config.WorkflowColumnConfig
+		for _, item := range items {
+			if item.hidden {
+				continue
+			}
+			cols = append(cols, config.WorkflowColumnConfig{ID: item.id, Width: item.width})
+		}
+		return cols
+	}
+
+	preview := func() {
+		wl.previewColumns(editedColumns())
+	}
+
+	restore := func() {
+		wl.restoreColumns(original)
+	}
 
 	var refresh func()
 	refresh = func() {
@@ -218,6 +244,7 @@ func (wl *WorkflowList) showColumnEditor() {
 		}
 		items[row], items[next] = items[next], items[row]
 		refresh()
+		preview()
 		table.SelectRow(next)
 	}
 
@@ -228,6 +255,7 @@ func (wl *WorkflowList) showColumnEditor() {
 		}
 		items[row].width = config.ClampWorkflowColumnWidth(items[row].width + delta)
 		refresh()
+		preview()
 		table.SelectRow(row)
 	}
 
@@ -242,6 +270,7 @@ func (wl *WorkflowList) showColumnEditor() {
 		}
 		items[row].hidden = !items[row].hidden
 		refresh()
+		preview()
 		table.SelectRow(row)
 	}
 
@@ -251,15 +280,8 @@ func (wl *WorkflowList) showColumnEditor() {
 			return
 		}
 		saving = true
-		var cols []config.WorkflowColumnConfig
-		for _, item := range items {
-			if item.hidden {
-				continue
-			}
-			cols = append(cols, config.WorkflowColumnConfig{ID: item.id, Width: item.width})
-		}
 		if cfg := wl.app.Config(); cfg != nil {
-			cfg.SetWorkflowColumns(cols)
+			cfg.SetWorkflowColumns(editedColumns())
 			if err := cfg.Save(); err != nil {
 				saving = false
 				wl.app.ToastError("Failed to save columns: " + err.Error())
@@ -307,6 +329,7 @@ func (wl *WorkflowList) showColumnEditor() {
 		OnRune('r', func(e *tcell.EventKey) bool {
 			items = defaultColumnEditorItems()
 			refresh()
+			preview()
 			table.SelectRow(0)
 			return true
 		})
@@ -314,6 +337,11 @@ func (wl *WorkflowList) showColumnEditor() {
 	table.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		if event.Key() == tcell.KeyEnter {
 			save()
+			return nil
+		}
+		if event.Key() == tcell.KeyEscape {
+			restore()
+			wl.closeModal()
 			return nil
 		}
 		if event.Key() == tcell.KeyLeft {
@@ -350,6 +378,7 @@ func (wl *WorkflowList) showColumnEditor() {
 	modal.SetHints(hints)
 	modal.SetOnSubmit(save)
 	modal.SetOnCancel(func() {
+		restore()
 		wl.closeModal()
 	})
 
@@ -358,6 +387,35 @@ func (wl *WorkflowList) showColumnEditor() {
 		wl.app.JigApp().Menu().SetHints(hints)
 	}
 	wl.app.JigApp().SetFocus(table)
+}
+
+// columnSnapshot copies the stored column layout, nil included, so a restore can
+// put back "unset means defaults" rather than writing the defaults out.
+func (wl *WorkflowList) columnSnapshot() []config.WorkflowColumnConfig {
+	cfg := wl.app.Config()
+	if cfg == nil || cfg.WorkflowColumns == nil {
+		return nil
+	}
+	return append([]config.WorkflowColumnConfig(nil), cfg.WorkflowColumns...)
+}
+
+// previewColumns applies a layout to the list right away without saving it, so
+// the editor's changes are visible behind the modal.
+func (wl *WorkflowList) previewColumns(cols []config.WorkflowColumnConfig) {
+	cfg := wl.app.Config()
+	if cfg == nil {
+		return
+	}
+	cfg.SetWorkflowColumns(cols)
+	wl.renderColumns()
+}
+
+// restoreColumns puts a snapshot back, undoing any preview.
+func (wl *WorkflowList) restoreColumns(snapshot []config.WorkflowColumnConfig) {
+	if cfg := wl.app.Config(); cfg != nil {
+		cfg.WorkflowColumns = snapshot
+	}
+	wl.renderColumns()
 }
 
 func (wl *WorkflowList) columnEditorItems() []columnEditorItem {

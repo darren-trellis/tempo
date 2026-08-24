@@ -112,6 +112,29 @@ func (wl *WorkflowList) loadMockData() {
 	wl.applyFilter()
 }
 
+// renderColumns redraws the headers and row cells for the current column layout,
+// leaving the selection and preview alone. Used for live column edits.
+func (wl *WorkflowList) renderColumns() {
+	cols := wl.columnLayout()
+	row := wl.table.SelectedRow()
+	wl.table.ClearRows()
+	applyWorkflowColumnHeaders(wl.table, cols)
+	now := time.Now()
+	for i, w := range wl.workflows {
+		cells := make([]components.TableCell, len(cols))
+		for j, col := range cols {
+			cells[j] = col.cell(now, w, wl.workflowDepth(i))
+		}
+		wl.table.AddStyledRow(cells)
+	}
+	if row >= 0 && row < wl.table.RowCount() {
+		wl.table.SelectRow(row)
+	}
+	if wl.tableScroll != nil {
+		wl.tableScroll.clamp()
+	}
+}
+
 func (wl *WorkflowList) populateTable() {
 	currentRow := wl.table.SelectedRow()
 
