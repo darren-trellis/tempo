@@ -106,17 +106,43 @@ func TestSchedulesTabCyclesFocusThroughBothPanes(t *testing.T) {
 		t.Fatalf("tab from recent runs should return to the list, got %d", wl.focusPane)
 	}
 
-	// Enter opens the runs pane, escape comes back out.
+	// Escape from either pane closes the sidebar; enter brings it back.
+	wl.setFocusPane(focusScheduleRuns)
+	if !wl.HandleEscape() || wl.scheduleDetailVisible || wl.focusPane != focusWorkflows || !wl.schedulesActive() {
+		t.Fatalf("escape from recent runs should close the sidebar, visible=%v pane=%d", wl.scheduleDetailVisible, wl.focusPane)
+	}
+	if wl.mainFlex.GetItemCount() != 1 {
+		t.Fatalf("a closed sidebar should leave the list full width, got %d panes", wl.mainFlex.GetItemCount())
+	}
+	if order := wl.previewFocusOrder(); len(order) != 1 {
+		t.Fatalf("a closed sidebar should drop out of the focus cycle, got %v", order)
+	}
+
 	capture := wl.schedules.table.GetInputCapture()
 	if ev := capture(tcell.NewEventKey(tcell.KeyEnter, 0, tcell.ModNone)); ev != nil {
 		t.Fatal("enter should be consumed")
 	}
-	if wl.focusPane != focusScheduleRuns {
-		t.Fatalf("enter should focus recent runs, got %d", wl.focusPane)
+	if !wl.scheduleDetailVisible || wl.focusPane != focusScheduleDetail {
+		t.Fatalf("enter should reopen the sidebar on the details pane, visible=%v pane=%d", wl.scheduleDetailVisible, wl.focusPane)
 	}
-	if !wl.HandleEscape() || wl.focusPane != focusWorkflows || !wl.schedulesActive() {
-		t.Fatalf("escape from recent runs should return to the schedule list, pane=%d", wl.focusPane)
+	if wl.mainFlex.GetItemCount() != 2 {
+		t.Fatalf("reopened sidebar should sit beside the list, got %d panes", wl.mainFlex.GetItemCount())
 	}
+
+	wl.setFocusPane(focusScheduleDetail)
+	if !wl.HandleEscape() || wl.scheduleDetailVisible {
+		t.Fatal("escape from the details pane should close the sidebar too")
+	}
+	wl.setScheduleDetailVisible(true)
+
+	// The sidebar keeps its state across tab switches.
+	wl.setScheduleDetailVisible(false)
+	wl.setListKind(listWorkflows)
+	wl.setListKind(listSchedules)
+	if wl.scheduleDetailVisible {
+		t.Fatal("a closed sidebar should stay closed after a tab switch")
+	}
+	wl.setScheduleDetailVisible(true)
 
 	if hintDescription(wl.Hints(), "Enter") != "" {
 		t.Fatalf("list hints should not advertise enter: %q", hintDescription(wl.Hints(), "Enter"))

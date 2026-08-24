@@ -209,7 +209,7 @@ func (wl *WorkflowList) paneAt(x, y int) (workflowFocusPane, bool) {
 		if wl.taskQueuesActive() && wl.pollersVisible && wl.taskQueues != nil && wl.taskQueues.pollerPanel != nil && wl.taskQueues.pollerPanel.InRect(x, y) {
 			return focusPollers, true
 		}
-		if wl.schedulesActive() && wl.schedules != nil {
+		if wl.schedulesActive() && wl.scheduleDetailVisible && wl.schedules != nil {
 			if wl.schedules.runsPanel != nil && wl.schedules.runsPanel.InRect(x, y) {
 				return focusScheduleRuns, true
 			}
@@ -357,8 +357,29 @@ func (wl *WorkflowList) applyPreviewLayout() {
 }
 
 func (wl *WorkflowList) togglePreviewMode() {
-	wl.previewMode = !wl.previewMode
+	wl.setPreviewVisible(!wl.previewMode)
+}
+
+func (wl *WorkflowList) setPreviewVisible(on bool) {
+	if wl.previewMode == on {
+		return
+	}
+	wl.previewMode = on
 	wl.applyPreviewLayout()
+}
+
+// escapeFromPreview closes the preview when one of its panes is focused, the way
+// the pollers, worker and schedule sidebars close on escape.
+func (wl *WorkflowList) escapeFromPreview() bool {
+	if !wl.workflowsActive() || !wl.previewModeEnabled() {
+		return false
+	}
+	switch wl.focusPane {
+	case focusEvents, focusEventDetail:
+		wl.setPreviewVisible(false)
+		return true
+	}
+	return false
 }
 
 func (wl *WorkflowList) cyclePreviewKind(delta int) {
@@ -592,6 +613,9 @@ func (wl *WorkflowList) handlePreviewKeys(event *tcell.EventKey) *tcell.EventKey
 		wl.cycleFocus(-1)
 		return nil
 	case tcell.KeyEscape:
+		if wl.escapeFromPreview() {
+			return nil
+		}
 		wl.setFocusPane(focusWorkflows)
 		return nil
 	}
@@ -656,7 +680,10 @@ func (wl *WorkflowList) previewFocusOrder() []workflowFocusPane {
 		return []workflowFocusPane{focusWorkflows}
 	}
 	if wl.schedulesActive() {
-		return []workflowFocusPane{focusWorkflows, focusScheduleDetail, focusScheduleRuns}
+		if wl.scheduleDetailVisible {
+			return []workflowFocusPane{focusWorkflows, focusScheduleDetail, focusScheduleRuns}
+		}
+		return []workflowFocusPane{focusWorkflows}
 	}
 	if wl.workersActive() {
 		if wl.workerDetailVisible {

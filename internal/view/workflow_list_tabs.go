@@ -175,7 +175,8 @@ func (wl *WorkflowList) bindScheduleKeys() {
 			return nil
 		}
 		if event.Key() == tcell.KeyEnter {
-			wl.setFocusPane(focusScheduleRuns)
+			wl.setScheduleDetailVisible(true)
+			wl.setFocusPane(focusScheduleDetail)
 			return nil
 		}
 		switch event.Rune() {
@@ -227,13 +228,17 @@ func (wl *WorkflowList) bindWorkerKeys() {
 			return nil
 		}
 		if event.Key() == tcell.KeyEnter {
+			if !wl.workerDetailVisible {
+				wl.setWorkerDetailVisible(true)
+				wl.setFocusPane(focusWorkerDetail)
+				return nil
+			}
 			row, ok := wv.selectedRow()
 			if ok && row.IsHost {
 				wv.toggleSelectedHost()
 				return nil
 			}
 			if ok {
-				wl.setWorkerDetailVisible(true)
 				wl.setFocusPane(focusWorkerDetail)
 			}
 			return nil
@@ -276,6 +281,22 @@ func (wl *WorkflowList) setPollersVisible(on bool) {
 	}
 	wl.pollersVisible = on
 	if !on && wl.focusPane == focusPollers {
+		wl.focusPane = focusWorkflows
+	}
+	wl.applyMainLayout()
+	if wl.app != nil && wl.app.JigApp() != nil {
+		wl.setFocusPane(wl.focusPane)
+		return
+	}
+	wl.applyFocusStyles()
+}
+
+func (wl *WorkflowList) setScheduleDetailVisible(on bool) {
+	if wl.scheduleDetailVisible == on {
+		return
+	}
+	wl.scheduleDetailVisible = on
+	if !on && (wl.focusPane == focusScheduleDetail || wl.focusPane == focusScheduleRuns) {
 		wl.focusPane = focusWorkflows
 	}
 	wl.applyMainLayout()

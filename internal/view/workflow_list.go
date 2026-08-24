@@ -39,6 +39,7 @@ type WorkflowList struct {
 	workers               *WorkerView
 	listKind              listKind
 	pollersVisible        bool
+	scheduleDetailVisible bool
 	workerDetailVisible   bool
 	workflowsPanel        *components.Panel
 	previewPanel          *components.Panel
@@ -101,19 +102,20 @@ func (wl *WorkflowList) HoldStartData() {
 // NewWorkflowList creates a new workflow list view.
 func NewWorkflowList(app *App, namespace string) *WorkflowList {
 	wl := &WorkflowList{
-		Flex:                tview.NewFlex().SetDirection(tview.FlexRow),
-		app:                 app,
-		namespace:           namespace,
-		table:               components.NewTable(),
-		workflows:           []temporal.Workflow{},
-		stopRefresh:         make(chan struct{}, 1), // Buffered to ensure stop signal isn't lost
-		searchHistory:       make([]string, 0, 50),
-		historyIndex:        -1,
-		maxHistorySize:      50,
-		previewKind:         previewActivities,
-		previewCache:        newPreviewCache(previewCacheLimit(app)),
-		pollersVisible:      true,
-		workerDetailVisible: true,
+		Flex:                  tview.NewFlex().SetDirection(tview.FlexRow),
+		app:                   app,
+		namespace:             namespace,
+		table:                 components.NewTable(),
+		workflows:             []temporal.Workflow{},
+		stopRefresh:           make(chan struct{}, 1), // Buffered to ensure stop signal isn't lost
+		searchHistory:         make([]string, 0, 50),
+		historyIndex:          -1,
+		maxHistorySize:        50,
+		previewKind:           previewActivities,
+		previewCache:          newPreviewCache(previewCacheLimit(app)),
+		pollersVisible:        true,
+		scheduleDetailVisible: true,
+		workerDetailVisible:   true,
 	}
 	wl.setup()
 
@@ -687,7 +689,7 @@ func (wl *WorkflowList) HandleEscape() bool {
 		return true
 	}
 	if wl.schedulesActive() && (wl.focusPane == focusScheduleDetail || wl.focusPane == focusScheduleRuns) {
-		wl.setFocusPane(focusWorkflows)
+		wl.setScheduleDetailVisible(false)
 		return true
 	}
 	if wl.workersActive() && wl.focusPane == focusWorkerDetail {
@@ -700,6 +702,9 @@ func (wl *WorkflowList) HandleEscape() bool {
 	}
 	if wl.selectionMode {
 		wl.toggleSelectionMode()
+		return true
+	}
+	if wl.escapeFromPreview() {
 		return true
 	}
 	if wl.focusPane != focusWorkflows {

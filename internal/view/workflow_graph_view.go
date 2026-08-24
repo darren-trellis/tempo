@@ -62,6 +62,7 @@ func (wg *WorkflowGraphView) setup() {
 	wg.graph.SetShowEdgeLabels(true)
 	wg.graph.SetNodeWidth(18)
 	wg.graph.SetOnSelect(wg.onGraphSelect)
+	bindGraphHorizontalScroll(wg.graph)
 
 	// Wrap in panels with titles
 	treePanel := components.NewPanel().

@@ -113,6 +113,31 @@ func bindTableDoubleClick(table *components.Table) {
 	})
 }
 
+// bindGraphHorizontalScroll pans a node graph with a horizontal wheel. The
+// component pans with h/l on its own, so forward the wheel as those keys.
+func bindGraphHorizontalScroll(graph *components.NodeGraph) {
+	if graph == nil {
+		return
+	}
+	prev := graph.GetMouseCapture()
+	graph.SetMouseCapture(func(action tview.MouseAction, event *tcell.EventMouse) (tview.MouseAction, *tcell.EventMouse) {
+		if delta := horizontalMouseDelta(action, event); delta != 0 {
+			key := 'l'
+			if delta < 0 {
+				key = 'h'
+			}
+			if handler := graph.InputHandler(); handler != nil {
+				handler(tcell.NewEventKey(tcell.KeyRune, key, tcell.ModNone), func(tview.Primitive) {})
+			}
+			return tview.MouseConsumed, nil
+		}
+		if prev != nil {
+			return prev(action, event)
+		}
+		return action, event
+	})
+}
+
 func horizontalMouseDelta(action tview.MouseAction, event *tcell.EventMouse) int {
 	switch action {
 	case tview.MouseScrollLeft:
