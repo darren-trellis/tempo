@@ -682,6 +682,7 @@ func (eh *EventHistory) Hints() []KeyHint {
 	case ViewModeTimeline:
 		hints = append(hints,
 			KeyHint{Key: "+/-", Description: "Zoom"},
+			KeyHint{Key: "?", Description: "Legend"},
 		)
 	}
 

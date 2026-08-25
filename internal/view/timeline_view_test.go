@@ -46,6 +46,12 @@ func TestTimelineFailedUsesStatusColor(t *testing.T) {
 	if timelineStatusColor("TimedOut") != temporal.StatusTimedOut.Color() {
 		t.Fatal("timed out should use the status color")
 	}
+	if timelineStatusColor("Fired") == timelineStatusColor("Completed") {
+		t.Fatal("fired timers should not share the completed color")
+	}
+	if timelineStatusColor("Received") == timelineStatusColor("Pending") {
+		t.Fatal("signaled events should not share the pending color")
+	}
 }
 
 func TestTimelineTypeGlyphsAreUnique(t *testing.T) {

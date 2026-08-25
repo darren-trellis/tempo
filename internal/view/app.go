@@ -210,8 +210,12 @@ func (a *App) setup() {
 			}
 		}
 
-		// Help (works everywhere except modals)
+		// Help (works everywhere except modals). Timeline focus shows the color legend.
 		if event.Rune() == '?' && !isModalPage {
+			if a.timelineHasFocus() {
+				a.showTimelineLegend()
+				return nil
+			}
 			if a.config != nil && a.config.GetHelpStyle() == "sheet" {
 				a.showHintSheet()
 			} else {
@@ -789,6 +793,34 @@ func (a *App) closeSplashTest() {
 	if current := a.app.Pages().Current(); current != nil {
 		a.app.SetFocus(current)
 	}
+}
+
+func (a *App) timelineHasFocus() bool {
+	if a == nil || a.app == nil {
+		return false
+	}
+	if current := a.app.Pages().Current(); current != nil {
+		switch v := current.(type) {
+		case *WorkflowList:
+			return v.focusPane == focusTimeline
+		case *EventHistory:
+			return v.viewMode == ViewModeTimeline
+		}
+	}
+	if tviewApp := a.app.GetApplication(); tviewApp != nil {
+		_, ok := tviewApp.GetFocus().(*TimelineView)
+		return ok
+	}
+	return false
+}
+
+func (a *App) showTimelineLegend() {
+	modal := NewTimelineLegendModal()
+	modal.SetOnClose(func() {
+		a.app.Pages().DismissModal()
+	})
+	a.PushModal(modal)
+	a.app.SetFocus(modal)
 }
 
 func (a *App) showHelp() {

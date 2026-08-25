@@ -446,33 +446,26 @@ func (tv *TimelineView) drawCursor(screen tcell.Screen, x, y, width, height int,
 
 // drawLegend draws the status legend and selected lane stats at the bottom.
 func (tv *TimelineView) drawLegend(screen tcell.Screen, x, y, width int) {
-	legend := []struct {
-		char  rune
-		label string
-	}{
-		{timelineTypeGlyph(temporal.GroupActivity), "Activity"},
-		{timelineTypeGlyph(temporal.GroupTimer), "Timer"},
-		{timelineTypeGlyph(temporal.GroupChildWorkflow), "Child"},
-		{timelineTypeGlyph(temporal.GroupSignal), "Signal"},
-		{timelineTypeGlyph(temporal.GroupMarker), "Marker"},
-	}
-
 	pos := x
-	for _, item := range legend {
-		if pos+12 > x+width/2 {
+	for _, typ := range timelineLegendTypes() {
+		label := timelineTypeLabel(typ)
+		if typ == temporal.GroupChildWorkflow {
+			label = "Child"
+		}
+		if pos+1+len(label)+1 > x+width/2 {
 			break
 		}
 
-		style := tcell.StyleDefault.Foreground(theme.Fg()).Background(theme.Bg())
-		screen.SetContent(pos, y, item.char, nil, style)
+		style := tcell.StyleDefault.Foreground(timelineTypeColor(typ)).Background(theme.Bg())
+		screen.SetContent(pos, y, timelineTypeGlyph(typ), nil, style)
 		pos++
 
 		labelStyle := tcell.StyleDefault.Foreground(theme.FgDim()).Background(theme.Bg())
-		for _, r := range item.label {
+		for _, r := range label {
 			screen.SetContent(pos, y, r, nil, labelStyle)
 			pos++
 		}
-		pos += 1 // spacing
+		pos += 1
 	}
 
 	// Draw selected lane stats on the right side
@@ -571,6 +564,32 @@ func timelineTypeGlyph(typ temporal.EventGroupType) rune {
 	}
 }
 
+func timelineTypeColor(typ temporal.EventGroupType) tcell.Color {
+	switch typ {
+	case temporal.GroupActivity:
+		return theme.AccentDim()
+	case temporal.GroupTimer:
+		return theme.Warning()
+	case temporal.GroupChildWorkflow, temporal.GroupWorkflow, temporal.GroupWorkflowTask:
+		return theme.Info()
+	case temporal.GroupSignal:
+		return theme.Key()
+	default:
+		return theme.FgDim()
+	}
+}
+
+func timelineTypeLabel(typ temporal.EventGroupType) string {
+	switch typ {
+	case temporal.GroupChildWorkflow:
+		return "Child Workflow"
+	case temporal.GroupWorkflowTask:
+		return "Workflow Task"
+	default:
+		return typ.String()
+	}
+}
+
 func firstRune(s string) rune {
 	for _, r := range s {
 		return r
@@ -581,11 +600,33 @@ func firstRune(s string) rune {
 func timelineStatusColor(status string) tcell.Color {
 	switch status {
 	case "Fired":
-		return temporal.StatusCompleted.Color()
+		return theme.Warning()
+	case "Received":
+		return theme.Key()
 	case "Scheduled", "Initiated", "Pending":
 		return theme.FgDim()
 	default:
 		return temporal.GetWorkflowStatus(status).Color()
+	}
+}
+
+func timelineStatusLabel(status string) string {
+	switch status {
+	case "Received":
+		return "Signaled"
+	case "TimedOut":
+		return "Timed Out"
+	default:
+		return status
+	}
+}
+
+func timelineStatusGlyph(status string) string {
+	switch status {
+	case "Scheduled", "Initiated", "Pending":
+		return "┄┄"
+	default:
+		return theme.IconDot
 	}
 }
 

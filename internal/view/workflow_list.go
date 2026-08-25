@@ -639,6 +639,7 @@ func (wl *WorkflowList) timelineHints() []KeyHint {
 		{Key: "m", Description: timelineSizeHint(wl.timelineNarrow)},
 		{Key: "z", Description: "Timeline"},
 		{Key: "p", Description: "Preview"},
+		{Key: "?", Description: "Legend"},
 	}
 }
 
