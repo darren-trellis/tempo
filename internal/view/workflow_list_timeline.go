@@ -229,20 +229,30 @@ func (wl *WorkflowList) toggleTimelineSize() {
 }
 
 func (wl *WorkflowList) selectedWorkflow() (temporal.Workflow, bool) {
+	if wl.table != nil {
+		row := wl.table.SelectedRow()
+		if row >= 0 && row < len(wl.workflows) {
+			return wl.workflows[row], true
+		}
+	}
 	if w, ok := wl.currentPreviewWorkflow(); ok {
 		return w, true
-	}
-	if wl.table == nil {
-		return temporal.Workflow{}, false
-	}
-	row := wl.table.SelectedRow()
-	if row >= 0 && row < len(wl.workflows) {
-		return wl.workflows[row], true
 	}
 	if len(wl.workflows) > 0 {
 		return wl.workflows[0], true
 	}
 	return temporal.Workflow{}, false
+}
+
+func (wl *WorkflowList) syncHistoryForSelectedRow() {
+	if !wl.historyNeeded() || wl.table == nil {
+		return
+	}
+	row := wl.table.SelectedRow()
+	if row < 0 || row >= len(wl.workflows) {
+		return
+	}
+	wl.schedulePreview(wl.workflows[row], false)
 }
 
 func (wl *WorkflowList) refreshTimeline() {

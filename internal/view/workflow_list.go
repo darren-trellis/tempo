@@ -183,9 +183,7 @@ func (wl *WorkflowList) setup() {
 	wl.clearPreview()
 
 	wl.table.SetSelectionChangedFunc(func(row, col int) {
-		if wl.historyNeeded() && row > 0 && row-1 < len(wl.workflows) {
-			wl.schedulePreview(wl.workflows[row-1], false)
-		}
+		wl.syncHistoryForSelectedRow()
 	})
 
 	wl.table.SetOnSelect(func(row int) {

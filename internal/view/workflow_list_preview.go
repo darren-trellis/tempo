@@ -338,11 +338,13 @@ func (wl *WorkflowList) applyPreviewLayout() {
 
 	on := wl.previewModeEnabled()
 	if !on {
-		if wl.previewTimer != nil {
-			wl.previewTimer.Stop()
-		}
-		if wl.eventTable != nil && !wl.timelineVisible {
-			wl.clearPreview()
+		if !wl.timelineVisible {
+			if wl.previewTimer != nil {
+				wl.previewTimer.Stop()
+			}
+			if wl.eventTable != nil {
+				wl.clearPreview()
+			}
 		}
 		wl.focusPane = focusWorkflows
 	}
@@ -351,13 +353,9 @@ func (wl *WorkflowList) applyPreviewLayout() {
 
 	if on {
 		wl.applyPreviewPage()
-		if len(wl.workflows) > 0 && wl.table != nil {
-			row := wl.table.SelectedRow()
-			if row < 0 || row >= len(wl.workflows) {
-				row = 0
-			}
-			wl.schedulePreview(wl.workflows[row], false)
-		}
+	}
+	if wl.historyNeeded() {
+		wl.syncHistoryForSelectedRow()
 	}
 
 	if wl.app != nil && wl.app.JigApp() != nil {
@@ -1030,29 +1028,26 @@ func (wl *WorkflowList) loadPreview(gen uint64, w temporal.Workflow) {
 		return
 	}
 
-	provider := wl.app.Provider()
-	if provider == nil {
-		events := mockPreviewEvents(w)
-		wl.app.JigApp().QueueUpdateDraw(func() {
-			if atomic.LoadUint64(&wl.previewGen) != gen {
-				return
-			}
-			wl.showPreviewEvents(w, events)
-		})
-		return
+	var events []temporal.EnhancedHistoryEvent
+	var err error
+	if wl.app != nil {
+		if provider := wl.app.Provider(); provider != nil {
+			wl.app.SetViewLoading("workflow-preview", true)
+			defer wl.app.SetViewLoading("workflow-preview", false)
+			ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+			defer cancel()
+			events, err = provider.GetEnhancedWorkflowHistory(ctx, wl.namespace, w.ID, w.RunID)
+		} else {
+			events = mockPreviewEvents(w)
+		}
+	} else {
+		events = mockPreviewEvents(w)
 	}
-
-	wl.app.SetViewLoading("workflow-preview", true)
-	defer wl.app.SetViewLoading("workflow-preview", false)
-
-	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
-	defer cancel()
-	events, err := provider.GetEnhancedWorkflowHistory(ctx, wl.namespace, w.ID, w.RunID)
 	if atomic.LoadUint64(&wl.previewGen) != gen {
 		return
 	}
 
-	wl.app.JigApp().QueueUpdateDraw(func() {
+	apply := func() {
 		if atomic.LoadUint64(&wl.previewGen) != gen {
 			return
 		}
@@ -1061,7 +1056,12 @@ func (wl *WorkflowList) loadPreview(gen uint64, w temporal.Workflow) {
 			return
 		}
 		wl.showPreviewEvents(w, events)
-	})
+	}
+	if wl.app != nil && wl.app.JigApp() != nil {
+		wl.app.JigApp().QueueUpdateDraw(apply)
+		return
+	}
+	apply()
 }
 
 func (wl *WorkflowList) showPreviewEvents(w temporal.Workflow, events []temporal.EnhancedHistoryEvent) {

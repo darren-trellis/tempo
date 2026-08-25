@@ -378,6 +378,93 @@ func TestTimelineSizeMatchesWorkflowsPane(t *testing.T) {
 	}
 }
 
+func TestTimelineFollowsSelectionWithoutPreview(t *testing.T) {
+	now := time.Now()
+	wf1 := temporal.Workflow{ID: "wf-1", RunID: "run-1", Type: "A", StartTime: now.Add(-time.Minute)}
+	wf2 := temporal.Workflow{ID: "wf-2", RunID: "run-2", Type: "B", StartTime: now.Add(-30 * time.Second)}
+	wl := NewWorkflowList(&App{}, "default")
+	wl.workflows = []temporal.Workflow{wf1, wf2}
+	wl.allWorkflows = wl.workflows
+	events1 := []temporal.EnhancedHistoryEvent{
+		{ID: 1, Type: "WorkflowExecutionStarted", Time: now.Add(-time.Minute)},
+		{ID: 5, Type: "ActivityTaskScheduled", Time: now.Add(-50 * time.Second), ActivityType: "First"},
+		{ID: 6, Type: "ActivityTaskCompleted", Time: now.Add(-40 * time.Second), ScheduledEventID: 5},
+	}
+	events2 := []temporal.EnhancedHistoryEvent{
+		{ID: 1, Type: "WorkflowExecutionStarted", Time: now.Add(-30 * time.Second)},
+		{ID: 8, Type: "ActivityTaskScheduled", Time: now.Add(-20 * time.Second), ActivityType: "Second"},
+		{ID: 9, Type: "ActivityTaskCompleted", Time: now.Add(-10 * time.Second), ScheduledEventID: 8},
+	}
+	wl.previewCache.put(wf1.ID, wf1.RunID, events1)
+	wl.previewCache.put(wf2.ID, wf2.RunID, events2)
+	wl.populateTable()
+	wl.togglePreviewMode()
+	wl.toggleTimeline()
+	wl.togglePreviewMode()
+	if wl.previewModeEnabled() {
+		t.Fatal("preview should stay hidden")
+	}
+	if !wl.timelineVisible {
+		t.Fatal("timeline should stay visible")
+	}
+
+	wl.table.SelectRow(0)
+	wl.schedulePreview(wf1, false)
+	if got := timelineSelectedName(wl); got != "First" {
+		t.Fatalf("first workflow: %q", got)
+	}
+
+	wl.table.SelectRow(1)
+	if wl.previewWorkflowID != "wf-2" {
+		t.Fatalf("selecting the second row should load that workflow, got %q", wl.previewWorkflowID)
+	}
+	if got := timelineSelectedName(wl); got != "Second" {
+		t.Fatalf("timeline should follow the selected row without preview, got %q", got)
+	}
+}
+
+func TestHidingPreviewKeepsPendingTimelineLoad(t *testing.T) {
+	now := time.Now()
+	wf1 := temporal.Workflow{ID: "wf-1", RunID: "run-1", Type: "A", StartTime: now.Add(-time.Minute)}
+	wf2 := temporal.Workflow{ID: "wf-2", RunID: "run-2", Type: "B", StartTime: now.Add(-30 * time.Second)}
+	wl := NewWorkflowList(&App{}, "default")
+	wl.workflows = []temporal.Workflow{wf1, wf2}
+	wl.allWorkflows = wl.workflows
+	wl.previewCache.put(wf1.ID, wf1.RunID, []temporal.EnhancedHistoryEvent{
+		{ID: 1, Type: "WorkflowExecutionStarted", Time: now.Add(-time.Minute)},
+		{ID: 5, Type: "ActivityTaskScheduled", Time: now.Add(-50 * time.Second), ActivityType: "First"},
+		{ID: 6, Type: "ActivityTaskCompleted", Time: now.Add(-40 * time.Second), ScheduledEventID: 5},
+	})
+	wl.populateTable()
+	wl.togglePreviewMode()
+	wl.toggleTimeline()
+	wl.table.SelectRow(0)
+	wl.schedulePreview(wf1, false)
+
+	wl.table.SelectRow(1)
+	if wl.previewTimer == nil {
+		t.Fatal("uncached row should start a history load")
+	}
+	wl.togglePreviewMode()
+	if wl.previewModeEnabled() {
+		t.Fatal("preview should be hidden")
+	}
+	if wl.previewTimer == nil {
+		t.Fatal("hiding preview should not cancel a load the timeline still needs")
+	}
+}
+
+func timelineSelectedName(wl *WorkflowList) string {
+	if wl == nil || wl.timelineView == nil {
+		return ""
+	}
+	lane := wl.timelineView.SelectedLane()
+	if lane == nil {
+		return ""
+	}
+	return timelineBarName(*lane)
+}
+
 func TestTimelineHighlightsSelectedActivity(t *testing.T) {
 	wl := NewWorkflowList(&App{}, "default")
 	wl.togglePreviewMode()
