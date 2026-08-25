@@ -7,10 +7,10 @@ import (
 	"github.com/atterpac/jig/theme"
 )
 
-// loadingSectionIndex is where the spinner sits in the status bar: right after
-// the fixed profile, namespace, connection and codec sections. It is only drawn
-// once those are in place, so it can never take one of their slots.
-const loadingSectionIndex = 4
+// connectionSectionIndex is the status-bar slot that normally says "connected".
+// Refresh reuses that slot for the spinner so the indicator stays where people
+// already look.
+const connectionSectionIndex = 2
 
 const loadingFrameInterval = 120 * time.Millisecond
 
@@ -103,28 +103,25 @@ func (a *App) loadingText() string {
 	return loadingLabel(a.loadingFrame)
 }
 
-// renderLoading writes the spinner section into the status bar. An empty label
-// removes it again.
+// renderLoading puts the spinner in the Connected slot. An empty label restores
+// connected / disconnected.
 func (a *App) renderLoading(label string) {
+	a.paintConnectionSection(label)
+}
+
+func (a *App) paintConnectionSection(label string) {
 	if a == nil || a.statusBar == nil {
 		return
 	}
 	count := a.statusBar.SectionCount()
-	if label == "" {
-		if count > loadingSectionIndex {
-			keep := make([]layout.StatusSection, 0, loadingSectionIndex)
-			for i := 0; i < loadingSectionIndex; i++ {
-				keep = append(keep, a.statusBar.GetSection(i))
-			}
-			a.statusBar.SetSections(keep)
-		}
-		return
+	section := a.connectedStatusSection()
+	if label != "" {
+		section = layout.StatusSection{Text: label, ColorFunc: theme.Accent}
 	}
-	section := layout.StatusSection{Text: label, ColorFunc: theme.Accent}
 	switch {
-	case count > loadingSectionIndex:
-		a.statusBar.UpdateSection(loadingSectionIndex, section)
-	case count == loadingSectionIndex:
+	case count > connectionSectionIndex:
+		a.statusBar.UpdateSection(connectionSectionIndex, section)
+	case count == connectionSectionIndex:
 		a.statusBar.AddSection(section)
 	}
 }

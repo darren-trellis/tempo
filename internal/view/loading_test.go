@@ -8,9 +8,9 @@ import (
 
 func statusBarWithFixedSections() *layout.StatusBar {
 	bar := layout.NewStatusBar()
-	for i := 0; i < loadingSectionIndex; i++ {
-		bar.AddSection(layout.StatusSection{Text: "fixed"})
-	}
+	bar.AddSection(layout.StatusSection{Text: "profile"})
+	bar.AddSection(layout.StatusSection{Text: "namespace"})
+	bar.AddSection(layout.StatusSection{Text: "connected"})
 	return bar
 }
 
@@ -24,28 +24,34 @@ func TestLoadingLabelCyclesFrames(t *testing.T) {
 	}
 }
 
-func TestRenderLoadingAddsAndRemovesSection(t *testing.T) {
-	a := &App{statusBar: statusBarWithFixedSections()}
+func TestRenderLoadingReplacesConnected(t *testing.T) {
+	a := &App{statusBar: statusBarWithFixedSections(), connected: true}
 
 	a.renderLoading(loadingLabel(0))
-	if a.statusBar.SectionCount() != loadingSectionIndex+1 {
-		t.Fatalf("spinner should append one section, got %d", a.statusBar.SectionCount())
+	if a.statusBar.SectionCount() != 3 {
+		t.Fatalf("spinner should reuse the connected slot, got %d sections", a.statusBar.SectionCount())
+	}
+	if a.statusBar.GetSection(connectionSectionIndex).Text != loadingLabel(0) {
+		t.Fatalf("connected slot should show the spinner, got %q", a.statusBar.GetSection(connectionSectionIndex).Text)
 	}
 
 	a.renderLoading(loadingLabel(1))
-	if a.statusBar.SectionCount() != loadingSectionIndex+1 {
-		t.Fatal("next frame should update the section, not add another")
+	if a.statusBar.SectionCount() != 3 {
+		t.Fatal("next frame should update the connected slot, not add a section")
 	}
-	if a.statusBar.GetSection(loadingSectionIndex).Text != loadingLabel(1) {
-		t.Fatal("spinner section should hold the current frame")
+	if a.statusBar.GetSection(connectionSectionIndex).Text != loadingLabel(1) {
+		t.Fatal("connected slot should hold the current frame")
 	}
 
 	a.renderLoading("")
-	if a.statusBar.SectionCount() != loadingSectionIndex {
-		t.Fatalf("spinner should be removed, got %d sections", a.statusBar.SectionCount())
+	if a.statusBar.SectionCount() != 3 {
+		t.Fatalf("restoring connected should keep three sections, got %d", a.statusBar.SectionCount())
 	}
-	if a.statusBar.GetSection(0).Text != "fixed" {
-		t.Fatal("removing the spinner should leave the fixed sections alone")
+	if a.statusBar.GetSection(connectionSectionIndex).Text != "connected" {
+		t.Fatalf("spinner should restore connected, got %q", a.statusBar.GetSection(connectionSectionIndex).Text)
+	}
+	if a.statusBar.GetSection(0).Text != "profile" {
+		t.Fatal("spinner should leave the profile section alone")
 	}
 }
 
@@ -53,7 +59,7 @@ func TestRenderLoadingWaitsForFixedSections(t *testing.T) {
 	a := &App{statusBar: layout.NewStatusBar()}
 	a.renderLoading(loadingLabel(0))
 	if a.statusBar.SectionCount() != 0 {
-		t.Fatal("spinner should not claim a fixed section's slot")
+		t.Fatal("spinner should not claim a profile or namespace slot")
 	}
 }
 
@@ -74,6 +80,26 @@ func TestSetViewLoadingTracksViewsIndependently(t *testing.T) {
 	a.SetViewLoading("workers", false)
 	if a.loadingText() != "" {
 		t.Fatal("spinner should stop once every view is done")
+	}
+}
+
+func TestSetConnectedKeepsSpinnerThenRestores(t *testing.T) {
+	a := &App{statusBar: statusBarWithFixedSections(), connected: true}
+	a.SetViewLoading("workflows", true)
+	a.renderLoading(a.loadingText())
+	if a.statusBar.GetSection(connectionSectionIndex).Text == "connected" {
+		t.Fatal("loading should replace connected")
+	}
+
+	a.setConnected(true)
+	if a.statusBar.GetSection(connectionSectionIndex).Text == "connected" {
+		t.Fatal("a connection update should not hide the spinner")
+	}
+
+	a.SetViewLoading("workflows", false)
+	a.renderLoading(a.loadingText())
+	if a.statusBar.GetSection(connectionSectionIndex).Text != "connected" {
+		t.Fatalf("finished load should restore connected, got %q", a.statusBar.GetSection(connectionSectionIndex).Text)
 	}
 }
 

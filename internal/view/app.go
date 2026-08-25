@@ -43,6 +43,7 @@ type App struct {
 	currentNS     string
 	activeProfile string
 	reconnecting  bool
+	connected     bool
 
 	// Connection monitor
 	stopMonitor     chan struct{}
@@ -302,28 +303,27 @@ func (a *App) updateCrumbs() {
 // Section layout: [0] profile, [1] namespace, [2] connection status, [3] codec status
 
 func (a *App) setConnected(connected bool) {
+	if a != nil {
+		a.connected = connected
+	}
+	a.paintConnectionSection(a.loadingText())
+	a.refreshCodecStatus()
+}
+
+func (a *App) connectedStatusSection() layout.StatusSection {
 	icon := theme.IconDisconnected
 	text := "disconnected"
 	colorFunc := theme.Error
-	if connected {
+	if a != nil && a.connected {
 		icon = theme.IconConnected
 		text = "connected"
 		colorFunc = theme.Success
 	}
-
-	section := layout.StatusSection{
+	return layout.StatusSection{
 		Icon:      icon,
 		Text:      text,
 		ColorFunc: colorFunc,
 	}
-
-	// Connection status is section 2
-	if a.statusBar.SectionCount() >= 3 {
-		a.statusBar.UpdateSection(2, section)
-	} else {
-		a.statusBar.AddSection(section)
-	}
-	a.refreshCodecStatus()
 }
 
 func (a *App) setCodecStatus(text string, colorFunc func() tcell.Color, icon string) {
