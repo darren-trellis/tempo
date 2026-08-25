@@ -2,6 +2,7 @@ package view
 
 import (
 	"testing"
+	"time"
 
 	"github.com/atterpac/jig/layout"
 )
@@ -110,5 +111,19 @@ func TestSetViewLoadingIsIdempotent(t *testing.T) {
 	a.SetViewLoading("workflows", false)
 	if a.loadingText() != "" {
 		t.Fatal("repeated starts should not need repeated stops")
+	}
+}
+
+func TestSetViewLoadingDoesNotBlockBeforeRun(t *testing.T) {
+	a := &App{app: layout.NewApp(layout.AppConfig{}), statusBar: statusBarWithFixedSections()}
+	done := make(chan struct{})
+	go func() {
+		a.SetViewLoading("workflows", true)
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("SetViewLoading should not wait for the UI loop")
 	}
 }

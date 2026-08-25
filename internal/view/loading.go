@@ -88,7 +88,11 @@ func (a *App) drawLoading() {
 	if a == nil || a.app == nil {
 		return
 	}
-	a.app.QueueUpdateDraw(func() {
+	// QueueUpdateDraw waits for the event loop. After the splash screen, Start()
+	// runs on the main thread before Run(), so a direct call would deadlock and
+	// look like tempo exited. The same call from a key handler (e.g. refresh)
+	// would also stall the event loop. Always dispatch from a goroutine.
+	go a.app.QueueUpdateDraw(func() {
 		a.renderLoading(a.loadingText())
 	})
 }
