@@ -42,3 +42,13 @@ func TestDefaultColumnLayoutIncludesParent(t *testing.T) {
 		t.Fatal("default workflow columns should include parent id")
 	}
 }
+
+func TestTreeModeHidesParentIDColumn(t *testing.T) {
+	wl := NewWorkflowList(&App{}, "default")
+	wl.workflowTreeMode = true
+	for _, col := range wl.columnLayout() {
+		if col.id == config.WorkflowColumnParentID {
+			t.Fatal("tree view should hide parent id")
+		}
+	}
+}

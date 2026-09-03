@@ -29,6 +29,9 @@ func (wl *WorkflowList) columnLayout() []workflowColumn {
 
 	cols := make([]workflowColumn, 0, len(raw))
 	for _, col := range raw {
+		if wl.workflowTreeMode && col.ID == config.WorkflowColumnParentID {
+			continue
+		}
 		header, ok := workflowColumnHeader(col.ID)
 		if !ok {
 			continue
@@ -41,6 +44,9 @@ func (wl *WorkflowList) columnLayout() []workflowColumn {
 	}
 	if len(cols) == 0 {
 		for _, col := range config.DefaultWorkflowColumns() {
+			if wl.workflowTreeMode && col.ID == config.WorkflowColumnParentID {
+				continue
+			}
 			header, _ := workflowColumnHeader(col.ID)
 			cols = append(cols, workflowColumn{id: col.ID, header: header, width: col.Width})
 		}
