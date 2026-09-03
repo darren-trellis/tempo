@@ -68,9 +68,7 @@ func (wl *WorkflowList) fetchWorkflows(live bool) {
 		return
 	}
 
-	if !live {
-		wl.setLoading(true)
-	}
+	wl.setLoading(true)
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
@@ -80,9 +78,7 @@ func (wl *WorkflowList) fetchWorkflows(live bool) {
 			wl.app.ShowToastError(fmt.Sprintf("Invalid query: %v", err))
 			wl.app.JigApp().QueueUpdateDraw(func() {
 				wl.liveBusy = false
-				if !live {
-					wl.setLoading(false)
-				}
+				wl.setLoading(false)
 			})
 			return
 		}
@@ -94,9 +90,7 @@ func (wl *WorkflowList) fetchWorkflows(live bool) {
 
 		wl.app.JigApp().QueueUpdateDraw(func() {
 			wl.liveBusy = false
-			if !live {
-				wl.setLoading(false)
-			}
+			wl.setLoading(false)
 			if err != nil {
 				if !live {
 					wl.showError(err)

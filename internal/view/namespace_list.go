@@ -185,9 +185,7 @@ func (nl *NamespaceList) fetchNamespaces(live bool) {
 		return
 	}
 
-	if !live {
-		nl.setLoading(true)
-	}
+	nl.setLoading(true)
 	async.NewLoader[[]temporal.Namespace]().
 		WithTimeout(10 * time.Second).
 		OnSuccess(func(namespaces []temporal.Namespace) {
@@ -205,9 +203,7 @@ func (nl *NamespaceList) fetchNamespaces(live bool) {
 			}
 		}).
 		OnFinally(func() {
-			if !live {
-				nl.setLoading(false)
-			}
+			nl.setLoading(false)
 		}).
 		Run(func(ctx context.Context) ([]temporal.Namespace, error) {
 			return provider.ListNamespaces(ctx)
