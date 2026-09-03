@@ -749,6 +749,12 @@ func (wd *WorkflowDetail) Start() {
 			wd.showWorkflowGraph()
 			return true
 		}).
+		OnRune('u', func(e *tcell.EventKey) bool {
+			if wd.app != nil {
+				wd.app.OpenWorkflowInBrowser(wd.workflowID, wd.runID)
+			}
+			return true
+		}).
 		On(tcell.KeyTab, func(e *tcell.EventKey) bool {
 			wd.cycleFocus(1)
 			return true
@@ -798,6 +804,7 @@ func (wd *WorkflowDetail) Hints() []KeyHint {
 		{Key: "d", Description: "Detail"},
 		{Key: "g", Description: "Go to Child"},
 		{Key: "y", Description: "Yank"},
+		{Key: "u", Description: "Web UI"},
 		{Key: "r", Description: "Refresh"},
 	}
 

@@ -326,6 +326,9 @@ func (wl *WorkflowList) Start() {
 			wl.copyWorkflowID()
 			return true
 		}).
+		OnRune('u', func(e *tcell.EventKey) bool {
+			return wl.openSelectedWorkflowUI()
+		}).
 		OnRune('v', func(e *tcell.EventKey) bool {
 			wl.toggleSelectionMode()
 			return true
@@ -689,6 +692,7 @@ func (wl *WorkflowList) workflowPaneHints() []KeyHint {
 		KeyHint{Key: "N", Description: "Start"},
 		KeyHint{Key: "W", Description: "Signal+Start"},
 		KeyHint{Key: "y", Description: "Copy ID"},
+		KeyHint{Key: "u", Description: "Web UI"},
 		KeyHint{Key: "r", Description: "Refresh"},
 		KeyHint{Key: "a", Description: "Auto-refresh"},
 		KeyHint{Key: "T", Description: "Theme"},

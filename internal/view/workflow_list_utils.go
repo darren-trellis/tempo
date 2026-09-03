@@ -93,6 +93,26 @@ func copyToClipboard(text string) error {
 	return cmd.Wait()
 }
 
+var openBrowser = openBrowserOS
+
+func openBrowserOS(rawURL string) error {
+	if rawURL == "" {
+		return fmt.Errorf("empty URL")
+	}
+	var cmd *exec.Cmd
+	switch runtime.GOOS {
+	case "darwin":
+		cmd = exec.Command("open", rawURL)
+	case "linux":
+		cmd = exec.Command("xdg-open", rawURL)
+	case "windows":
+		cmd = exec.Command("rundll32", "url.dll,FileProtocolHandler", rawURL)
+	default:
+		return fmt.Errorf("opening a browser is not supported on %s", runtime.GOOS)
+	}
+	return cmd.Start()
+}
+
 func workflowEndTime(now time.Time, w temporal.Workflow) string {
 	if w.EndTime != nil {
 		return formatRelativeTime(now, *w.EndTime)
@@ -122,4 +142,17 @@ func (wl *WorkflowList) copyWorkflowID() {
 		return
 	}
 	wl.app.ShowToastSuccess("Copied workflow ID")
+}
+
+func (wl *WorkflowList) openSelectedWorkflowUI() bool {
+	if wl == nil || wl.app == nil {
+		return false
+	}
+	w, ok := wl.selectedWorkflow()
+	if !ok {
+		wl.app.ShowToastError("No workflow selected")
+		return true
+	}
+	wl.app.OpenWorkflowInBrowser(w.ID, w.RunID)
+	return true
 }

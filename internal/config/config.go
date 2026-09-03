@@ -47,6 +47,7 @@ type ConnectionConfig struct {
 	APIKey        string                   `yaml:"api_key,omitempty"`        // For Temporal Cloud API key authentication
 	GRPCMeta      map[string]string        `yaml:"grpc_meta,omitempty"`      // Custom gRPC metadata headers (KEY=VALUE pairs)
 	CodecEndpoint string                   `yaml:"codec_endpoint,omitempty"` // Temporal codec server base URL
+	UIURL         string                   `yaml:"ui_url,omitempty"`         // Temporal Web UI base URL
 	Commands      map[string]CommandConfig `yaml:"commands,omitempty"`
 }
 
@@ -59,6 +60,7 @@ func (c ConnectionConfig) ExpandEnv() ConnectionConfig {
 		TLS:           c.TLS,
 		APIKey:        expandEnvVar(c.APIKey),
 		CodecEndpoint: expandEnvVar(c.CodecEndpoint),
+		UIURL:         expandEnvVar(c.UIURL),
 		Commands:      c.Commands,
 	}
 	if len(c.GRPCMeta) > 0 {

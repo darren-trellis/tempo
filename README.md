@@ -119,6 +119,7 @@ tempo --address localhost:7233 // default dev server address loads without flag
 | `c` | Cancel workflow |
 | `t` | Terminate workflow |
 | `s` | Signal workflow |
+| `u` | Open workflow in the Temporal Web UI |
 
 ## Configuration
 
@@ -137,6 +138,7 @@ profiles:
     address: temporal.staging.example.com:7233
     namespace: staging
     codec_endpoint: https://codec.example.com
+    ui_url: https://temporal.staging.example.com
     tls:
       cert: /path/to/client.pem
       key: /path/to/client-key.pem

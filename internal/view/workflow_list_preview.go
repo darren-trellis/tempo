@@ -783,6 +783,10 @@ func (wl *WorkflowList) handlePreviewKeys(event *tcell.EventKey) *tcell.EventKey
 			wl.app.NavigateToEvents(wl.previewWorkflowID, wl.previewRunID)
 			return nil
 		}
+	case 'u':
+		if wl.openSelectedWorkflowUI() {
+			return nil
+		}
 	}
 	return event
 }

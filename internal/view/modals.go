@@ -500,6 +500,11 @@ func (f *ProfileForm) buildForm(name string, cfg config.ConnectionConfig, isEdit
 		Value(cfg.CodecEndpoint).
 		Done()
 
+	builder.Text("uiURL", "Web UI URL (optional)").
+		Placeholder("http://localhost:8080").
+		Value(cfg.UIURL).
+		Done()
+
 	// TLS settings (optional)
 	builder.Text("tlsCert", "TLS Cert Path (optional)").
 		Value(cfg.TLS.Cert).
@@ -551,6 +556,8 @@ func (f *ProfileForm) buildForm(name string, cfg config.ConnectionConfig, isEdit
 			APIKey:        cfg.APIKey,
 			GRPCMeta:      cfg.GRPCMeta,
 			CodecEndpoint: values["codecEndpoint"].(string),
+			UIURL:         values["uiURL"].(string),
+			Commands:      cfg.Commands,
 		}
 
 		if f.onSave != nil {

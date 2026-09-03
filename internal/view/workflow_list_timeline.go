@@ -123,6 +123,10 @@ func (wl *WorkflowList) setupTimeline() {
 			if wl.previewShowsIO() && wl.showPreviewIO() {
 				return nil
 			}
+		case 'u':
+			if wl.openSelectedWorkflowUI() {
+				return nil
+			}
 		}
 		return event
 	})

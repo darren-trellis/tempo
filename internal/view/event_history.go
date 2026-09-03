@@ -566,6 +566,12 @@ func (eh *EventHistory) setupInputCapture() {
 			eh.yankEventData()
 			return true
 		}).
+		OnRune('u', func(e *tcell.EventKey) bool {
+			if eh.app != nil {
+				eh.app.OpenWorkflowInBrowser(eh.workflowID, eh.runID)
+			}
+			return true
+		}).
 		OnRune('d', func(e *tcell.EventKey) bool {
 			eh.showDetailModal()
 			return true
@@ -666,6 +672,7 @@ func (eh *EventHistory) Hints() []KeyHint {
 		{Key: "d", Description: "Detail"},
 		{Key: "g", Description: "Go to Child"},
 		{Key: "y", Description: "Yank"},
+		{Key: "u", Description: "Web UI"},
 		{Key: "p", Description: "Preview"},
 		{Key: "r", Description: "Refresh"},
 	}

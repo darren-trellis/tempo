@@ -22,6 +22,51 @@ func TestExpandEnvCodecEndpoint(t *testing.T) {
 	}
 }
 
+func TestExpandEnvUIURL(t *testing.T) {
+	t.Setenv("TEMPORAL_UI_URL", "https://ui.example.com")
+	cfg := ConnectionConfig{
+		Address: "localhost:7233",
+		UIURL:   "${TEMPORAL_UI_URL}",
+	}
+	if got := cfg.ExpandEnv().UIURL; got != "https://ui.example.com" {
+		t.Fatalf("UIURL = %q", got)
+	}
+}
+
+func TestResolveUIURL(t *testing.T) {
+	t.Setenv("TEMPORAL_UI_URL", "https://ui.from.env")
+	cases := []struct {
+		name string
+		cfg  ConnectionConfig
+		want string
+	}{
+		{name: "explicit", cfg: ConnectionConfig{Address: "prod.example.com:7233", UIURL: "https://temporal.example.com"}, want: "https://temporal.example.com"},
+		{name: "explicit trailing slash", cfg: ConnectionConfig{UIURL: "http://localhost:8080/"}, want: "http://localhost:8080"},
+		{name: "env", cfg: ConnectionConfig{UIURL: "${TEMPORAL_UI_URL}"}, want: "https://ui.from.env"},
+		{name: "localhost", cfg: ConnectionConfig{Address: "localhost:7233"}, want: "http://localhost:8080"},
+		{name: "loopback", cfg: ConnectionConfig{Address: "127.0.0.1:7233"}, want: "http://localhost:8080"},
+		{name: "cloud", cfg: ConnectionConfig{Address: "my-ns.abc12.tmprl.cloud:7233"}, want: "https://cloud.temporal.io"},
+		{name: "cloud regional", cfg: ConnectionConfig{Address: "us-west-2.aws.api.temporal.io:7233"}, want: "https://cloud.temporal.io"},
+		{name: "unknown", cfg: ConnectionConfig{Address: "temporal.staging.example.com:7233"}, want: ""},
+	}
+	for _, tc := range cases {
+		if got := tc.cfg.ResolveUIURL(); got != tc.want {
+			t.Fatalf("%s: ResolveUIURL()=%q want %q", tc.name, got, tc.want)
+		}
+	}
+}
+
+func TestWorkflowUIURL(t *testing.T) {
+	got := WorkflowUIURL("https://cloud.temporal.io/", "orders.abc12", "order/123", "run-1")
+	want := "https://cloud.temporal.io/namespaces/orders.abc12/workflows/order%2F123/run-1/history"
+	if got != want {
+		t.Fatalf("WorkflowUIURL()=%q want %q", got, want)
+	}
+	if WorkflowUIURL("", "default", "wf", "run") != "" {
+		t.Fatal("empty base should yield no URL")
+	}
+}
+
 func TestFirstNonEmpty(t *testing.T) {
 	if got := firstNonEmpty("", "https://codec"); got != "https://codec" {
 		t.Fatalf("got %q", got)
