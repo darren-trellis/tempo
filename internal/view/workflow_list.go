@@ -84,6 +84,11 @@ type WorkflowList struct {
 	workflows             []temporal.Workflow // Filtered list for display
 	filterText            string
 	visibilityQuery       string // Temporal visibility query
+	pager                 workflowPager
+	pageBusy              bool
+	pageGen               uint64
+	serverStats           WorkflowStats
+	serverStatsOK         bool
 	loading               bool
 	autoRefresh           bool
 	liveBusy              bool

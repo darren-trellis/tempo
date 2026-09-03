@@ -33,6 +33,10 @@ type Provider interface {
 	// ListWorkflows returns workflows for a namespace with optional filtering.
 	ListWorkflows(ctx context.Context, namespace string, opts ListOptions) ([]Workflow, string, error)
 
+	// CountWorkflows returns visibility counts grouped by execution status.
+	// query is the same visibility query used for ListWorkflows.
+	CountWorkflows(ctx context.Context, namespace, query string) (WorkflowCounts, error)
+
 	// GetWorkflow returns details for a specific workflow execution.
 	GetWorkflow(ctx context.Context, namespace, workflowID, runID string) (*Workflow, error)
 
@@ -151,6 +155,14 @@ type ListOptions struct {
 	PageSize  int
 	PageToken string
 	Query     string // Visibility query (e.g., "WorkflowType='OrderWorkflow'")
+}
+
+// WorkflowCounts is the visibility count of executions by status.
+type WorkflowCounts struct {
+	Running   int
+	Completed int
+	Failed    int
+	Total     int
 }
 
 // Namespace represents a Temporal namespace.

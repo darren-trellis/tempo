@@ -3,7 +3,7 @@ package view
 import (
 	"context"
 	"fmt"
-	"sort"
+	"sync"
 	"time"
 
 	"github.com/atterpac/jig/components"
@@ -68,55 +68,271 @@ func (wl *WorkflowList) fetchWorkflows(live bool) {
 		return
 	}
 
-	wl.setLoading(true)
+	if live {
+		if wl.pageBusy {
+			wl.liveBusy = false
+			return
+		}
+		if len(wl.pager.pages) == 0 {
+			wl.startWindow(true)
+			return
+		}
+		wl.refreshLoadedPages()
+		return
+	}
+	wl.startWindow(false)
+}
+
+func (wl *WorkflowList) startWindow(live bool) {
+	resolvedQuery, err := resolveTimePlaceholders(wl.visibilityQuery)
+	if err != nil {
+		wl.app.ShowToastError(fmt.Sprintf("Invalid query: %v", err))
+		wl.liveBusy = false
+		return
+	}
+
+	provider := wl.app.Provider()
+	if provider == nil {
+		wl.liveBusy = false
+		return
+	}
+
+	wl.pageGen++
+	gen := wl.pageGen
+	wl.pager.reset(resolvedQuery)
+	wl.pageBusy = true
+	if !live {
+		wl.setLoading(true)
+	}
+
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 
-		resolvedQuery, err := resolveTimePlaceholders(wl.visibilityQuery)
-		if err != nil {
-			wl.app.ShowToastError(fmt.Sprintf("Invalid query: %v", err))
-			wl.app.JigApp().QueueUpdateDraw(func() {
-				wl.liveBusy = false
-				wl.setLoading(false)
+		var wg sync.WaitGroup
+		var workflows []temporal.Workflow
+		var next string
+		var listErr error
+		var counts temporal.WorkflowCounts
+		var countErr error
+		wg.Add(2)
+		go func() {
+			defer wg.Done()
+			workflows, next, listErr = provider.ListWorkflows(ctx, wl.namespace, temporal.ListOptions{
+				PageSize: workflowPageSize,
+				Query:    resolvedQuery,
 			})
-			return
-		}
-		opts := temporal.ListOptions{
-			PageSize: 100,
-			Query:    resolvedQuery,
-		}
-		workflows, _, err := provider.ListWorkflows(ctx, wl.namespace, opts)
+		}()
+		go func() {
+			defer wg.Done()
+			counts, countErr = provider.CountWorkflows(ctx, wl.namespace, resolvedQuery)
+		}()
+		wg.Wait()
 
 		wl.app.JigApp().QueueUpdateDraw(func() {
+			if gen != wl.pageGen {
+				return
+			}
 			wl.liveBusy = false
+			wl.pageBusy = false
 			wl.setLoading(false)
-			if err != nil {
+			if listErr != nil {
 				if !live {
-					wl.showError(err)
+					wl.showError(listErr)
 				}
 				return
 			}
-			sort.Slice(workflows, func(i, j int) bool {
-				return workflows[i].StartTime.After(workflows[j].StartTime)
-			})
 			if !live {
 				wl.previewWorkflowID = ""
 				wl.previewRunID = ""
 			}
-			wl.allWorkflows = workflows
-			wl.applyFilter()
+			wl.pager.accept(0, "", next, workflows)
+			wl.applyLoadedWindow()
+			if countErr == nil {
+				wl.applyServerCounts(counts)
+			}
 			if !live && wl.shouldFocusWorkflowTable() {
 				wl.app.JigApp().SetFocus(wl.table)
 			}
 			if live {
 				wl.refreshLivePreview()
 			}
+			wl.maybeFetchPages()
 		})
 	}()
 }
 
+func (wl *WorkflowList) refreshLoadedPages() {
+	provider := wl.app.Provider()
+	if provider == nil {
+		wl.liveBusy = false
+		return
+	}
+	pages := append([]workflowPage(nil), wl.pager.pages...)
+	first := wl.pager.firstPage
+	query := wl.pager.query
+	gen := wl.pageGen
+	wl.pageBusy = true
+
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+
+		type pageResult struct {
+			index     int
+			token     string
+			next      string
+			workflows []temporal.Workflow
+			err       error
+		}
+		results := make([]pageResult, len(pages))
+		var wg sync.WaitGroup
+		var counts temporal.WorkflowCounts
+		var countErr error
+		wg.Add(len(pages) + 1)
+		for i, page := range pages {
+			go func(i int, page workflowPage) {
+				defer wg.Done()
+				workflows, next, err := provider.ListWorkflows(ctx, wl.namespace, temporal.ListOptions{
+					PageSize:  workflowPageSize,
+					PageToken: page.token,
+					Query:     query,
+				})
+				results[i] = pageResult{index: first + i, token: page.token, next: next, workflows: workflows, err: err}
+			}(i, page)
+		}
+		go func() {
+			defer wg.Done()
+			counts, countErr = provider.CountWorkflows(ctx, wl.namespace, query)
+		}()
+		wg.Wait()
+
+		wl.app.JigApp().QueueUpdateDraw(func() {
+			if gen != wl.pageGen {
+				return
+			}
+			wl.liveBusy = false
+			wl.pageBusy = false
+			for _, result := range results {
+				if result.err != nil {
+					continue
+				}
+				wl.pager.accept(result.index, result.token, result.next, result.workflows)
+			}
+			wl.applyLoadedWindow()
+			if countErr == nil {
+				wl.applyServerCounts(counts)
+			}
+			wl.refreshLivePreview()
+			wl.maybeFetchPages()
+		})
+	}()
+}
+
+func (wl *WorkflowList) maybeFetchPages() {
+	if wl == nil || wl.preloaded || wl.pageBusy || wl.liveBusy {
+		return
+	}
+	if !wl.workflowsActive() || wl.app == nil || wl.app.Provider() == nil {
+		return
+	}
+	row := 0
+	if wl.table != nil {
+		row = wl.table.SelectedRow()
+		if row < 0 {
+			row = 0
+		}
+	}
+	budget := wl.visibleWorkflowBudget()
+	n := len(wl.workflows)
+	if wl.pager.hasNext() && (n == 0 || row+budget >= n-1) {
+		wl.fetchAdjacentPage(false)
+		return
+	}
+	if wl.pager.hasPrev() && row < budget {
+		wl.fetchAdjacentPage(true)
+	}
+}
+
+func (wl *WorkflowList) fetchAdjacentPage(prev bool) {
+	if wl.pageBusy {
+		return
+	}
+	var pageIndex int
+	var token string
+	if prev {
+		t, ok := wl.pager.prevToken()
+		if !ok {
+			return
+		}
+		token = t
+		pageIndex = wl.pager.firstPage - 1
+	} else {
+		if !wl.pager.hasNext() {
+			return
+		}
+		token = wl.pager.nextToken()
+		pageIndex = wl.pager.nextPageIndex()
+	}
+	provider := wl.app.Provider()
+	if provider == nil {
+		return
+	}
+	query := wl.pager.query
+	gen := wl.pageGen
+	wl.pageBusy = true
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		workflows, next, err := provider.ListWorkflows(ctx, wl.namespace, temporal.ListOptions{
+			PageSize:  workflowPageSize,
+			PageToken: token,
+			Query:     query,
+		})
+		wl.app.JigApp().QueueUpdateDraw(func() {
+			if gen != wl.pageGen {
+				return
+			}
+			wl.pageBusy = false
+			if err != nil {
+				return
+			}
+			wl.pager.accept(pageIndex, token, next, workflows)
+			wl.applyLoadedWindow()
+			wl.maybeFetchPages()
+		})
+	}()
+}
+
+func (wl *WorkflowList) applyLoadedWindow() {
+	wl.allWorkflows = wl.pager.items()
+	wl.applyFilter()
+}
+
+func (wl *WorkflowList) applyServerCounts(counts temporal.WorkflowCounts) {
+	wl.serverStats = WorkflowStats{
+		Running:   counts.Running,
+		Completed: counts.Completed,
+		Failed:    counts.Failed,
+	}
+	wl.serverStatsOK = true
+	wl.updateStats()
+}
+
+func (wl *WorkflowList) visibleWorkflowBudget() int {
+	if wl.table == nil {
+		return 8
+	}
+	_, _, _, h := wl.table.GetInnerRect()
+	if h < 8 {
+		return 8
+	}
+	return h
+}
+
 func (wl *WorkflowList) loadMockData() {
+	wl.serverStatsOK = false
+	wl.pager = workflowPager{}
 	now := time.Now()
 	wl.allWorkflows = []temporal.Workflow{
 		{
@@ -253,26 +469,29 @@ func (wl *WorkflowList) populateTable() {
 	wl.schedulePreview(wl.workflows[idx], false)
 }
 
-func (wl *WorkflowList) updateStats() {
-	var running, completed, failed int
+func (wl *WorkflowList) displayedStats() WorkflowStats {
+	if wl.serverStatsOK {
+		return wl.serverStats
+	}
+	var stats WorkflowStats
 	for _, w := range wl.workflows {
 		switch w.Status {
 		case "Running":
-			running++
+			stats.Running++
 		case "Completed":
-			completed++
+			stats.Completed++
 		case "Failed":
-			failed++
+			stats.Failed++
 		}
 	}
+	return stats
+}
+
+func (wl *WorkflowList) updateStats() {
 	if wl.app == nil || wl.app.statusBar == nil {
 		return
 	}
-	wl.app.SetWorkflowStats(WorkflowStats{
-		Running:   running,
-		Completed: completed,
-		Failed:    failed,
-	})
+	wl.app.SetWorkflowStats(wl.displayedStats())
 }
 
 func (wl *WorkflowList) showError(err error) {

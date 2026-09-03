@@ -26,6 +26,7 @@ func TestClientCallsWithoutConnectionReturnErrors(t *testing.T) {
 		"DeprecateNamespace":         func() error { return c.DeprecateNamespace(ctx, "n") },
 		"DeleteNamespace":            func() error { return c.DeleteNamespace(ctx, "n") },
 		"ListWorkflows":              func() error { _, _, err := c.ListWorkflows(ctx, "n", ListOptions{}); return err },
+		"CountWorkflows":             func() error { _, err := c.CountWorkflows(ctx, "n", ""); return err },
 		"GetWorkflow":                func() error { _, err := c.GetWorkflow(ctx, "n", "w", "r"); return err },
 		"GetWorkflowHistory":         func() error { _, err := c.GetWorkflowHistory(ctx, "n", "w", "r"); return err },
 		"GetEnhancedWorkflowHistory": func() error { _, err := c.GetEnhancedWorkflowHistory(ctx, "n", "w", "r"); return err },
