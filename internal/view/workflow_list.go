@@ -63,6 +63,8 @@ type WorkflowList struct {
 	workflowDepths        []int
 	focusPane             workflowFocusPane
 	previewKind           previewKind
+	activityDetailKind    activityDetailKind
+	activityDetailTabs    *components.Tabs
 	hierarchyView         *WorkflowGraphView
 	hierarchyGraphPanel   *components.Panel
 	previewEvents         []temporal.EnhancedHistoryEvent

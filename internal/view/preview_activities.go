@@ -20,6 +20,16 @@ const (
 
 var previewTabOrder = []previewKind{previewDetails, previewActivities, previewEvents, previewHierarchy}
 
+type activityDetailKind int
+
+const (
+	activityDetailDetails activityDetailKind = iota
+	activityDetailInput
+	activityDetailOutput
+)
+
+var activityDetailTabOrder = []activityDetailKind{activityDetailDetails, activityDetailInput, activityDetailOutput}
+
 type previewActivity struct {
 	ScheduledID int64
 	ActivityID  string
@@ -165,6 +175,53 @@ func (a previewActivity) duration() string {
 	return ""
 }
 
+func (k activityDetailKind) title() string {
+	switch k {
+	case activityDetailInput:
+		return "Input"
+	case activityDetailOutput:
+		return "Output"
+	default:
+		return "Details"
+	}
+}
+
+func (k activityDetailKind) icon() string {
+	switch k {
+	case activityDetailInput:
+		return theme.IconArrowRight
+	case activityDetailOutput:
+		return theme.IconArrowLeft
+	default:
+		return theme.IconInfo
+	}
+}
+
+func formatActivityDetailPage(a previewActivity, kind activityDetailKind) string {
+	switch kind {
+	case activityDetailInput:
+		return formatActivityInput(a)
+	case activityDetailOutput:
+		return formatActivityOutput(a)
+	default:
+		return formatSelectedActivityDetail(a)
+	}
+}
+
+func formatActivityInput(a previewActivity) string {
+	return formatIOContent("Input", a.Input)
+}
+
+func formatActivityOutput(a previewActivity) string {
+	if a.Result != "" {
+		return formatIOContent("Output", a.Result)
+	}
+	if a.Failure != "" {
+		return fmt.Sprintf("[%s]%s[-]", theme.TagError(), a.Failure)
+	}
+	return formatIOContent("Output", "")
+}
+
 func formatSelectedActivityDetail(a previewActivity) string {
 	status := temporal.GetActivityStatus(a.Status)
 	name := a.Type
@@ -190,15 +247,6 @@ func formatSelectedActivityDetail(a previewActivity) string {
 	}
 	if a.Identity != "" {
 		extra.WriteString(fmt.Sprintf("\n[%s::b]Identity[-:-:-]     [%s]%s[-]", theme.TagFgDim(), theme.TagFg(), a.Identity))
-	}
-	if a.Input != "" {
-		extra.WriteString(fmt.Sprintf("\n\n[%s::b]Input[-:-:-]\n%s", theme.TagFgDim(), formatIOContent("Input", a.Input)))
-	}
-	if a.Result != "" {
-		extra.WriteString(fmt.Sprintf("\n\n[%s::b]Result[-:-:-]\n%s", theme.TagFgDim(), formatIOContent("Result", a.Result)))
-	}
-	if a.Failure != "" {
-		extra.WriteString(fmt.Sprintf("\n\n[%s::b]Failure[-:-:-]     [%s]%s[-]", theme.TagFgDim(), theme.TagError(), a.Failure))
 	}
 
 	return fmt.Sprintf(`

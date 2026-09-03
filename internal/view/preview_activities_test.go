@@ -1,6 +1,7 @@
 package view
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -33,6 +34,96 @@ func TestPreviewActivitiesFromEvents(t *testing.T) {
 	}
 	if got[1].Type != "Charge" || got[1].Status != "Failed" || got[1].Failure != "timeout" || got[1].Attempt != 2 {
 		t.Fatalf("second activity: %+v", got[1])
+	}
+}
+
+func TestFormatSelectedActivityDetailOmitsPayloads(t *testing.T) {
+	a := previewActivity{
+		Type:        "ValidateOrder",
+		ActivityID:  "1",
+		Status:      "Completed",
+		StartTime:   time.Date(2026, 8, 23, 12, 0, 0, 0, time.UTC),
+		TaskQueue:   "orders",
+		Identity:    "worker-1",
+		Input:       `{"id":1}`,
+		Result:      `{"ok":true}`,
+		Failure:     "should not appear",
+		ScheduledID: 5,
+	}
+	got := formatSelectedActivityDetail(a)
+	for _, label := range []string{"Input", "Result", "Failure", `{"id":1}`, `{"ok":true}`, "should not appear"} {
+		if strings.Contains(got, label) {
+			t.Fatalf("details should omit %q:\n%s", label, got)
+		}
+	}
+	if !strings.Contains(got, "ValidateOrder") || !strings.Contains(got, "orders") {
+		t.Fatalf("details should keep metadata:\n%s", got)
+	}
+
+	if in := formatActivityInput(a); !strings.Contains(in, `"id"`) {
+		t.Fatalf("input tab: %s", in)
+	}
+	if out := formatActivityOutput(a); !strings.Contains(out, `"ok"`) {
+		t.Fatalf("output tab: %s", out)
+	}
+	failed := a
+	failed.Result = ""
+	if out := formatActivityOutput(failed); !strings.Contains(out, "should not appear") {
+		t.Fatalf("failed output should show failure: %s", out)
+	}
+}
+
+func TestActivityDetailTabsDefault(t *testing.T) {
+	if activityDetailDetails.title() != "Details" || activityDetailInput.title() != "Input" || activityDetailOutput.title() != "Output" {
+		t.Fatal("unexpected activity detail tab titles")
+	}
+	wl := NewWorkflowList(&App{}, "default")
+	if wl.activityDetailTabs == nil {
+		t.Fatal("expected activity detail tabs")
+	}
+	if wl.activityDetailTabs.GetActive() != int(activityDetailDetails) {
+		t.Fatalf("default tab: %d", wl.activityDetailTabs.GetActive())
+	}
+}
+
+func TestActivityDetailTabKeys(t *testing.T) {
+	wl := NewWorkflowList(&App{}, "default")
+	wl.togglePreviewMode()
+	wl.previewKind = previewActivities
+	wl.focusPane = focusEventDetail
+	wl.previewActivities = []previewActivity{{
+		Type:   "ValidateOrder",
+		Status: "Completed",
+		Input:  `{"id":1}`,
+		Result: `{"ok":true}`,
+	}}
+
+	if ev := wl.handlePreviewKeys(tcell.NewEventKey(tcell.KeyRune, ']', 0)); ev != nil {
+		t.Fatal("] should switch activity detail tabs")
+	}
+	if wl.activityDetailKind != activityDetailInput {
+		t.Fatalf("] should go to input, got %d", wl.activityDetailKind)
+	}
+	if wl.previewKind != previewActivities {
+		t.Fatal("] from activity details should not change the preview tab")
+	}
+	if ev := wl.handlePreviewKeys(tcell.NewEventKey(tcell.KeyRune, '3', 0)); ev != nil {
+		t.Fatal("3 should select output")
+	}
+	if wl.activityDetailKind != activityDetailOutput {
+		t.Fatalf("3 should select output, got %d", wl.activityDetailKind)
+	}
+	if ev := wl.handlePreviewKeys(tcell.NewEventKey(tcell.KeyRune, '1', 0)); ev != nil {
+		t.Fatal("1 should select details")
+	}
+	if wl.activityDetailKind != activityDetailDetails {
+		t.Fatalf("1 should select details, got %d", wl.activityDetailKind)
+	}
+	if ev := wl.handlePreviewKeys(tcell.NewEventKey(tcell.KeyRune, '[', 0)); ev != nil {
+		t.Fatal("[ should cycle activity detail tabs")
+	}
+	if wl.activityDetailKind != activityDetailOutput {
+		t.Fatalf("[ should wrap to output, got %d", wl.activityDetailKind)
 	}
 }
 

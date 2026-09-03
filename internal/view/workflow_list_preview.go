@@ -410,6 +410,9 @@ func (wl *WorkflowList) handlePreviewTabKey(event *tcell.EventKey) bool {
 	if wl.focusPane == focusWorkflows || wl.focusPane == focusPollers {
 		return false
 	}
+	if wl.focusPane == focusEventDetail && wl.previewKind == previewActivities {
+		return wl.handleActivityDetailTabKey(event)
+	}
 	switch event.Rune() {
 	case '[':
 		wl.cyclePreviewKind(-1)
@@ -431,6 +434,65 @@ func (wl *WorkflowList) handlePreviewTabKey(event *tcell.EventKey) bool {
 		return true
 	}
 	return false
+}
+
+func (wl *WorkflowList) handleActivityDetailTabKey(event *tcell.EventKey) bool {
+	if event == nil {
+		return false
+	}
+	switch event.Rune() {
+	case '[':
+		wl.cycleActivityDetailKind(-1)
+		return true
+	case ']':
+		wl.cycleActivityDetailKind(1)
+		return true
+	case '1':
+		wl.setActivityDetailKind(activityDetailDetails)
+		return true
+	case '2':
+		wl.setActivityDetailKind(activityDetailInput)
+		return true
+	case '3':
+		wl.setActivityDetailKind(activityDetailOutput)
+		return true
+	}
+	return false
+}
+
+func (wl *WorkflowList) cycleActivityDetailKind(delta int) {
+	n := len(activityDetailTabOrder)
+	next := (int(wl.activityDetailKind) + delta) % n
+	if next < 0 {
+		next += n
+	}
+	wl.setActivityDetailKind(activityDetailKind(next))
+}
+
+func (wl *WorkflowList) setActivityDetailKind(kind activityDetailKind) {
+	wl.activityDetailKind = kind
+	if wl.activityDetailTabs != nil && wl.activityDetailTabs.GetActive() != int(kind) {
+		wl.activityDetailTabs.SetActive(int(kind))
+		return
+	}
+	wl.renderSelectedActivityDetail()
+}
+
+func (wl *WorkflowList) renderSelectedActivityDetail() {
+	if wl.eventDetail == nil {
+		return
+	}
+	if len(wl.previewActivities) == 0 {
+		wl.eventDetail.SetText(fmt.Sprintf("[%s]No activities[-]", theme.TagFgDim()))
+		wl.eventDetail.ScrollToBeginning()
+		return
+	}
+	a, ok := wl.selectedPreviewActivity()
+	if !ok {
+		a = wl.previewActivities[0]
+	}
+	wl.eventDetail.SetText(formatActivityDetailPage(a, wl.activityDetailKind))
+	wl.eventDetail.ScrollToBeginning()
 }
 
 func (wl *WorkflowList) setPreviewKind(kind previewKind) {
@@ -526,8 +588,30 @@ func (wl *WorkflowList) setupPreview() {
 	wl.eventsPanel = components.NewPanel().SetTitle(fmt.Sprintf("%s Activities", theme.IconActivity))
 	wl.eventsPanel.SetContent(wl.eventTableScroll)
 
+	wl.activityDetailTabs = components.NewTabs().
+		SetShowIcons(true).
+		SetShowBadges(false).
+		AddTabWithIcon(activityDetailDetails.title(), activityDetailDetails.icon(), wl.eventDetail).
+		AddTabWithIcon(activityDetailInput.title(), activityDetailInput.icon(), wl.eventDetail).
+		AddTabWithIcon(activityDetailOutput.title(), activityDetailOutput.icon(), wl.eventDetail).
+		SetOnChange(func(index int, name string) {
+			if index >= 0 && index < len(activityDetailTabOrder) {
+				wl.setActivityDetailKind(activityDetailTabOrder[index])
+			}
+		}).
+		SetActive(int(activityDetailDetails))
+	wl.activityDetailTabs.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		if handled := wl.handlePreviewKeys(event); handled == nil {
+			return nil
+		}
+		if isJigTabsNavKey(event) {
+			return nil
+		}
+		return event
+	})
+
 	wl.eventDetailPanel = components.NewPanel().SetTitle(fmt.Sprintf("%s Activity Details", theme.IconActivity))
-	wl.eventDetailPanel.SetContent(wl.eventDetail)
+	wl.eventDetailPanel.SetContent(wl.activityDetailTabs)
 
 	wl.workflowDetail = components.NewTable()
 	wl.workflowDetail.SetBorder(false)
@@ -667,8 +751,7 @@ func (wl *WorkflowList) updatePreviewSelection(row int) {
 			if !wl.timelineSyncing {
 				wl.highlightedActivityID = wl.previewActivities[idx].ScheduledID
 			}
-			wl.eventDetail.SetText(formatSelectedActivityDetail(wl.previewActivities[idx]))
-			wl.eventDetail.ScrollToBeginning()
+			wl.renderSelectedActivityDetail()
 			if !wl.timelineSyncing {
 				wl.syncTimelineFromActivity()
 			}
@@ -855,6 +938,8 @@ func (wl *WorkflowList) syncFocusFromPrimitives() {
 	switch {
 	case wl.workflowDetail != nil && wl.workflowDetail.HasFocus():
 		pane = focusEventDetail
+	case wl.activityDetailTabs != nil && wl.activityDetailTabs.HasFocus():
+		pane = focusEventDetail
 	case wl.eventDetail != nil && wl.eventDetail.HasFocus():
 		pane = focusEventDetail
 	case wl.hierarchyView != nil && wl.hierarchyView.graph != nil && wl.hierarchyView.graph.HasFocus():
@@ -937,9 +1022,15 @@ func (wl *WorkflowList) syncPreviewChrome() {
 	}
 	if wl.previewKind == previewActivities {
 		wl.eventDetailPanel.SetTitle(fmt.Sprintf("%s Activity Details", theme.IconActivity))
+		if wl.activityDetailTabs != nil {
+			wl.eventDetailPanel.SetContent(wl.activityDetailTabs)
+		}
 		return
 	}
 	wl.eventDetailPanel.SetTitle(fmt.Sprintf("%s Event Details", theme.IconEvent))
+	if wl.eventDetail != nil {
+		wl.eventDetailPanel.SetContent(wl.eventDetail)
+	}
 }
 
 func (wl *WorkflowList) clearPreview() {
@@ -1189,7 +1280,7 @@ func (wl *WorkflowList) renderPreviewActivities(w temporal.Workflow) {
 		wl.highlightedActivityID = wl.previewActivities[0].ScheduledID
 	}
 	wl.eventTable.SelectRow(idx)
-	wl.eventDetail.SetText(formatSelectedActivityDetail(wl.previewActivities[idx]))
+	wl.renderSelectedActivityDetail()
 }
 
 func mockPreviewEvents(w temporal.Workflow) []temporal.EnhancedHistoryEvent {

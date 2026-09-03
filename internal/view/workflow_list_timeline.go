@@ -293,10 +293,7 @@ func (wl *WorkflowList) onTimelineLaneChange(lane *TimelineLane) {
 			wl.eventTable.SelectRow(i)
 			wl.timelineSyncing = false
 		}
-		if wl.eventDetail != nil {
-			wl.eventDetail.SetText(formatSelectedActivityDetail(a))
-			wl.eventDetail.ScrollToBeginning()
-		}
+		wl.renderSelectedActivityDetail()
 		return
 	}
 }
