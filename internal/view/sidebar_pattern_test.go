@@ -153,6 +153,7 @@ func TestEveryScrollablePaneTakesAHorizontalWheel(t *testing.T) {
 	panes := map[string]*components.Table{
 		"workflows":       wl.table,
 		"workflow detail": wl.workflowDetail,
+		"activity detail": wl.activityDetail,
 		"activities":      wl.eventTable,
 		"task queues":     wl.taskQueues.queueTable,
 		"pollers":         wl.taskQueues.pollerTable,

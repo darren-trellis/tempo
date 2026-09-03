@@ -117,6 +117,84 @@ func (wl *WorkflowList) activatePreviewDetailRow() {
 	}
 }
 
+func (wl *WorkflowList) handleActivityDetailKeys(event *tcell.EventKey) *tcell.EventKey {
+	if handleTableCharScroll(wl.activityDetailScroll, wl.activityDetail, event) {
+		return nil
+	}
+	if event.Rune() == 'y' {
+		wl.yankActivityDetailRow()
+		return nil
+	}
+	return wl.handlePreviewKeys(event)
+}
+
+func (wl *WorkflowList) selectedActivityDetailRow() (workflowInfoRow, bool) {
+	if wl == nil || wl.activityDetail == nil {
+		return workflowInfoRow{}, false
+	}
+	row := wl.activityDetail.SelectedRow()
+	if row < 0 || row >= len(wl.activityDetailRows) {
+		return workflowInfoRow{}, false
+	}
+	return wl.activityDetailRows[row], true
+}
+
+func (wl *WorkflowList) yankActivityDetailRow() {
+	row, ok := wl.selectedActivityDetailRow()
+	if !ok || row.Value == "" {
+		return
+	}
+	if wl.app == nil {
+		return
+	}
+	if err := copyToClipboard(row.Value); err != nil {
+		wl.app.ToastError("Failed to copy: " + err.Error())
+		return
+	}
+	wl.app.ToastSuccess("Copied " + row.Label)
+}
+
+func (wl *WorkflowList) setActivityDetailStatus(message string) {
+	wl.activityDetailRows = nil
+	if wl.activityDetail == nil {
+		return
+	}
+	wl.activityDetail.ClearRows()
+	if message == "" {
+		return
+	}
+	wl.activityDetail.AddStyledRow([]components.TableCell{
+		{Text: message, Color: theme.FgDim(), Selectable: true},
+	})
+	wl.activityDetail.SelectRow(0)
+}
+
+func (wl *WorkflowList) renderActivityDetailRows(a previewActivity) {
+	selectedKey := ""
+	if row, ok := wl.selectedActivityDetailRow(); ok {
+		selectedKey = row.Key
+	}
+	wl.activityDetailRows = activityInfoRows(a)
+	if wl.activityDetail == nil {
+		return
+	}
+	wl.activityDetail.ClearRows()
+	for _, row := range wl.activityDetailRows {
+		wl.activityDetail.AddStyledRow([]components.TableCell{
+			{Text: row.Label, Color: theme.FgDim(), Selectable: true},
+			{Text: row.displayText(), Color: row.Color, Selectable: true},
+		})
+	}
+	if idx := workflowInfoRowIndex(wl.activityDetailRows, selectedKey); idx >= 0 {
+		wl.activityDetail.SelectRow(idx)
+	} else if len(wl.activityDetailRows) > 0 {
+		wl.activityDetail.SelectRow(0)
+	}
+	if wl.activityDetailScroll != nil {
+		wl.activityDetailScroll.clamp()
+	}
+}
+
 func (wl *WorkflowList) selectWorkflowByID(id string) bool {
 	if id == "" || wl.table == nil {
 		return false

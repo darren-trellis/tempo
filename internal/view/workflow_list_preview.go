@@ -476,23 +476,52 @@ func (wl *WorkflowList) setActivityDetailKind(kind activityDetailKind) {
 		return
 	}
 	wl.renderSelectedActivityDetail()
+	if wl.focusPane == focusEventDetail {
+		wl.setFocusPane(focusEventDetail)
+	}
+}
+
+func (wl *WorkflowList) activityDetailTableFocused() bool {
+	return wl != nil && wl.previewKind == previewActivities && wl.activityDetailKind == activityDetailDetails
+}
+
+func (wl *WorkflowList) activityDetailFocusPrimitive() tview.Primitive {
+	if wl.activityDetailTableFocused() && wl.activityDetail != nil {
+		return wl.activityDetail
+	}
+	if wl.eventDetail != nil {
+		return wl.eventDetail
+	}
+	return nil
 }
 
 func (wl *WorkflowList) renderSelectedActivityDetail() {
-	if wl.eventDetail == nil {
-		return
-	}
 	if len(wl.previewActivities) == 0 {
-		wl.eventDetail.SetText(fmt.Sprintf("[%s]No activities[-]", theme.TagFgDim()))
-		wl.eventDetail.ScrollToBeginning()
+		wl.setActivityDetailStatus("No activities")
+		if wl.eventDetail != nil {
+			wl.eventDetail.SetText(fmt.Sprintf("[%s]No activities[-]", theme.TagFgDim()))
+			wl.eventDetail.ScrollToBeginning()
+		}
 		return
 	}
 	a, ok := wl.selectedPreviewActivity()
 	if !ok {
 		a = wl.previewActivities[0]
 	}
-	wl.eventDetail.SetText(formatActivityDetailPage(a, wl.activityDetailKind))
-	wl.eventDetail.ScrollToBeginning()
+	switch wl.activityDetailKind {
+	case activityDetailInput:
+		if wl.eventDetail != nil {
+			wl.eventDetail.SetText(formatActivityInput(a))
+			wl.eventDetail.ScrollToBeginning()
+		}
+	case activityDetailOutput:
+		if wl.eventDetail != nil {
+			wl.eventDetail.SetText(formatActivityOutput(a))
+			wl.eventDetail.ScrollToBeginning()
+		}
+	default:
+		wl.renderActivityDetailRows(a)
+	}
 }
 
 func (wl *WorkflowList) setPreviewKind(kind previewKind) {
@@ -588,10 +617,27 @@ func (wl *WorkflowList) setupPreview() {
 	wl.eventsPanel = components.NewPanel().SetTitle(fmt.Sprintf("%s Activities", theme.IconActivity))
 	wl.eventsPanel.SetContent(wl.eventTableScroll)
 
+	wl.activityDetail = components.NewTable()
+	wl.activityDetail.SetBorder(false)
+	wl.activityDetail.SetBackgroundColor(theme.Bg())
+	wl.activityDetail.SetEvaluateAllRows(true)
+	wl.activityDetailScroll = newCharScrollView(wl.activityDetail, func() int {
+		return workflowInfoContentWidth(wl.activityDetailRows)
+	})
+	bindTableCharScroll(wl.activityDetail, wl.activityDetailScroll, func() int {
+		return mouseScrollStepFromApp(wl.app)
+	})
+	wl.activityDetail.SetSelectionChangedFunc(func(row, col int) {
+		if wl.app != nil && wl.app.JigApp() != nil && wl.app.JigApp().Menu() != nil {
+			wl.app.JigApp().Menu().SetHints(wl.Hints())
+		}
+	})
+	wl.activityDetail.SetInputCapture(wl.handleActivityDetailKeys)
+
 	wl.activityDetailTabs = components.NewTabs().
 		SetShowIcons(true).
 		SetShowBadges(false).
-		AddTabWithIcon(activityDetailDetails.title(), activityDetailDetails.icon(), wl.eventDetail).
+		AddTabWithIcon(activityDetailDetails.title(), activityDetailDetails.icon(), wl.activityDetailScroll).
 		AddTabWithIcon(activityDetailInput.title(), activityDetailInput.icon(), wl.eventDetail).
 		AddTabWithIcon(activityDetailOutput.title(), activityDetailOutput.icon(), wl.eventDetail).
 		SetOnChange(func(index int, name string) {
@@ -853,6 +899,8 @@ func (wl *WorkflowList) setFocusPane(pane workflowFocusPane) {
 			wl.app.JigApp().SetFocus(wl.workflowDetail)
 		} else if wl.previewKind == previewHierarchy && wl.hierarchyView != nil && wl.hierarchyView.graph != nil {
 			wl.app.JigApp().SetFocus(wl.hierarchyView.graph)
+		} else if p := wl.activityDetailFocusPrimitive(); p != nil {
+			wl.app.JigApp().SetFocus(p)
 		} else {
 			wl.app.JigApp().SetFocus(wl.eventDetail)
 		}
@@ -931,12 +979,17 @@ func (wl *WorkflowList) applyFocusStyles() {
 	if wl.workflowDetail != nil {
 		wl.workflowDetail.SetSelectable(wl.previewKind == previewDetails && wl.focusPane == focusEventDetail, false)
 	}
+	if wl.activityDetail != nil {
+		wl.activityDetail.SetSelectable(wl.activityDetailTableFocused() && wl.focusPane == focusEventDetail, false)
+	}
 }
 
 func (wl *WorkflowList) syncFocusFromPrimitives() {
 	var pane workflowFocusPane
 	switch {
 	case wl.workflowDetail != nil && wl.workflowDetail.HasFocus():
+		pane = focusEventDetail
+	case wl.activityDetail != nil && wl.activityDetail.HasFocus():
 		pane = focusEventDetail
 	case wl.activityDetailTabs != nil && wl.activityDetailTabs.HasFocus():
 		pane = focusEventDetail

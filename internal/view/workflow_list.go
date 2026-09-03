@@ -65,6 +65,9 @@ type WorkflowList struct {
 	previewKind           previewKind
 	activityDetailKind    activityDetailKind
 	activityDetailTabs    *components.Tabs
+	activityDetail        *components.Table
+	activityDetailScroll  *charScrollView
+	activityDetailRows    []workflowInfoRow
 	hierarchyView         *WorkflowGraphView
 	hierarchyGraphPanel   *components.Panel
 	previewEvents         []temporal.EnhancedHistoryEvent
@@ -206,6 +209,9 @@ func (wl *WorkflowList) RefreshTheme() {
 	}
 	if wl.workflowDetail != nil {
 		wl.workflowDetail.SetBackgroundColor(bg)
+	}
+	if wl.activityDetail != nil {
+		wl.activityDetail.SetBackgroundColor(bg)
 	}
 	if wl.previewPanel != nil {
 		wl.previewPanel.SetBackgroundColor(bg)
@@ -615,7 +621,7 @@ func (wl *WorkflowList) previewListHints() []KeyHint {
 }
 
 func (wl *WorkflowList) previewSideHints() []KeyHint {
-	if wl.previewKind == previewDetails {
+	if wl.previewKind == previewDetails || wl.activityDetailTableFocused() {
 		hints := []KeyHint{{Key: "y", Description: "Yank"}}
 		return append(hints,
 			KeyHint{Key: "z", Description: "Timeline"},
@@ -767,6 +773,10 @@ func (wl *WorkflowList) Focus(delegate func(p tview.Primitive)) {
 			delegate(wl.hierarchyView.graph)
 			return
 		}
+		if p := wl.activityDetailFocusPrimitive(); p != nil {
+			delegate(p)
+			return
+		}
 		delegate(wl.eventDetail)
 	case focusTimeline:
 		if wl.timelineView != nil {
@@ -792,6 +802,9 @@ func (wl *WorkflowList) Draw(screen tcell.Screen) {
 	if wl.eventDetail != nil {
 		wl.eventDetail.SetBackgroundColor(bg)
 		wl.eventDetail.SetTextColor(theme.Fg())
+	}
+	if wl.activityDetail != nil {
+		wl.activityDetail.SetBackgroundColor(bg)
 	}
 	if wl.rightFlex != nil {
 		wl.rightFlex.SetBackgroundColor(bg)

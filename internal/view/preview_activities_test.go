@@ -37,12 +37,14 @@ func TestPreviewActivitiesFromEvents(t *testing.T) {
 	}
 }
 
-func TestFormatSelectedActivityDetailOmitsPayloads(t *testing.T) {
+func TestActivityInfoRowsOmitsPayloads(t *testing.T) {
+	end := time.Date(2026, 8, 23, 12, 0, 2, 0, time.UTC)
 	a := previewActivity{
 		Type:        "ValidateOrder",
 		ActivityID:  "1",
 		Status:      "Completed",
 		StartTime:   time.Date(2026, 8, 23, 12, 0, 0, 0, time.UTC),
+		EndTime:     &end,
 		TaskQueue:   "orders",
 		Identity:    "worker-1",
 		Input:       `{"id":1}`,
@@ -50,16 +52,15 @@ func TestFormatSelectedActivityDetailOmitsPayloads(t *testing.T) {
 		Failure:     "should not appear",
 		ScheduledID: 5,
 	}
-	got := formatSelectedActivityDetail(a)
-	for _, label := range []string{"Input", "Result", "Failure", `{"id":1}`, `{"ok":true}`, "should not appear"} {
-		if strings.Contains(got, label) {
-			t.Fatalf("details should omit %q:\n%s", label, got)
+	rows := activityInfoRows(a)
+	if workflowInfoRowIndex(rows, activityInfoName) < 0 || workflowInfoRowIndex(rows, activityInfoTaskQueue) < 0 {
+		t.Fatalf("details should keep metadata: %+v", rows)
+	}
+	for _, key := range []string{"Input", "Result", "Failure"} {
+		if workflowInfoRowIndex(rows, key) >= 0 {
+			t.Fatalf("details should omit %q: %+v", key, rows)
 		}
 	}
-	if !strings.Contains(got, "ValidateOrder") || !strings.Contains(got, "orders") {
-		t.Fatalf("details should keep metadata:\n%s", got)
-	}
-
 	if in := formatActivityInput(a); !strings.Contains(in, `"id"`) {
 		t.Fatalf("input tab: %s", in)
 	}
@@ -70,6 +71,45 @@ func TestFormatSelectedActivityDetailOmitsPayloads(t *testing.T) {
 	failed.Result = ""
 	if out := formatActivityOutput(failed); !strings.Contains(out, "should not appear") {
 		t.Fatalf("failed output should show failure: %s", out)
+	}
+}
+
+func TestActivityDetailRendersTable(t *testing.T) {
+	wl := NewWorkflowList(&App{}, "default")
+	wl.togglePreviewMode()
+	end := time.Date(2026, 8, 23, 12, 0, 2, 0, time.UTC)
+	wl.previewActivities = []previewActivity{{
+		Type:      "ValidateOrder",
+		Status:    "Completed",
+		StartTime: time.Date(2026, 8, 23, 12, 0, 0, 0, time.UTC),
+		EndTime:   &end,
+		TaskQueue: "orders",
+		Input:     `{"id":1}`,
+		Result:    `{"ok":true}`,
+	}}
+	wl.renderSelectedActivityDetail()
+	if len(wl.activityDetailRows) == 0 {
+		t.Fatal("details tab should populate the table")
+	}
+	if workflowInfoRowIndex(wl.activityDetailRows, activityInfoName) < 0 {
+		t.Fatalf("missing activity row: %+v", wl.activityDetailRows)
+	}
+	if workflowInfoRowIndex(wl.activityDetailRows, "Input") >= 0 {
+		t.Fatal("table should not include payloads")
+	}
+
+	wl.focusPane = focusEventDetail
+	if desc := hintDescription(wl.Hints(), "y"); desc != "Yank" {
+		t.Fatalf("details table should show yank, got %q", desc)
+	}
+	if ev := wl.handleActivityDetailKeys(tcell.NewEventKey(tcell.KeyRune, ']', 0)); ev != nil {
+		t.Fatal("] should still switch activity detail tabs from the table")
+	}
+	if wl.activityDetailKind != activityDetailInput {
+		t.Fatalf("] should go to input, got %d", wl.activityDetailKind)
+	}
+	if desc := hintDescription(wl.Hints(), "y"); desc != "" {
+		t.Fatalf("input tab should not show yank, got %q", desc)
 	}
 }
 

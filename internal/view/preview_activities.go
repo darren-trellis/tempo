@@ -197,17 +197,6 @@ func (k activityDetailKind) icon() string {
 	}
 }
 
-func formatActivityDetailPage(a previewActivity, kind activityDetailKind) string {
-	switch kind {
-	case activityDetailInput:
-		return formatActivityInput(a)
-	case activityDetailOutput:
-		return formatActivityOutput(a)
-	default:
-		return formatSelectedActivityDetail(a)
-	}
-}
-
 func formatActivityInput(a previewActivity) string {
 	return formatIOContent("Input", a.Input)
 }
@@ -222,7 +211,19 @@ func formatActivityOutput(a previewActivity) string {
 	return formatIOContent("Output", "")
 }
 
-func formatSelectedActivityDetail(a previewActivity) string {
+const (
+	activityInfoName      = "Activity"
+	activityInfoID        = "ID"
+	activityInfoStatus    = "Status"
+	activityInfoStarted   = "Started"
+	activityInfoEnded     = "Ended"
+	activityInfoDuration  = "Duration"
+	activityInfoAttempt   = "Attempt"
+	activityInfoTaskQueue = "Task Queue"
+	activityInfoIdentity  = "Identity"
+)
+
+func activityInfoRows(a previewActivity) []workflowInfoRow {
 	status := temporal.GetActivityStatus(a.Status)
 	name := a.Type
 	if name == "" {
@@ -241,29 +242,27 @@ func formatSelectedActivityDetail(a previewActivity) string {
 		end = a.EndTime.Format("2006-01-02 15:04:05.000")
 	}
 
-	var extra strings.Builder
+	rows := []workflowInfoRow{
+		{Key: activityInfoName, Label: "Activity", Value: name, Color: theme.Fg(), ColorTag: theme.TagFg()},
+		{Key: activityInfoID, Label: "ID", Value: activityID, Color: theme.Fg(), ColorTag: theme.TagFg()},
+		{
+			Key:      activityInfoStatus,
+			Label:    "Status",
+			Value:    a.Status,
+			Display:  status.Icon() + " " + a.Status,
+			Color:    status.Color(),
+			ColorTag: status.ColorTag(),
+		},
+		{Key: activityInfoStarted, Label: "Started", Value: a.StartTime.Format("2006-01-02 15:04:05.000"), Color: theme.Fg(), ColorTag: theme.TagFg()},
+		{Key: activityInfoEnded, Label: "Ended", Value: end, Color: theme.Fg(), ColorTag: theme.TagFg()},
+		{Key: activityInfoDuration, Label: "Duration", Value: a.duration(), Color: theme.Fg(), ColorTag: theme.TagFg()},
+		{Key: activityInfoAttempt, Label: "Attempt", Value: attempt, Color: theme.Fg(), ColorTag: theme.TagFg()},
+	}
 	if a.TaskQueue != "" {
-		extra.WriteString(fmt.Sprintf("\n[%s::b]Task Queue[-:-:-]   [%s]%s[-]", theme.TagFgDim(), theme.TagFg(), a.TaskQueue))
+		rows = append(rows, workflowInfoRow{Key: activityInfoTaskQueue, Label: "Task Queue", Value: a.TaskQueue, Color: theme.Fg(), ColorTag: theme.TagFg()})
 	}
 	if a.Identity != "" {
-		extra.WriteString(fmt.Sprintf("\n[%s::b]Identity[-:-:-]     [%s]%s[-]", theme.TagFgDim(), theme.TagFg(), a.Identity))
+		rows = append(rows, workflowInfoRow{Key: activityInfoIdentity, Label: "Identity", Value: a.Identity, Color: theme.Fg(), ColorTag: theme.TagFg()})
 	}
-
-	return fmt.Sprintf(`
-[%s::b]Activity[-:-:-]     [%s]%s[-]
-[%s::b]ID[-:-:-]           [%s]%s[-]
-[%s::b]Status[-:-:-]       [%s]%s %s[-]
-[%s::b]Started[-:-:-]      [%s]%s[-]
-[%s::b]Ended[-:-:-]        [%s]%s[-]
-[%s::b]Duration[-:-:-]     [%s]%s[-]
-[%s::b]Attempt[-:-:-]      [%s]%s[-]%s`,
-		theme.TagFgDim(), theme.TagFg(), name,
-		theme.TagFgDim(), theme.TagFg(), activityID,
-		theme.TagFgDim(), status.ColorTag(), status.Icon(), a.Status,
-		theme.TagFgDim(), theme.TagFg(), a.StartTime.Format("2006-01-02 15:04:05.000"),
-		theme.TagFgDim(), theme.TagFg(), end,
-		theme.TagFgDim(), theme.TagFg(), a.duration(),
-		theme.TagFgDim(), theme.TagFg(), attempt,
-		extra.String(),
-	)
+	return rows
 }
