@@ -58,6 +58,19 @@ func TestWorkflowPagerRefreshInPlace(t *testing.T) {
 	}
 }
 
+func TestMaybeFetchPagesSkipsLocalFilter(t *testing.T) {
+	wl := NewWorkflowList(&App{}, "default")
+	wl.filterText = "pay"
+	wl.pager.reset("")
+	wl.pager.accept(0, "", "next", []temporal.Workflow{{ID: "pay-1"}, {ID: "other"}})
+	wl.allWorkflows = wl.pager.items()
+	wl.workflows = []temporal.Workflow{{ID: "pay-1"}}
+	wl.maybeFetchPages()
+	if wl.pageBusy {
+		t.Fatal("local / filter should not slide the loaded window")
+	}
+}
+
 func TestDisplayedStatsUsesServerCounts(t *testing.T) {
 	wl := NewWorkflowList(&App{}, "default")
 	wl.workflows = []temporal.Workflow{{Status: "Running"}, {Status: "Running"}}

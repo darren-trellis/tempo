@@ -69,6 +69,10 @@ func (wl *WorkflowList) fetchWorkflows(live bool) {
 	}
 
 	if live {
+		if wl.filterText != "" {
+			wl.refreshCounts()
+			return
+		}
 		if wl.pageBusy {
 			wl.liveBusy = false
 			return
@@ -229,27 +233,59 @@ func (wl *WorkflowList) refreshLoadedPages() {
 	}()
 }
 
+func (wl *WorkflowList) refreshCounts() {
+	provider := wl.app.Provider()
+	if provider == nil {
+		wl.liveBusy = false
+		return
+	}
+	query := wl.pager.query
+	if query == "" {
+		resolved, err := resolveTimePlaceholders(wl.visibilityQuery)
+		if err != nil {
+			wl.liveBusy = false
+			return
+		}
+		query = resolved
+	}
+	gen := wl.pageGen
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		counts, err := provider.CountWorkflows(ctx, wl.namespace, query)
+		wl.app.JigApp().QueueUpdateDraw(func() {
+			if gen != wl.pageGen {
+				return
+			}
+			wl.liveBusy = false
+			if err == nil {
+				wl.applyServerCounts(counts)
+			}
+		})
+	}()
+}
+
 func (wl *WorkflowList) maybeFetchPages() {
 	if wl == nil || wl.preloaded || wl.pageBusy || wl.liveBusy {
+		return
+	}
+	if wl.filterText != "" {
 		return
 	}
 	if !wl.workflowsActive() || wl.app == nil || wl.app.Provider() == nil {
 		return
 	}
-	row := 0
-	if wl.table != nil {
-		row = wl.table.SelectedRow()
-		if row < 0 {
-			row = 0
-		}
+	idx := workflowIndexByIdentity(wl.allWorkflows, wl.highlightedWorkflowID, wl.highlightedRunID)
+	if idx < 0 {
+		idx = 0
 	}
 	budget := wl.visibleWorkflowBudget()
-	n := len(wl.workflows)
-	if wl.pager.hasNext() && (n == 0 || row+budget >= n-1) {
+	n := len(wl.allWorkflows)
+	if wl.pager.hasNext() && (n == 0 || idx+budget >= n-1) {
 		wl.fetchAdjacentPage(false)
 		return
 	}
-	if wl.pager.hasPrev() && row < budget {
+	if wl.pager.hasPrev() && idx < budget {
 		wl.fetchAdjacentPage(true)
 	}
 }
