@@ -90,25 +90,26 @@ func TestTimelineBarContentsPlacesGlyphOnce(t *testing.T) {
 	if len(cells) != 12 {
 		t.Fatalf("len: %d", len(cells))
 	}
-	if cells[0] != '●' {
-		t.Fatalf("glyph: %q", string(cells[0]))
+	if cells[0] != timelineBarFill {
+		t.Fatal("bar should have one blank before the glyph")
 	}
-	if cells[1] != timelineBarFill {
+	if cells[1] != '●' {
+		t.Fatalf("glyph: %q", string(cells[1]))
+	}
+	if cells[2] != timelineBarFill {
 		t.Fatal("glyph should be followed by one blank")
 	}
-	if string(cells[2:4]) != "Hi" {
-		t.Fatalf("label: %q", string(cells[2:4]))
+	if string(cells[3:5]) != "Hi" {
+		t.Fatalf("label: %q", string(cells[3:5]))
 	}
-	if cells[4] != timelineBarFill {
+	if cells[5] != timelineBarFill {
 		t.Fatal("spaces in the label should keep the bar fill")
 	}
-	if string(cells[5:10]) != "There" {
-		t.Fatalf("rest of label: %q", string(cells[5:10]))
+	if string(cells[6:11]) != "There" {
+		t.Fatalf("rest of label: %q", string(cells[6:11]))
 	}
-	for i, r := range cells[10:] {
-		if r != timelineBarFill {
-			t.Fatalf("cell %d should be fill, got %q", i+10, string(r))
-		}
+	if cells[11] != timelineBarFill {
+		t.Fatalf("trailing fill: %q", string(cells[11]))
 	}
 	count := 0
 	for _, r := range cells {
@@ -151,12 +152,19 @@ func TestTimelineCursorSkipsSelectedGlyph(t *testing.T) {
 	screen.SetSize(80, 10)
 	tv.Draw(screen)
 
-	ch, _, _, _ := screen.GetContent(0, 2)
+	pad, _, _, _ := screen.GetContent(0, 2)
+	if pad == '│' {
+		t.Fatal("cursor should not cover the selected bar")
+	}
+	if pad != timelineBarFill {
+		t.Fatalf("selected bar should start with padding, got %q", string(pad))
+	}
+	ch, _, _, _ := screen.GetContent(1, 2)
 	if ch == '│' {
 		t.Fatal("cursor should not cover the selected bar glyph")
 	}
 	if ch != timelineTypeGlyph(temporal.GroupActivity) {
-		t.Fatalf("selected bar should start with its type glyph, got %q", string(ch))
+		t.Fatalf("selected bar glyph: %q", string(ch))
 	}
 }
 

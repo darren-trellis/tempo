@@ -289,7 +289,7 @@ func (tv *TimelineView) drawLaneBar(screen tcell.Screen, x, y, width int, lane T
 		screen.SetContent(x+pos, y, ch, nil, barStyle)
 	}
 
-	if barWidth < 3 && label != "" {
+	if barWidth < 4 && label != "" {
 		outside := timelineBarLabelRunes(label, width-barEnd-1)
 		pos := barEnd + 1
 		for _, r := range outside {
@@ -638,12 +638,15 @@ func timelineBarContents(glyph rune, label string, width int) []rune {
 	for i := range cells {
 		cells[i] = timelineBarFill
 	}
-	cells[0] = glyph
-	if width < 3 {
+	if width == 1 {
 		return cells
 	}
-	name := timelineBarLabelRunes(label, width-2)
-	copy(cells[2:], name)
+	cells[1] = glyph
+	if width < 4 {
+		return cells
+	}
+	name := timelineBarLabelRunes(label, width-3)
+	copy(cells[3:], name)
 	return cells
 }
 
