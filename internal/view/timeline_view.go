@@ -231,41 +231,62 @@ func (tv *TimelineView) drawHeader(screen tcell.Screen, x, y, width int) {
 	}
 }
 
-// drawLaneBar draws the timeline bar for a lane.
-func (tv *TimelineView) drawLaneBar(screen tcell.Screen, x, y, width int, lane TimelineLane, timeRange time.Duration, selected bool) {
-	if timeRange <= 0 || width <= 0 {
-		return
-	}
-
-	// Calculate bar position and width
+func (tv *TimelineView) laneBarSpan(lane TimelineLane, width int, timeRange time.Duration) (barStart, barEnd int) {
 	startOffset := lane.StartTime.Sub(tv.startTime)
-	barStart := int(float64(width) * float64(startOffset) / float64(timeRange))
+	barStart = int(float64(width) * float64(startOffset) / float64(timeRange))
 
-	var barEnd int
 	if lane.EndTime != nil {
 		endOffset := lane.EndTime.Sub(tv.startTime)
 		barEnd = int(float64(width) * float64(endOffset) / float64(timeRange))
 	} else {
-		// Running - extend to current time or end of view
 		barEnd = width
 	}
 
-	// Ensure minimum bar width
 	if barEnd <= barStart {
 		barEnd = barStart + 1
 	}
 
-	// Apply zoom and scroll
 	barStart = int(float64(barStart)*tv.zoomLevel) - tv.scrollX
 	barEnd = int(float64(barEnd)*tv.zoomLevel) - tv.scrollX
-
-	// Clamp to visible area
 	if barStart < 0 {
 		barStart = 0
 	}
 	if barEnd > width {
 		barEnd = width
 	}
+	return barStart, barEnd
+}
+
+func barContainsCol(barStart, barEnd, col int) bool {
+	return col >= barStart && col < barEnd && barEnd > barStart
+}
+
+func (tv *TimelineView) drawCursorLine(screen tcell.Screen, x, y, width, lanesEnd, selectedRow, col int, timeRange time.Duration, style tcell.Style) {
+	if col < 0 || col >= width {
+		return
+	}
+	for row := y + 2; row < lanesEnd; row++ {
+		if row == selectedRow {
+			continue
+		}
+		laneIdx := tv.scrollY + (row - y - 2)
+		if laneIdx >= 0 && laneIdx < len(tv.lanes) {
+			start, end := tv.laneBarSpan(tv.lanes[laneIdx], width, timeRange)
+			if barContainsCol(start, end, col) {
+				continue
+			}
+		}
+		screen.SetContent(x+col, row, '│', nil, style)
+	}
+}
+
+// drawLaneBar draws the timeline bar for a lane.
+func (tv *TimelineView) drawLaneBar(screen tcell.Screen, x, y, width int, lane TimelineLane, timeRange time.Duration, selected bool) {
+	if timeRange <= 0 || width <= 0 {
+		return
+	}
+
+	barStart, barEnd := tv.laneBarSpan(lane, width, timeRange)
 
 	barChar, barColor := tv.barStyle(lane)
 	barStyle := tcell.StyleDefault.Foreground(theme.Bg()).Background(barColor)
@@ -362,16 +383,9 @@ func (tv *TimelineView) drawCursor(screen tcell.Screen, x, y, width, height int,
 		}
 	}
 
-	// Draw vertical cursor line at start position, skipping the selected
-	// lane so it does not cover the type glyph on the highlighted bar.
 	if startPos >= 0 && startPos < width {
 		cursorStyle := tcell.StyleDefault.Foreground(theme.Accent()).Background(theme.Bg())
-		for row := y + 2; row < lanesEnd; row++ {
-			if row == selectedRow {
-				continue
-			}
-			screen.SetContent(x+startPos, row, '│', nil, cursorStyle)
-		}
+		tv.drawCursorLine(screen, x, y, width, lanesEnd, selectedRow, startPos, timeRange, cursorStyle)
 
 		// Draw start time label in header
 		startLabel := formatRelativeDuration(startOffset)
@@ -399,12 +413,7 @@ func (tv *TimelineView) drawCursor(screen tcell.Screen, x, y, width, height int,
 		// Draw vertical line at end position (if visible and different from start)
 		if endPos > startPos && endPos >= 0 && endPos < width {
 			endStyle := tcell.StyleDefault.Foreground(theme.Success()).Background(theme.Bg())
-			for row := y + 2; row < lanesEnd; row++ {
-				if row == selectedRow {
-					continue
-				}
-				screen.SetContent(x+endPos, row, '│', nil, endStyle)
-			}
+			tv.drawCursorLine(screen, x, y, width, lanesEnd, selectedRow, endPos, timeRange, endStyle)
 		}
 
 		// Calculate available space inside the candlestick

@@ -134,6 +134,40 @@ func TestFitTimelineName(t *testing.T) {
 	}
 }
 
+func TestTimelineCursorSkipsOtherBars(t *testing.T) {
+	start := time.Date(2026, 8, 23, 12, 0, 0, 0, time.UTC)
+	tv := NewTimelineView()
+	tv.SetNodes(temporal.BuildEventTree([]temporal.EnhancedHistoryEvent{
+		{ID: 1, Type: "WorkflowExecutionStarted", Time: start},
+		{ID: 5, Type: "ActivityTaskScheduled", Time: start.Add(20 * time.Second), ActivityType: "Late"},
+		{ID: 6, Type: "ActivityTaskCompleted", Time: start.Add(40 * time.Second), ScheduledEventID: 5},
+		{ID: 8, Type: "ActivityTaskScheduled", Time: start, ActivityType: "Wide"},
+		{ID: 9, Type: "ActivityTaskCompleted", Time: start.Add(time.Minute), ScheduledEventID: 8},
+	}))
+	if !tv.SelectByScheduledID(5) {
+		t.Fatal("should select the late activity")
+	}
+	tv.SetRect(0, 0, 80, 10)
+
+	screen := tcell.NewSimulationScreen("UTF-8")
+	if err := screen.Init(); err != nil {
+		t.Fatal(err)
+	}
+	screen.SetSize(80, 10)
+	tv.Draw(screen)
+
+	timeRange := tv.endTime.Sub(tv.startTime)
+	startPos, _ := tv.laneBarSpan(tv.lanes[tv.selectedLane], 80, timeRange)
+	wideStart, wideEnd := tv.laneBarSpan(tv.lanes[1], 80, timeRange)
+	if !barContainsCol(wideStart, wideEnd, startPos) {
+		t.Fatalf("expected the wide bar to cover the cursor column %d (%d-%d)", startPos, wideStart, wideEnd)
+	}
+	ch, _, _, _ := screen.GetContent(startPos, 3)
+	if ch == '│' {
+		t.Fatal("cursor should not cut through another bar")
+	}
+}
+
 func TestTimelineCursorSkipsSelectedGlyph(t *testing.T) {
 	start := time.Date(2026, 8, 23, 12, 0, 0, 0, time.UTC)
 	end := start.Add(time.Minute)
