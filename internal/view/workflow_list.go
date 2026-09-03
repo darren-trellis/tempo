@@ -377,8 +377,7 @@ func (wl *WorkflowList) Start() {
 				}
 				return true
 			}
-			wl.startDiff()
-			return true
+			return false
 		}).
 		OnRune('o', func(e *tcell.EventKey) bool {
 			wl.showWorkflowGraph()
@@ -685,7 +684,6 @@ func (wl *WorkflowList) workflowPaneHints() []KeyHint {
 	}
 	return append(hints,
 		KeyHint{Key: "L", Description: "Load Filter"},
-		KeyHint{Key: "d", Description: "Diff"},
 		KeyHint{Key: "o", Description: "Hierarchy"},
 		KeyHint{Key: "v", Description: "Select Mode"},
 		KeyHint{Key: "N", Description: "Start"},

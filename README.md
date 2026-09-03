@@ -23,7 +23,6 @@ A [Temporal](https://temporal.io) TUI that matches your rhythm
 - View workflow details, inputs, outputs, and metadata
 - Inspect full event history with tree and timeline views
 - Cancel, terminate, or signal running workflows
-- Compare two workflow executions side-by-side (diff view)
 - Advanced search with visibility queries and saved filters
 
 **Namespace Operations**
@@ -120,7 +119,6 @@ tempo --address localhost:7233 // default dev server address loads without flag
 | `c` | Cancel workflow |
 | `t` | Terminate workflow |
 | `s` | Signal workflow |
-| `d` | Compare workflows (diff) |
 
 ## Configuration
 

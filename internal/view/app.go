@@ -292,8 +292,6 @@ func (a *App) updateCrumbs() {
 			path = []string{"Namespaces", a.currentNS, "Schedules"}
 		case "workers":
 			path = []string{"Namespaces", a.currentNS, "Workers"}
-		case "workflow-diff":
-			path = []string{"Namespaces", a.currentNS, "Workflows", "Diff"}
 		}
 	}
 	a.app.Crumbs().SetPath(path)
@@ -509,18 +507,6 @@ func (a *App) NavigateToWorkers() {
 func (a *App) NavigateToNamespaceDetail(namespace string) {
 	nd := NewNamespaceDetail(a, namespace)
 	a.app.Pages().Push(nd)
-}
-
-// NavigateToWorkflowDiff pushes the workflow diff view.
-func (a *App) NavigateToWorkflowDiff(workflowA, workflowB *temporal.Workflow) {
-	wd := NewWorkflowDiffWithWorkflows(a, a.CurrentNamespace(), workflowA, workflowB)
-	a.app.Pages().Push(wd)
-}
-
-// NavigateToWorkflowDiffEmpty pushes an empty workflow diff view.
-func (a *App) NavigateToWorkflowDiffEmpty() {
-	wd := NewWorkflowDiff(a, a.CurrentNamespace())
-	a.app.Pages().Push(wd)
 }
 
 // NavigateToWorkflowGraph pushes the workflow graph view.
