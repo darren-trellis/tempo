@@ -54,7 +54,7 @@ func (c *Client) CountWorkflows(ctx context.Context, namespace, query string) (W
 }
 
 func (c *Client) countWorkflowsByStatus(ctx context.Context, svc workflowservice.WorkflowServiceClient, namespace, query string) (WorkflowCounts, error) {
-	statuses := []string{"Running", "Completed", "Failed"}
+	statuses := []string{"Running", "Completed", "Failed", "Canceled", "Terminated"}
 	counts := make([]int, len(statuses))
 	errs := make([]error, len(statuses))
 	var wg sync.WaitGroup
@@ -79,11 +79,17 @@ func (c *Client) countWorkflowsByStatus(ctx context.Context, svc workflowservice
 			return WorkflowCounts{}, fmt.Errorf("failed to count workflows: %w", err)
 		}
 	}
+	total := 0
+	for _, n := range counts {
+		total += n
+	}
 	return WorkflowCounts{
-		Running:   counts[0],
-		Completed: counts[1],
-		Failed:    counts[2],
-		Total:     counts[0] + counts[1] + counts[2],
+		Running:    counts[0],
+		Completed:  counts[1],
+		Failed:     counts[2],
+		Canceled:   counts[3],
+		Terminated: counts[4],
+		Total:      total,
 	}, nil
 }
 
@@ -110,6 +116,10 @@ func workflowCountsFromGroups(resp *workflowservice.CountWorkflowExecutionsRespo
 			counts.Completed += n
 		case "Failed":
 			counts.Failed += n
+		case "Canceled":
+			counts.Canceled += n
+		case "Terminated":
+			counts.Terminated += n
 		}
 		counts.Total += n
 	}

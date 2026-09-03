@@ -159,10 +159,12 @@ type ListOptions struct {
 
 // WorkflowCounts is the visibility count of executions by status.
 type WorkflowCounts struct {
-	Running   int
-	Completed int
-	Failed    int
-	Total     int
+	Running    int
+	Completed  int
+	Failed     int
+	Canceled   int
+	Terminated int
+	Total      int
 }
 
 // Namespace represents a Temporal namespace.

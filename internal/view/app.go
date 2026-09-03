@@ -389,9 +389,11 @@ func (a *App) setNamespace(ns string) {
 
 // WorkflowStats holds workflow count statistics.
 type WorkflowStats struct {
-	Running   int
-	Completed int
-	Failed    int
+	Running    int
+	Completed  int
+	Failed     int
+	Canceled   int
+	Terminated int
 }
 
 // SetWorkflowStats updates the workflow statistics in the status bar (right-aligned).
@@ -399,20 +401,21 @@ func (a *App) SetWorkflowStats(stats WorkflowStats) {
 	// Clear existing right sections and add new stats
 	a.statusBar.ClearRightSections()
 
-	// Format: dimmed label, colored number
 	dimTag := theme.TagFgDim()
-	runningColor := theme.TagInfo()
-	completedColor := theme.TagSuccess()
-	failedColor := theme.TagError()
-
 	a.statusBar.AddRightSection(layout.StatusSection{
-		Text: fmt.Sprintf("[%s]Running:[-] [%s]%d[-]", dimTag, runningColor, stats.Running),
+		Text: fmt.Sprintf("[%s]Running:[-] [%s]%d[-]", dimTag, theme.TagInfo(), stats.Running),
 	})
 	a.statusBar.AddRightSection(layout.StatusSection{
-		Text: fmt.Sprintf("[%s]Completed:[-] [%s]%d[-]", dimTag, completedColor, stats.Completed),
+		Text: fmt.Sprintf("[%s]Completed:[-] [%s]%d[-]", dimTag, theme.TagSuccess(), stats.Completed),
 	})
 	a.statusBar.AddRightSection(layout.StatusSection{
-		Text: fmt.Sprintf("[%s]Failed:[-] [%s]%d[-]", dimTag, failedColor, stats.Failed),
+		Text: fmt.Sprintf("[%s]Failed:[-] [%s]%d[-]", dimTag, theme.TagError(), stats.Failed),
+	})
+	a.statusBar.AddRightSection(layout.StatusSection{
+		Text: fmt.Sprintf("[%s]Canceled:[-] [%s]%d[-]", dimTag, theme.TagWarning(), stats.Canceled),
+	})
+	a.statusBar.AddRightSection(layout.StatusSection{
+		Text: fmt.Sprintf("[%s]Terminated:[-] [%s]%d[-]", dimTag, theme.TagError(), stats.Terminated),
 	})
 }
 

@@ -311,9 +311,11 @@ func (wl *WorkflowList) applyLoadedWindow() {
 
 func (wl *WorkflowList) applyServerCounts(counts temporal.WorkflowCounts) {
 	wl.serverStats = WorkflowStats{
-		Running:   counts.Running,
-		Completed: counts.Completed,
-		Failed:    counts.Failed,
+		Running:    counts.Running,
+		Completed:  counts.Completed,
+		Failed:     counts.Failed,
+		Canceled:   counts.Canceled,
+		Terminated: counts.Terminated,
 	}
 	wl.serverStatsOK = true
 	wl.updateStats()
@@ -482,6 +484,10 @@ func (wl *WorkflowList) displayedStats() WorkflowStats {
 			stats.Completed++
 		case "Failed":
 			stats.Failed++
+		case "Canceled":
+			stats.Canceled++
+		case "Terminated":
+			stats.Terminated++
 		}
 	}
 	return stats

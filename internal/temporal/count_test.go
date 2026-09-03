@@ -36,18 +36,20 @@ func TestWorkflowCountsFromGroups(t *testing.T) {
 		return p
 	}
 	got := workflowCountsFromGroups(&workflowservice.CountWorkflowExecutionsResponse{
-		Count: 12,
+		Count: 16,
 		Groups: []*workflowservice.CountWorkflowExecutionsResponse_AggregationGroup{
 			{GroupValues: []*commonpb.Payload{payload("Running")}, Count: 4},
 			{GroupValues: []*commonpb.Payload{payload("Completed")}, Count: 6},
 			{GroupValues: []*commonpb.Payload{payload("Failed")}, Count: 1},
+			{GroupValues: []*commonpb.Payload{payload("Canceled")}, Count: 2},
+			{GroupValues: []*commonpb.Payload{payload("Terminated")}, Count: 2},
 			{GroupValues: []*commonpb.Payload{payload("ContinuedAsNew")}, Count: 1},
 		},
 	})
-	if got.Running != 4 || got.Completed != 7 || got.Failed != 1 {
+	if got.Running != 4 || got.Completed != 7 || got.Failed != 1 || got.Canceled != 2 || got.Terminated != 2 {
 		t.Fatalf("counts=%+v", got)
 	}
-	if got.Total != 12 {
+	if got.Total != 16 {
 		t.Fatalf("total=%d", got.Total)
 	}
 }

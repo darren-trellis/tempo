@@ -64,9 +64,9 @@ func TestDisplayedStatsUsesServerCounts(t *testing.T) {
 	if got := wl.displayedStats(); got.Running != 2 {
 		t.Fatalf("local stats=%+v", got)
 	}
-	wl.serverStats = WorkflowStats{Running: 40, Completed: 120, Failed: 7}
+	wl.serverStats = WorkflowStats{Running: 40, Completed: 120, Failed: 7, Canceled: 3, Terminated: 2}
 	wl.serverStatsOK = true
-	if got := wl.displayedStats(); got != (WorkflowStats{Running: 40, Completed: 120, Failed: 7}) {
+	if got := wl.displayedStats(); got != (WorkflowStats{Running: 40, Completed: 120, Failed: 7, Canceled: 3, Terminated: 2}) {
 		t.Fatalf("server stats=%+v", got)
 	}
 }
