@@ -248,6 +248,12 @@ func (tv *TimelineView) laneBarSpan(lane TimelineLane, width int, timeRange time
 
 	barStart = int(float64(barStart)*tv.zoomLevel) - tv.scrollX
 	barEnd = int(float64(barEnd)*tv.zoomLevel) - tv.scrollX
+	if lane.EndTime != nil && barEnd > barStart {
+		barEnd++
+	}
+	if barEnd <= barStart {
+		barEnd = barStart + 1
+	}
 	if barStart < 0 {
 		barStart = 0
 	}
@@ -261,12 +267,15 @@ func barContainsCol(barStart, barEnd, col int) bool {
 	return col >= barStart && col < barEnd && barEnd > barStart
 }
 
-func (tv *TimelineView) drawCursorLine(screen tcell.Screen, x, y, width, lanesEnd, selectedRow, col int, timeRange time.Duration, style tcell.Style) {
+func (tv *TimelineView) drawCursorLine(screen tcell.Screen, x, y, width, lanesEnd, selectedRow, col int, timeRange time.Duration, style tcell.Style, capSelected bool) {
 	if col < 0 || col >= width {
 		return
 	}
 	for row := y + 2; row < lanesEnd; row++ {
 		if row == selectedRow {
+			if capSelected {
+				screen.SetContent(x+col, row, '│', nil, style.Background(theme.SelectionBg()))
+			}
 			continue
 		}
 		laneIdx := tv.scrollY + (row - y - 2)
@@ -338,33 +347,14 @@ func (tv *TimelineView) drawCursor(screen tcell.Screen, x, y, width, height int,
 	}
 
 	lane := tv.lanes[tv.selectedLane]
-
-	// Calculate positions
 	startOffset := lane.StartTime.Sub(tv.startTime)
-	startPos := int(float64(width) * float64(startOffset) / float64(timeRange))
+	startPos, barEnd := tv.laneBarSpan(lane, width, timeRange)
+	endPos := barEnd - 1
 
-	var endPos int
-	if lane.EndTime != nil {
-		endOffset := lane.EndTime.Sub(tv.startTime)
-		endPos = int(float64(width) * float64(endOffset) / float64(timeRange))
-	} else {
-		endPos = width // Running - extends to end
-	}
-
-	// Find previous lane's end time for gap calculation
 	var prevEndPos int
 	if tv.selectedLane > 0 {
-		prevLane := tv.lanes[tv.selectedLane-1]
-		if prevLane.EndTime != nil {
-			prevEndOffset := prevLane.EndTime.Sub(tv.startTime)
-			prevEndPos = int(float64(width) * float64(prevEndOffset) / float64(timeRange))
-		}
+		_, prevEndPos = tv.laneBarSpan(tv.lanes[tv.selectedLane-1], width, timeRange)
 	}
-
-	// Apply zoom and scroll
-	startPos = int(float64(startPos)*tv.zoomLevel) - tv.scrollX
-	endPos = int(float64(endPos)*tv.zoomLevel) - tv.scrollX
-	prevEndPos = int(float64(prevEndPos)*tv.zoomLevel) - tv.scrollX
 
 	// Calculate the row for the selected lane
 	selectedRow := y + 2 + (tv.selectedLane - tv.scrollY)
@@ -385,7 +375,7 @@ func (tv *TimelineView) drawCursor(screen tcell.Screen, x, y, width, height int,
 
 	if startPos >= 0 && startPos < width {
 		cursorStyle := tcell.StyleDefault.Foreground(theme.Accent()).Background(theme.Bg())
-		tv.drawCursorLine(screen, x, y, width, lanesEnd, selectedRow, startPos, timeRange, cursorStyle)
+		tv.drawCursorLine(screen, x, y, width, lanesEnd, selectedRow, startPos, timeRange, cursorStyle, false)
 
 		// Draw start time label in header
 		startLabel := formatRelativeDuration(startOffset)
@@ -413,7 +403,7 @@ func (tv *TimelineView) drawCursor(screen tcell.Screen, x, y, width, height int,
 		// Draw vertical line at end position (if visible and different from start)
 		if endPos > startPos && endPos >= 0 && endPos < width {
 			endStyle := tcell.StyleDefault.Foreground(theme.Success()).Background(theme.Bg())
-			tv.drawCursorLine(screen, x, y, width, lanesEnd, selectedRow, endPos, timeRange, endStyle)
+			tv.drawCursorLine(screen, x, y, width, lanesEnd, selectedRow, endPos, timeRange, endStyle, true)
 		}
 
 		// Calculate available space inside the candlestick

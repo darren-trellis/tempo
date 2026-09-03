@@ -134,6 +134,52 @@ func TestFitTimelineName(t *testing.T) {
 	}
 }
 
+func TestTimelineEndMarkerKeepsBarFill(t *testing.T) {
+	start := time.Date(2026, 8, 23, 12, 0, 0, 0, time.UTC)
+	tv := NewTimelineView()
+	tv.SetNodes(temporal.BuildEventTree([]temporal.EnhancedHistoryEvent{
+		{ID: 1, Type: "WorkflowExecutionStarted", Time: start},
+		{ID: 5, Type: "ActivityTaskScheduled", Time: start, ActivityType: "Short"},
+		{ID: 6, Type: "ActivityTaskCompleted", Time: start.Add(20 * time.Second), ScheduledEventID: 5},
+		{ID: 8, Type: "ActivityTaskScheduled", Time: start, ActivityType: "Wide"},
+		{ID: 9, Type: "ActivityTaskCompleted", Time: start.Add(time.Minute), ScheduledEventID: 8},
+	}))
+	if !tv.SelectByScheduledID(5) {
+		t.Fatal("should select the short activity")
+	}
+	tv.SetRect(0, 0, 80, 10)
+
+	screen := tcell.NewSimulationScreen("UTF-8")
+	if err := screen.Init(); err != nil {
+		t.Fatal(err)
+	}
+	screen.SetSize(80, 10)
+	tv.Draw(screen)
+
+	timeRange := tv.endTime.Sub(tv.startTime)
+	_, shortEnd := tv.laneBarSpan(tv.lanes[tv.selectedLane], 80, timeRange)
+	endCol := shortEnd - 1
+	if endCol < 0 {
+		t.Fatal("short bar should have an end cell")
+	}
+
+	selectedCh, _, _, _ := screen.GetContent(endCol, 2)
+	if selectedCh == ' ' || selectedCh == '·' || selectedCh == 0 {
+		t.Fatalf("selected bar end should stay filled, got %q", string(selectedCh))
+	}
+	if selectedCh != '│' {
+		t.Fatalf("selected bar should keep the end cap, got %q", string(selectedCh))
+	}
+
+	wideCh, _, _, _ := screen.GetContent(endCol, 3)
+	if wideCh == '│' {
+		t.Fatal("end marker should not cut through the overlapping bar")
+	}
+	if wideCh == ' ' || wideCh == '·' || wideCh == 0 {
+		t.Fatalf("overlapping bar should stay filled at the end marker, got %q", string(wideCh))
+	}
+}
+
 func TestTimelineCursorSkipsOtherBars(t *testing.T) {
 	start := time.Date(2026, 8, 23, 12, 0, 0, 0, time.UTC)
 	tv := NewTimelineView()
