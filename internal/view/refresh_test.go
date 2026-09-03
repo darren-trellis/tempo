@@ -9,6 +9,31 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+func TestPopulateTablePreservesHighlightedWorkflow(t *testing.T) {
+	wl := NewWorkflowList(&App{}, "default")
+	wl.workflows = []temporal.Workflow{
+		{ID: "wf-1", RunID: "run-1", Type: "T", Status: "Running"},
+		{ID: "wf-2", RunID: "run-2", Type: "T", Status: "Running"},
+		{ID: "wf-3", RunID: "run-3", Type: "T", Status: "Running"},
+	}
+	wl.allWorkflows = wl.workflows
+	wl.populateTable()
+	wl.table.SelectRow(2)
+	wl.rememberHighlightedWorkflow()
+
+	wl.workflows = []temporal.Workflow{
+		{ID: "wf-new", RunID: "run-new", Type: "T", Status: "Running"},
+		{ID: "wf-1", RunID: "run-1", Type: "T", Status: "Running"},
+		{ID: "wf-2", RunID: "run-2", Type: "T", Status: "Running"},
+		{ID: "wf-3", RunID: "run-3", Type: "T", Status: "Running"},
+	}
+	wl.populateTable()
+	row := wl.table.SelectedRow()
+	if row < 0 || row >= len(wl.workflows) || wl.workflows[row].ID != "wf-3" {
+		t.Fatalf("refresh should keep wf-3 highlighted, row=%d", row)
+	}
+}
+
 func TestRefreshIntervalDefault(t *testing.T) {
 	wl := NewWorkflowList(&App{}, "default")
 	if got := wl.refreshInterval(); got != config.DefaultRefreshRate {

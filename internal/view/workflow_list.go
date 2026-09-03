@@ -58,6 +58,8 @@ type WorkflowList struct {
 	timelineVisible       bool
 	timelineNarrow        bool
 	highlightedActivityID int64
+	highlightedWorkflowID string
+	highlightedRunID      string
 	timelineSyncing       bool
 	workflowTreeMode      bool
 	workflowDepths        []int

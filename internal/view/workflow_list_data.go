@@ -178,8 +178,45 @@ func (wl *WorkflowList) renderColumns() {
 	}
 }
 
+func (wl *WorkflowList) rememberHighlightedWorkflow() {
+	if wl == nil || wl.table == nil {
+		return
+	}
+	row := wl.table.SelectedRow()
+	if row < 0 || row >= len(wl.workflows) {
+		return
+	}
+	wl.highlightedWorkflowID = wl.workflows[row].ID
+	wl.highlightedRunID = wl.workflows[row].RunID
+}
+
+func workflowIndexByIdentity(workflows []temporal.Workflow, id, runID string) int {
+	if id == "" {
+		return -1
+	}
+	fallback := -1
+	for i, w := range workflows {
+		if w.ID != id {
+			continue
+		}
+		if runID == "" || w.RunID == runID {
+			return i
+		}
+		if fallback < 0 {
+			fallback = i
+		}
+	}
+	return fallback
+}
+
 func (wl *WorkflowList) populateTable() {
-	currentRow := wl.table.SelectedRow()
+	id, runID := wl.highlightedWorkflowID, wl.highlightedRunID
+	if id == "" && wl.table != nil {
+		row := wl.table.SelectedRow()
+		if row >= 0 && row < len(wl.workflows) {
+			id, runID = wl.workflows[row].ID, wl.workflows[row].RunID
+		}
+	}
 
 	cols := wl.columnLayout()
 	wl.table.ClearRows()
@@ -207,15 +244,13 @@ func (wl *WorkflowList) populateTable() {
 		wl.table.AddStyledRow(cells)
 	}
 
-	if wl.table.RowCount() > 0 {
-		if currentRow >= 0 && currentRow < len(wl.workflows) {
-			wl.table.SelectRow(currentRow)
-			wl.schedulePreview(wl.workflows[currentRow], false)
-		} else {
-			wl.table.SelectRow(0)
-			wl.schedulePreview(wl.workflows[0], false)
-		}
+	idx := workflowIndexByIdentity(wl.workflows, id, runID)
+	if idx < 0 {
+		idx = 0
 	}
+	wl.table.SelectRow(idx)
+	wl.rememberHighlightedWorkflow()
+	wl.schedulePreview(wl.workflows[idx], false)
 }
 
 func (wl *WorkflowList) updateStats() {

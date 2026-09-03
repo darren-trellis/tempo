@@ -245,6 +245,7 @@ func (wl *WorkflowList) selectedWorkflow() (temporal.Workflow, bool) {
 }
 
 func (wl *WorkflowList) syncHistoryForSelectedRow() {
+	wl.rememberHighlightedWorkflow()
 	if !wl.historyNeeded() || wl.table == nil {
 		return
 	}
