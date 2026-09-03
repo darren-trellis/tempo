@@ -1135,6 +1135,8 @@ func (wl *WorkflowList) schedulePreview(w temporal.Workflow, force bool) {
 		wl.highlightedActivityID = 0
 	}
 
+	alreadyShowing := wl.previewWorkflowID == w.ID && wl.previewRunID == w.RunID && len(wl.previewEvents) > 0
+
 	if !force {
 		if events, ok := wl.previewCache.get(w.ID, w.RunID); ok {
 			atomic.AddUint64(&wl.previewGen, 1)
@@ -1151,12 +1153,14 @@ func (wl *WorkflowList) schedulePreview(w temporal.Workflow, force bool) {
 	gen := atomic.AddUint64(&wl.previewGen, 1)
 	wl.previewWorkflowID = w.ID
 	wl.previewRunID = w.RunID
-	if wl.previewKind == previewDetails {
-		wl.renderPreviewDetails(w)
-	} else if wl.previewKind == previewHierarchy {
-		wl.renderPreviewHierarchy(w)
-	} else {
-		wl.setPreviewStatus("Loading...")
+	if !alreadyShowing {
+		if wl.previewKind == previewDetails {
+			wl.renderPreviewDetails(w)
+		} else if wl.previewKind == previewHierarchy {
+			wl.renderPreviewHierarchy(w)
+		} else {
+			wl.setPreviewStatus("Loading...")
+		}
 	}
 
 	if wl.previewTimer != nil {
@@ -1277,6 +1281,13 @@ func (wl *WorkflowList) renderPreviewDetails(w temporal.Workflow) {
 
 func (wl *WorkflowList) renderPreviewEvents(w temporal.Workflow) {
 	wl.syncPreviewChrome()
+	selectedID := int64(0)
+	if wl.eventTable != nil && len(wl.previewEvents) > 0 {
+		row := wl.eventTable.SelectedRow()
+		if row >= 0 && row < len(wl.previewEvents) {
+			selectedID = wl.previewEvents[row].ID
+		}
+	}
 	wl.eventTable.ClearRows()
 	wl.eventTable.SetHeaders("ID", "TIME", "TYPE", "NAME")
 	if len(wl.previewEvents) == 0 {
@@ -1292,8 +1303,17 @@ func (wl *WorkflowList) renderPreviewEvents(w temporal.Workflow) {
 			name,
 		)
 	}
-	wl.eventTable.SelectRow(0)
-	wl.eventDetail.SetText(formatSelectedEventDetail(wl.previewEvents[0]))
+	idx := 0
+	if selectedID != 0 {
+		for i, ev := range wl.previewEvents {
+			if ev.ID == selectedID {
+				idx = i
+				break
+			}
+		}
+	}
+	wl.eventTable.SelectRow(idx)
+	wl.eventDetail.SetText(formatSelectedEventDetail(wl.previewEvents[idx]))
 }
 
 func (wl *WorkflowList) renderPreviewActivities(w temporal.Workflow) {

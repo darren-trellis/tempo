@@ -127,6 +127,9 @@ type Config struct {
 	// seconds.
 	WorkerPollQuiet      *Setting `yaml:"worker_poll_quiet_after,omitempty"`
 	WorkerHeartbeatQuiet *Setting `yaml:"worker_heartbeat_quiet_after,omitempty"`
+	// How often auto-refresh reloads the current list, written as a duration
+	// such as "1s" or "500ms", or as a plain number of seconds.
+	RefreshInterval *Setting `yaml:"refresh_rate,omitempty"`
 }
 
 // Setting is a duration that tolerates how people actually write one: "45s",
@@ -249,6 +252,31 @@ func (c *Config) MouseScrollStepSize() int {
 		return MaxMouseScrollStep
 	}
 	return n
+}
+
+const (
+	DefaultRefreshRate = time.Second
+	MinRefreshRate     = 250 * time.Millisecond
+	MaxRefreshRate     = 5 * time.Minute
+)
+
+// RefreshRate is how often auto-refresh reloads the current list. Set
+// refresh_rate to a duration such as "1s" or "500ms".
+func (c *Config) RefreshRate() time.Duration {
+	if c == nil {
+		return DefaultRefreshRate
+	}
+	d, ok := c.RefreshInterval.Duration()
+	if !ok || d <= 0 {
+		return DefaultRefreshRate
+	}
+	if d < MinRefreshRate {
+		return MinRefreshRate
+	}
+	if d > MaxRefreshRate {
+		return MaxRefreshRate
+	}
+	return d
 }
 
 const (

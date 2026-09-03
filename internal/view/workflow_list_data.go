@@ -8,6 +8,7 @@ import (
 
 	"github.com/atterpac/jig/components"
 	"github.com/atterpac/jig/theme"
+	"github.com/galaxy-io/tempo/internal/config"
 	"github.com/galaxy-io/tempo/internal/temporal"
 )
 
@@ -37,9 +38,22 @@ func (wl *WorkflowList) invalidateCaches() {
 }
 
 func (wl *WorkflowList) loadData() {
+	wl.fetchWorkflows(false)
+}
+
+func (wl *WorkflowList) liveRefresh() {
+	if wl.liveBusy {
+		return
+	}
+	wl.liveBusy = true
+	wl.fetchWorkflows(true)
+}
+
+func (wl *WorkflowList) fetchWorkflows(live bool) {
 	if wl.preloaded {
 		go func() {
 			wl.app.JigApp().QueueUpdateDraw(func() {
+				wl.liveBusy = false
 				wl.populateTable()
 				wl.updateStats()
 			})
@@ -49,21 +63,26 @@ func (wl *WorkflowList) loadData() {
 
 	provider := wl.app.Provider()
 	if provider == nil {
+		wl.liveBusy = false
 		wl.loadMockData()
 		return
 	}
 
-	wl.setLoading(true)
+	if !live {
+		wl.setLoading(true)
+	}
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 
-		// Resolve time placeholders in the query
 		resolvedQuery, err := resolveTimePlaceholders(wl.visibilityQuery)
 		if err != nil {
 			wl.app.ShowToastError(fmt.Sprintf("Invalid query: %v", err))
 			wl.app.JigApp().QueueUpdateDraw(func() {
-				wl.setLoading(false)
+				wl.liveBusy = false
+				if !live {
+					wl.setLoading(false)
+				}
 			})
 			return
 		}
@@ -74,21 +93,30 @@ func (wl *WorkflowList) loadData() {
 		workflows, _, err := provider.ListWorkflows(ctx, wl.namespace, opts)
 
 		wl.app.JigApp().QueueUpdateDraw(func() {
-			wl.setLoading(false)
+			wl.liveBusy = false
+			if !live {
+				wl.setLoading(false)
+			}
 			if err != nil {
-				wl.showError(err)
+				if !live {
+					wl.showError(err)
+				}
 				return
 			}
-			// Sort by most recent first
 			sort.Slice(workflows, func(i, j int) bool {
 				return workflows[i].StartTime.After(workflows[j].StartTime)
 			})
-			wl.previewWorkflowID = ""
-			wl.previewRunID = ""
+			if !live {
+				wl.previewWorkflowID = ""
+				wl.previewRunID = ""
+			}
 			wl.allWorkflows = workflows
 			wl.applyFilter()
-			if wl.shouldFocusWorkflowTable() {
+			if !live && wl.shouldFocusWorkflowTable() {
 				wl.app.JigApp().SetFocus(wl.table)
+			}
+			if live {
+				wl.refreshLivePreview()
 			}
 		})
 	}()
@@ -243,21 +271,50 @@ func (wl *WorkflowList) toggleAutoRefresh() {
 	}
 }
 
+func refreshRate(app *App) time.Duration {
+	if app == nil {
+		return config.DefaultRefreshRate
+	}
+	return app.Config().RefreshRate()
+}
+
+func (wl *WorkflowList) refreshInterval() time.Duration {
+	return refreshRate(wl.app)
+}
+
+func (wl *WorkflowList) syncAutoRefresh() {
+	if !wl.autoRefresh {
+		return
+	}
+	wl.stopAutoRefresh()
+	wl.startAutoRefresh()
+}
+
+func (wl *WorkflowList) refreshLivePreview() {
+	if !wl.previewModeEnabled() && !wl.timelineVisible {
+		return
+	}
+	w, ok := wl.selectedWorkflow()
+	if !ok {
+		return
+	}
+	wl.schedulePreview(w, true)
+}
+
 func (wl *WorkflowList) startAutoRefresh() {
-	// Drain any stale stop signal from previous stop
 	select {
 	case <-wl.stopRefresh:
 	default:
 	}
 
-	wl.refreshTicker = time.NewTicker(5 * time.Second)
-	ticker := wl.refreshTicker // Capture locally to avoid nil access after stop
+	wl.refreshTicker = time.NewTicker(wl.refreshInterval())
+	ticker := wl.refreshTicker
 	go func() {
 		for {
 			select {
 			case <-ticker.C:
 				wl.app.JigApp().QueueUpdateDraw(func() {
-					wl.loadData()
+					wl.liveRefresh()
 				})
 			case <-wl.stopRefresh:
 				return

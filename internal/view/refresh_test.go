@@ -2,9 +2,45 @@ package view
 
 import (
 	"testing"
+	"time"
 
+	"github.com/galaxy-io/tempo/internal/config"
 	"github.com/galaxy-io/tempo/internal/temporal"
+	"gopkg.in/yaml.v3"
 )
+
+func TestRefreshIntervalDefault(t *testing.T) {
+	wl := NewWorkflowList(&App{}, "default")
+	if got := wl.refreshInterval(); got != config.DefaultRefreshRate {
+		t.Fatalf("default interval = %s", got)
+	}
+}
+
+func TestRefreshIntervalFromConfig(t *testing.T) {
+	cfg := &config.Config{}
+	if err := yaml.Unmarshal([]byte("refresh_rate: 2s\n"), cfg); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	wl := NewWorkflowList(&App{config: cfg}, "default")
+	if got := wl.refreshInterval(); got != 2*time.Second {
+		t.Fatalf("configured interval = %s", got)
+	}
+}
+
+func TestRenderPreviewEventsKeepsSelection(t *testing.T) {
+	wl := NewWorkflowList(&App{}, "default")
+	wl.previewKind = previewEvents
+	wl.previewEvents = []temporal.EnhancedHistoryEvent{
+		{ID: 1, Type: "WorkflowExecutionStarted", Time: time.Date(2026, 8, 23, 12, 0, 0, 0, time.UTC)},
+		{ID: 5, Type: "ActivityTaskScheduled", Time: time.Date(2026, 8, 23, 12, 0, 1, 0, time.UTC)},
+	}
+	wl.renderPreviewEvents(temporal.Workflow{ID: "wf"})
+	wl.eventTable.SelectRow(1)
+	wl.renderPreviewEvents(temporal.Workflow{ID: "wf"})
+	if wl.eventTable.SelectedRow() != 1 {
+		t.Fatalf("live refresh should keep the selected event, row=%d", wl.eventTable.SelectedRow())
+	}
+}
 
 func TestPreviewCacheClear(t *testing.T) {
 	c := newPreviewCache(2)

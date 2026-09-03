@@ -145,6 +145,13 @@ profiles:
       ca: /path/to/ca.pem
 ```
 
+Auto-refresh (`a` on workflows and namespaces) reloads every second by default.
+Set `refresh_rate` to a Go duration (`500ms`, `2s`) or a bare number of seconds:
+
+```yaml
+refresh_rate: 1s
+```
+
 The workers tab decides whether an instance is still alive from how recently it
 was last seen, because Temporal keeps listing a worker for minutes after it
 stops. Both allowances can be tuned:

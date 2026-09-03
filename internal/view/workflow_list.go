@@ -84,6 +84,7 @@ type WorkflowList struct {
 	visibilityQuery       string // Temporal visibility query
 	loading               bool
 	autoRefresh           bool
+	liveBusy              bool
 	refreshTicker         *time.Ticker
 	stopRefresh           chan struct{}
 	selectionMode         bool     // Multi-select mode active

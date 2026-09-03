@@ -186,6 +186,53 @@ func TestConnectionSettingsEqual(t *testing.T) {
 	}
 }
 
+func TestRefreshRate(t *testing.T) {
+	if got := DefaultConfig().RefreshRate(); got != DefaultRefreshRate {
+		t.Fatalf("default refresh rate = %s", got)
+	}
+	var nilCfg *Config
+	if got := nilCfg.RefreshRate(); got != DefaultRefreshRate {
+		t.Fatalf("nil config refresh rate = %s", got)
+	}
+
+	rate := Setting{text: "2s"}
+	cfg := &Config{RefreshInterval: &rate}
+	if got := cfg.RefreshRate(); got != 2*time.Second {
+		t.Fatalf("configured refresh rate = %s", got)
+	}
+
+	for _, bad := range []string{"", "   ", "soon", "0s", "-1s"} {
+		value := Setting{text: bad}
+		if got := (&Config{RefreshInterval: &value}).RefreshRate(); got != DefaultRefreshRate {
+			t.Fatalf("%q should fall back, got %s", bad, got)
+		}
+	}
+
+	tiny, huge := Setting{text: "1ms"}, Setting{text: "1h"}
+	if got := (&Config{RefreshInterval: &tiny}).RefreshRate(); got != MinRefreshRate {
+		t.Fatalf("tiny rate should clamp, got %s", got)
+	}
+	if got := (&Config{RefreshInterval: &huge}).RefreshRate(); got != MaxRefreshRate {
+		t.Fatalf("huge rate should clamp, got %s", got)
+	}
+
+	cfg, err := parseConfig([]byte("refresh_rate: 500ms\n"))
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	if got := cfg.RefreshRate(); got != 500*time.Millisecond {
+		t.Fatalf("yaml refresh_rate = %s", got)
+	}
+
+	cfg, err = parseConfig([]byte("refresh_rate: 2\n"))
+	if err != nil {
+		t.Fatalf("parse seconds: %v", err)
+	}
+	if got := cfg.RefreshRate(); got != 2*time.Second {
+		t.Fatalf("bare seconds refresh_rate = %s", got)
+	}
+}
+
 func TestWorkerQuietWindows(t *testing.T) {
 	if got := DefaultConfig().WorkerPollQuietAfter(); got != DefaultWorkerPollQuietAfter {
 		t.Fatalf("default poll window = %s", got)

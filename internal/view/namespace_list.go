@@ -175,18 +175,23 @@ func (nl *NamespaceList) setLoading(loading bool) {
 }
 
 func (nl *NamespaceList) loadData() {
+	nl.fetchNamespaces(false)
+}
+
+func (nl *NamespaceList) fetchNamespaces(live bool) {
 	provider := nl.app.Provider()
 	if provider == nil {
 		nl.loadMockData()
 		return
 	}
 
-	nl.setLoading(true)
+	if !live {
+		nl.setLoading(true)
+	}
 	async.NewLoader[[]temporal.Namespace]().
 		WithTimeout(10 * time.Second).
 		OnSuccess(func(namespaces []temporal.Namespace) {
 			nl.allNamespaces = namespaces
-			// Re-apply current filter
 			if nl.GetSearchText() != "" {
 				nl.applyFilter(nl.GetSearchText())
 			} else {
@@ -195,10 +200,14 @@ func (nl *NamespaceList) loadData() {
 			}
 		}).
 		OnError(func(err error) {
-			nl.showError(err)
+			if !live {
+				nl.showError(err)
+			}
 		}).
 		OnFinally(func() {
-			nl.setLoading(false)
+			if !live {
+				nl.setLoading(false)
+			}
 		}).
 		Run(func(ctx context.Context) ([]temporal.Namespace, error) {
 			return provider.ListNamespaces(ctx)
@@ -296,20 +305,28 @@ func (nl *NamespaceList) startAutoRefresh() {
 	default:
 	}
 
-	ticker := time.NewTicker(5 * time.Second)
+	ticker := time.NewTicker(refreshRate(nl.app))
 	nl.refreshTicker = ticker
 	go func() {
 		for {
 			select {
 			case <-ticker.C:
 				nl.app.JigApp().QueueUpdateDraw(func() {
-					nl.loadData()
+					nl.fetchNamespaces(true)
 				})
 			case <-nl.stopRefresh:
 				return
 			}
 		}
 	}()
+}
+
+func (nl *NamespaceList) syncAutoRefresh() {
+	if !nl.autoRefresh {
+		return
+	}
+	nl.stopAutoRefresh()
+	nl.startAutoRefresh()
 }
 
 func (nl *NamespaceList) stopAutoRefresh() {

@@ -104,6 +104,10 @@ func (a *App) applyReloadedConfig(cfg *config.Config) {
 				if needColumns {
 					wl.populateTable()
 				}
+				wl.syncAutoRefresh()
+			}
+			if nl, ok := current.(*NamespaceList); ok {
+				nl.syncAutoRefresh()
 			}
 		}
 		if !needReconnect {
