@@ -68,11 +68,13 @@ func (a *App) applyReloadedConfig(cfg *config.Config) {
 
 	oldTheme := ""
 	oldProfile := a.activeProfile
+	oldPageSize := 0
 	var oldConn config.ConnectionConfig
 	var oldCols []config.WorkflowColumnConfig
 	if old != nil {
 		oldTheme = old.Theme
 		oldCols = old.WorkflowColumnLayout()
+		oldPageSize = old.WorkflowPageLimit()
 		if conn, ok := old.GetProfile(oldProfile); ok {
 			oldConn = conn
 		}
@@ -103,6 +105,9 @@ func (a *App) applyReloadedConfig(cfg *config.Config) {
 				}
 				if needColumns {
 					wl.populateTable()
+				}
+				if cfg.WorkflowPageLimit() != oldPageSize {
+					wl.refresh()
 				}
 				wl.syncAutoRefresh()
 			}

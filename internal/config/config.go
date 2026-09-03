@@ -124,6 +124,7 @@ type Config struct {
 	WorkflowColumns  []WorkflowColumnConfig      `yaml:"workflow_columns,omitempty"`
 	PreviewCacheSize *int                        `yaml:"preview_cache_size,omitempty"`
 	MouseScrollStep  *int                        `yaml:"mouse_scroll_step,omitempty"`
+	WorkflowPageSize *int                        `yaml:"workflow_page_size,omitempty"`
 	// How long a worker may go unseen before the workers tab calls it stale,
 	// written as a duration such as "45s" or "2m", or as a plain number of
 	// seconds.
@@ -224,6 +225,9 @@ const (
 	MaxPreviewCacheSize     = 256
 	DefaultMouseScrollStep  = 1
 	MaxMouseScrollStep      = 40
+	DefaultWorkflowPageSize = 100
+	MinWorkflowPageSize     = 10
+	MaxWorkflowPageSize     = 1000
 )
 
 // PreviewCacheLimit is how many workflow histories preview mode keeps in memory.
@@ -252,6 +256,22 @@ func (c *Config) MouseScrollStepSize() int {
 	}
 	if n > MaxMouseScrollStep {
 		return MaxMouseScrollStep
+	}
+	return n
+}
+
+// WorkflowPageLimit is how many workflows each list page fetches.
+// Defaults to 100. Set workflow_page_size in config.yaml.
+func (c *Config) WorkflowPageLimit() int {
+	if c == nil || c.WorkflowPageSize == nil {
+		return DefaultWorkflowPageSize
+	}
+	n := *c.WorkflowPageSize
+	if n < MinWorkflowPageSize {
+		return MinWorkflowPageSize
+	}
+	if n > MaxWorkflowPageSize {
+		return MaxWorkflowPageSize
 	}
 	return n
 }

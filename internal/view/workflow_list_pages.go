@@ -2,10 +2,7 @@ package view
 
 import "github.com/galaxy-io/tempo/internal/temporal"
 
-const (
-	workflowPageSize = 50
-	workflowMaxPages = 4
-)
+const workflowMaxPages = 4
 
 type workflowPage struct {
 	token string

@@ -138,7 +138,7 @@ func (wl *WorkflowList) searchServer(searchTerm string) {
 			searchTerm, searchTerm,
 		)
 		opts := temporal.ListOptions{
-			PageSize: 50,
+			PageSize: wl.pageSize(),
 			Query:    query,
 		}
 		workflows, _, err := provider.ListWorkflows(ctx, wl.namespace, opts)

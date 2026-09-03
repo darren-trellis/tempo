@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/galaxy-io/tempo/internal/config"
 	"github.com/galaxy-io/tempo/internal/temporal"
 )
 
@@ -55,6 +56,18 @@ func TestWorkflowPagerRefreshInPlace(t *testing.T) {
 	p.accept(0, "", "p1", []temporal.Workflow{{ID: "new"}})
 	if got := p.items(); len(got) != 1 || got[0].ID != "new" {
 		t.Fatalf("refresh should replace the loaded page, got %v", ids(got))
+	}
+}
+
+func TestWorkflowListPageSizeUsesConfig(t *testing.T) {
+	wl := NewWorkflowList(&App{}, "default")
+	if wl.pageSize() != config.DefaultWorkflowPageSize {
+		t.Fatalf("default page size=%d", wl.pageSize())
+	}
+	size := 25
+	wl.app.config = &config.Config{WorkflowPageSize: &size}
+	if wl.pageSize() != 25 {
+		t.Fatalf("configured page size=%d", wl.pageSize())
 	}
 }
 

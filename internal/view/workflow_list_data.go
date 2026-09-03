@@ -12,6 +12,13 @@ import (
 	"github.com/galaxy-io/tempo/internal/temporal"
 )
 
+func (wl *WorkflowList) pageSize() int {
+	if wl != nil && wl.app != nil {
+		return wl.app.Config().WorkflowPageLimit()
+	}
+	return config.DefaultWorkflowPageSize
+}
+
 func (wl *WorkflowList) setLoading(loading bool) {
 	wl.loading = loading
 	wl.app.SetViewLoading("workflows", loading)
@@ -123,7 +130,7 @@ func (wl *WorkflowList) startWindow(live bool) {
 		go func() {
 			defer wg.Done()
 			workflows, next, listErr = provider.ListWorkflows(ctx, wl.namespace, temporal.ListOptions{
-				PageSize: workflowPageSize,
+				PageSize: wl.pageSize(),
 				Query:    resolvedQuery,
 			})
 		}()
@@ -198,7 +205,7 @@ func (wl *WorkflowList) refreshLoadedPages() {
 			go func(i int, page workflowPage) {
 				defer wg.Done()
 				workflows, next, err := provider.ListWorkflows(ctx, wl.namespace, temporal.ListOptions{
-					PageSize:  workflowPageSize,
+					PageSize:  wl.pageSize(),
 					PageToken: page.token,
 					Query:     query,
 				})
@@ -321,7 +328,7 @@ func (wl *WorkflowList) fetchAdjacentPage(prev bool) {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 		workflows, next, err := provider.ListWorkflows(ctx, wl.namespace, temporal.ListOptions{
-			PageSize:  workflowPageSize,
+			PageSize:  wl.pageSize(),
 			PageToken: token,
 			Query:     query,
 		})

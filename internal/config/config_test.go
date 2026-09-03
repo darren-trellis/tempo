@@ -172,6 +172,24 @@ func TestMouseScrollStepSize(t *testing.T) {
 	}
 }
 
+func TestWorkflowPageLimit(t *testing.T) {
+	if DefaultConfig().WorkflowPageLimit() != DefaultWorkflowPageSize {
+		t.Fatalf("default page size = %d", DefaultConfig().WorkflowPageLimit())
+	}
+	zero := 0
+	if (&Config{WorkflowPageSize: &zero}).WorkflowPageLimit() != MinWorkflowPageSize {
+		t.Fatalf("page size below %d should clamp", MinWorkflowPageSize)
+	}
+	size := 50
+	if (&Config{WorkflowPageSize: &size}).WorkflowPageLimit() != 50 {
+		t.Fatal("workflow_page_size should use the configured value")
+	}
+	huge := 5000
+	if (&Config{WorkflowPageSize: &huge}).WorkflowPageLimit() != MaxWorkflowPageSize {
+		t.Fatalf("page size should clamp to %d", MaxWorkflowPageSize)
+	}
+}
+
 func TestShouldAutoreloadDefault(t *testing.T) {
 	if !DefaultConfig().ShouldAutoreload() {
 		t.Fatal("autoreload should default to on")
