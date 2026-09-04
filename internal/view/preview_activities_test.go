@@ -74,6 +74,92 @@ func TestActivityInfoRowsOmitsPayloads(t *testing.T) {
 	}
 }
 
+func TestEventInfoRows(t *testing.T) {
+	ev := temporal.EnhancedHistoryEvent{
+		ID:           7,
+		Type:         "ActivityTaskCompleted",
+		Time:         time.Date(2026, 8, 23, 12, 0, 2, 0, time.UTC),
+		ActivityType: "ValidateOrder",
+		Details:      `ActivityType: ValidateOrder, TaskQueue: orders, Input: {"id":1}`,
+		Result:       `{"ok":true}`,
+		Failure:      "boom",
+	}
+	rows := eventInfoRows(ev)
+	if workflowInfoRowIndex(rows, eventInfoID) < 0 || workflowInfoRowIndex(rows, eventInfoType) < 0 {
+		t.Fatalf("missing core rows: %+v", rows)
+	}
+	if workflowInfoRowIndex(rows, eventInfoName) < 0 {
+		t.Fatalf("missing name from details: %+v", rows)
+	}
+	if workflowInfoRowIndex(rows, "TaskQueue") < 0 {
+		t.Fatalf("missing detail attribute: %+v", rows)
+	}
+	if workflowInfoRowIndex(rows, "Input") < 0 {
+		t.Fatalf("missing input: %+v", rows)
+	}
+	if workflowInfoRowIndex(rows, "Result") < 0 {
+		t.Fatalf("missing result: %+v", rows)
+	}
+	if workflowInfoRowIndex(rows, "Failure") < 0 {
+		t.Fatalf("missing failure: %+v", rows)
+	}
+}
+
+func TestEventTreeInfoRows(t *testing.T) {
+	start := time.Date(2026, 8, 23, 12, 0, 0, 0, time.UTC)
+	node := &temporal.EventTreeNode{
+		Name:      "Activity: ValidateOrder",
+		Status:    "Completed",
+		StartTime: start,
+		Duration:  2 * time.Second,
+		Attempts:  2,
+		Events: []*temporal.EnhancedHistoryEvent{
+			{Result: `{"ok":true}`, Failure: "later"},
+		},
+	}
+	rows := eventTreeInfoRows(node)
+	if workflowInfoRowIndex(rows, eventInfoName) < 0 || workflowInfoRowIndex(rows, "Status") < 0 {
+		t.Fatalf("missing tree rows: %+v", rows)
+	}
+	if workflowInfoRowIndex(rows, "Attempts") < 0 {
+		t.Fatalf("missing attempts: %+v", rows)
+	}
+	if workflowInfoRowIndex(rows, "Result") < 0 || workflowInfoRowIndex(rows, "Failure") < 0 {
+		t.Fatalf("missing payload rows: %+v", rows)
+	}
+}
+
+func TestEventDetailRendersTable(t *testing.T) {
+	wl := NewWorkflowList(&App{}, "default")
+	wl.togglePreviewMode()
+	wl.previewKind = previewEvents
+	wl.previewEvents = []temporal.EnhancedHistoryEvent{{
+		ID:           5,
+		Type:         "ActivityTaskScheduled",
+		Time:         time.Date(2026, 8, 23, 12, 0, 0, 0, time.UTC),
+		ActivityType: "ValidateOrder",
+		Details:      `ActivityType: ValidateOrder, TaskQueue: orders`,
+	}}
+	wl.renderPreviewEvents(temporal.Workflow{})
+	if len(wl.activityDetailRows) == 0 {
+		t.Fatal("event details should populate the table")
+	}
+	if workflowInfoRowIndex(wl.activityDetailRows, eventInfoID) < 0 {
+		t.Fatalf("missing event id: %+v", wl.activityDetailRows)
+	}
+	if workflowInfoRowIndex(wl.activityDetailRows, "TaskQueue") < 0 {
+		t.Fatalf("missing event attributes: %+v", wl.activityDetailRows)
+	}
+
+	wl.focusPane = focusEventDetail
+	if desc := hintDescription(wl.Hints(), "y"); desc != "Yank" {
+		t.Fatalf("event details should show yank, got %q", desc)
+	}
+	if desc := hintDescription(wl.Hints(), "i"); desc != "Input/Output" {
+		t.Fatalf("event details should keep io hint, got %q", desc)
+	}
+}
+
 func TestActivityDetailRendersTable(t *testing.T) {
 	wl := NewWorkflowList(&App{}, "default")
 	wl.togglePreviewMode()

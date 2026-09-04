@@ -223,6 +223,145 @@ const (
 	activityInfoIdentity  = "Identity"
 )
 
+const (
+	eventInfoID   = "ID"
+	eventInfoType = "Type"
+	eventInfoName = "Name"
+	eventInfoTime = "Time"
+)
+
+func eventInfoRows(ev temporal.EnhancedHistoryEvent) []workflowInfoRow {
+	rows := []workflowInfoRow{
+		{Key: eventInfoID, Label: "ID", Value: fmt.Sprintf("%d", ev.ID), Color: theme.Fg(), ColorTag: theme.TagFg()},
+		{
+			Key:      eventInfoType,
+			Label:    "Type",
+			Value:    ev.Type,
+			Display:  eventIcon(ev.Type) + " " + ev.Type,
+			Color:    eventColor(ev.Type),
+			ColorTag: eventColorTag(ev.Type),
+		},
+	}
+	if name := getEventNameDetail(&ev); name != "" {
+		rows = append(rows, workflowInfoRow{Key: eventInfoName, Label: "Name", Value: name, Color: theme.Fg(), ColorTag: theme.TagFg()})
+	}
+	if !ev.Time.IsZero() {
+		rows = append(rows, workflowInfoRow{Key: eventInfoTime, Label: "Time", Value: ev.Time.Format("2006-01-02 15:04:05.000"), Color: theme.Fg(), ColorTag: theme.TagFg()})
+	}
+	if ev.Failure != "" {
+		rows = append(rows, workflowInfoRow{Key: "Failure", Label: "Failure", Value: ev.Failure, Color: theme.Error(), ColorTag: theme.TagError()})
+	}
+	if ev.FailureSource != "" {
+		rows = append(rows, workflowInfoRow{Key: "Failure Source", Label: "Source", Value: ev.FailureSource, Color: theme.Fg(), ColorTag: theme.TagFg()})
+	}
+	if ev.FailureStackTrace != "" {
+		rows = append(rows, workflowInfoRow{Key: "Stack Trace", Label: "Stack Trace", Value: ev.FailureStackTrace, Color: theme.FgDim(), ColorTag: theme.TagFgDim()})
+	}
+	if ev.FailureCause != "" {
+		rows = append(rows, workflowInfoRow{Key: "Failure Cause", Label: "Cause", Value: ev.FailureCause, Color: theme.FgDim(), ColorTag: theme.TagFgDim()})
+	}
+
+	seen := map[string]bool{
+		"id": true, "event id": true, "type": true, "name": true, "time": true,
+		"activitytype": ev.ActivityType != "",
+		"failure":      ev.Failure != "", "source": ev.FailureSource != "",
+		"stacktrace": ev.FailureStackTrace != "", "stack trace": ev.FailureStackTrace != "",
+		"cause": ev.FailureCause != "",
+	}
+	rows = append(rows, eventDetailAttributeRows(ev.Details, seen)...)
+	if ev.Input != "" && !seen["input"] {
+		rows = append(rows, workflowInfoRow{Key: "Input", Label: "Input", Value: ev.Input, Color: theme.Fg(), ColorTag: theme.TagFg()})
+	}
+	if ev.Result != "" && !seen["result"] {
+		rows = append(rows, workflowInfoRow{Key: "Result", Label: "Result", Value: ev.Result, Color: theme.Fg(), ColorTag: theme.TagFg()})
+	}
+	return rows
+}
+
+func eventTreeInfoRows(node *temporal.EventTreeNode) []workflowInfoRow {
+	if node == nil {
+		return nil
+	}
+	status := temporal.GetWorkflowStatus(node.Status)
+	durationStr := "running..."
+	if node.Duration > 0 {
+		durationStr = temporal.FormatDuration(node.Duration)
+	}
+	rows := []workflowInfoRow{
+		{Key: eventInfoName, Label: "Name", Value: node.Name, Color: theme.Fg(), ColorTag: theme.TagFg()},
+		{
+			Key:      "Status",
+			Label:    "Status",
+			Value:    node.Status,
+			Display:  status.Icon() + " " + node.Status,
+			Color:    status.Color(),
+			ColorTag: status.ColorTag(),
+		},
+		{Key: "Duration", Label: "Duration", Value: durationStr, Color: theme.Fg(), ColorTag: theme.TagFg()},
+	}
+	if !node.StartTime.IsZero() {
+		rows = append(rows, workflowInfoRow{Key: "Start Time", Label: "Start Time", Value: node.StartTime.Format("2006-01-02 15:04:05.000"), Color: theme.Fg(), ColorTag: theme.TagFg()})
+	}
+	if node.Attempts > 1 {
+		rows = append(rows, workflowInfoRow{Key: "Attempts", Label: "Attempts", Value: fmt.Sprintf("%d", node.Attempts), Color: theme.Fg(), ColorTag: theme.TagFg()})
+	}
+	for _, ev := range node.Events {
+		if ev == nil {
+			continue
+		}
+		if ev.Result != "" {
+			rows = append(rows, workflowInfoRow{Key: "Result", Label: "Result", Value: ev.Result, Color: theme.Fg(), ColorTag: theme.TagFg()})
+		}
+		if ev.Failure != "" {
+			rows = append(rows, workflowInfoRow{Key: "Failure", Label: "Failure", Value: ev.Failure, Color: theme.Error(), ColorTag: theme.TagError()})
+		}
+		if ev.FailureSource != "" {
+			rows = append(rows, workflowInfoRow{Key: "Failure Source", Label: "Source", Value: ev.FailureSource, Color: theme.Fg(), ColorTag: theme.TagFg()})
+		}
+		if ev.FailureStackTrace != "" {
+			rows = append(rows, workflowInfoRow{Key: "Stack Trace", Label: "Stack Trace", Value: ev.FailureStackTrace, Color: theme.FgDim(), ColorTag: theme.TagFgDim()})
+		}
+		if ev.FailureCause != "" {
+			rows = append(rows, workflowInfoRow{Key: "Failure Cause", Label: "Cause", Value: ev.FailureCause, Color: theme.FgDim(), ColorTag: theme.TagFgDim()})
+		}
+	}
+	return rows
+}
+
+func eventDetailAttributeRows(details string, seen map[string]bool) []workflowInfoRow {
+	if details == "" {
+		return nil
+	}
+	if seen == nil {
+		seen = map[string]bool{}
+	}
+	trimmed := strings.TrimSpace(details)
+	if strings.HasPrefix(trimmed, "{") || strings.HasPrefix(trimmed, "[") {
+		seen["details"] = true
+		return []workflowInfoRow{{Key: "Details", Label: "Details", Value: details, Color: theme.Fg(), ColorTag: theme.TagFg()}}
+	}
+	var rows []workflowInfoRow
+	for _, part := range splitPreservingJSONWorkflow(details) {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		colonIdx := findKeyColonIndex(part)
+		if colonIdx <= 0 {
+			rows = append(rows, workflowInfoRow{Key: part, Label: part, Value: part, Color: theme.Fg(), ColorTag: theme.TagFg()})
+			continue
+		}
+		key := strings.TrimSpace(part[:colonIdx])
+		value := strings.TrimSpace(part[colonIdx+1:])
+		if seen[strings.ToLower(key)] {
+			continue
+		}
+		seen[strings.ToLower(key)] = true
+		rows = append(rows, workflowInfoRow{Key: key, Label: key, Value: value, Color: theme.Fg(), ColorTag: theme.TagFg()})
+	}
+	return rows
+}
+
 func activityInfoRows(a previewActivity) []workflowInfoRow {
 	status := temporal.GetActivityStatus(a.Status)
 	name := a.Type

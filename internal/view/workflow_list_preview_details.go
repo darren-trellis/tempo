@@ -169,17 +169,17 @@ func (wl *WorkflowList) setActivityDetailStatus(message string) {
 	wl.activityDetail.SelectRow(0)
 }
 
-func (wl *WorkflowList) renderActivityDetailRows(a previewActivity) {
+func (wl *WorkflowList) setActivityDetailRows(rows []workflowInfoRow) {
 	selectedKey := ""
 	if row, ok := wl.selectedActivityDetailRow(); ok {
 		selectedKey = row.Key
 	}
-	wl.activityDetailRows = activityInfoRows(a)
+	wl.activityDetailRows = rows
 	if wl.activityDetail == nil {
 		return
 	}
 	wl.activityDetail.ClearRows()
-	for _, row := range wl.activityDetailRows {
+	for _, row := range rows {
 		wl.activityDetail.AddStyledRow([]components.TableCell{
 			{Text: row.Label, Color: theme.FgDim(), Selectable: true},
 			{Text: row.displayText(), Color: row.Color, Selectable: true},
@@ -193,6 +193,31 @@ func (wl *WorkflowList) renderActivityDetailRows(a previewActivity) {
 	if wl.activityDetailScroll != nil {
 		wl.activityDetailScroll.clamp()
 	}
+}
+
+func (wl *WorkflowList) renderActivityDetailRows(a previewActivity) {
+	wl.setActivityDetailRows(activityInfoRows(a))
+}
+
+func (wl *WorkflowList) renderSelectedEventDetail() {
+	if wl.eventTreeMode && wl.eventTreeView != nil {
+		if node := wl.eventTreeView.SelectedNode(); node != nil {
+			wl.setActivityDetailRows(eventTreeInfoRows(node))
+			return
+		}
+	}
+	if len(wl.previewEvents) == 0 {
+		wl.setActivityDetailStatus("No events")
+		return
+	}
+	idx := 0
+	if wl.eventTable != nil {
+		row := wl.eventTable.SelectedRow()
+		if row >= 0 && row < len(wl.previewEvents) {
+			idx = row
+		}
+	}
+	wl.setActivityDetailRows(eventInfoRows(wl.previewEvents[idx]))
 }
 
 func (wl *WorkflowList) selectWorkflowByID(id string) bool {

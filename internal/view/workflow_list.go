@@ -627,6 +627,10 @@ func (wl *WorkflowList) previewListHints() []KeyHint {
 }
 
 func (wl *WorkflowList) previewSideHints() []KeyHint {
+	if wl.previewKind == previewEvents {
+		hints := []KeyHint{{Key: "y", Description: "Yank"}}
+		return append(hints, wl.previewListHints()...)
+	}
 	if wl.previewKind == previewDetails || wl.activityDetailTableFocused() {
 		hints := []KeyHint{{Key: "y", Description: "Yank"}}
 		return append(hints,
