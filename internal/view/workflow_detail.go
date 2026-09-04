@@ -697,10 +697,6 @@ func (wd *WorkflowDetail) Start() {
 			wd.loadData()
 			return true
 		}).
-		OnRune('e', func(e *tcell.EventKey) bool {
-			wd.app.NavigateToEvents(wd.workflowID, wd.runID)
-			return true
-		}).
 		OnRune('y', func(e *tcell.EventKey) bool {
 			wd.yankEventData()
 			return true
@@ -795,7 +791,6 @@ func (wd *WorkflowDetail) Hints() []KeyHint {
 	hints := []KeyHint{
 		{Key: "/", Description: "Search"},
 		{Key: "i", Description: "Input/Output"},
-		{Key: "e", Description: "Event Graph"},
 		{Key: "d", Description: "Detail"},
 		{Key: "g", Description: "Go to Child"},
 		{Key: "y", Description: "Yank"},

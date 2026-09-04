@@ -467,12 +467,6 @@ func (a *App) NavigateToWorkflowDetail(workflowID, runID string) {
 	a.app.Pages().Push(wd)
 }
 
-// NavigateToEvents pushes the event history view.
-func (a *App) NavigateToEvents(workflowID, runID string) {
-	ev := NewEventHistory(a, workflowID, runID)
-	a.app.Pages().Push(ev)
-}
-
 // NavigateToTaskQueues opens the task queues tab on the workflows view.
 func (a *App) NavigateToTaskQueues() {
 	if current, ok := a.app.Pages().Current().(*WorkflowList); ok {

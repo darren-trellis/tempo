@@ -47,6 +47,9 @@ type WorkflowList struct {
 	rightFlex             *tview.Flex
 	eventTable            *components.Table
 	eventTableScroll      *charScrollView
+	eventTreeView         *EventTreeView
+	eventTreeMode         bool
+	eventTab              *components.Tab
 	eventDetail           *tview.TextView
 	eventDetailPanel      *components.Panel
 	eventsPanel           *components.Panel
@@ -210,6 +213,9 @@ func (wl *WorkflowList) RefreshTheme() {
 	wl.SetBackgroundColor(bg)
 	wl.table.SetBackgroundColor(bg)
 	wl.eventTable.SetBackgroundColor(bg)
+	if wl.eventTreeView != nil {
+		wl.eventTreeView.SetBackgroundColor(bg)
+	}
 	wl.eventDetail.SetBackgroundColor(bg)
 	wl.eventDetail.SetTextColor(theme.Fg())
 	if wl.rightFlex != nil {
@@ -405,15 +411,6 @@ func (wl *WorkflowList) Start() {
 		}).
 		OnRune('i', func(e *tcell.EventKey) bool {
 			return wl.showPreviewIO()
-		}).
-		OnRune('e', func(e *tcell.EventKey) bool {
-			row := wl.table.SelectedRow()
-			if row >= 0 && row < len(wl.workflows) {
-				wf := wl.workflows[row]
-				wl.app.NavigateToEvents(wf.ID, wf.RunID)
-				return true
-			}
-			return false
 		}).
 		On(tcell.KeyTab, func(e *tcell.EventKey) bool {
 			wl.cycleFocus(1)
@@ -619,10 +616,15 @@ func (wl *WorkflowList) previewListHints() []KeyHint {
 		}
 	}
 	hints := wl.previewIOHint()
+	if wl.previewKind == previewEvents {
+		if wl.eventTreeMode {
+			hints = append(hints, KeyHint{Key: "space", Description: "Collapse/Expand"})
+		}
+		hints = append(hints, KeyHint{Key: "b", Description: treeModeHint(wl.eventTreeMode)})
+	}
 	return append(hints,
 		KeyHint{Key: "z", Description: "Timeline"},
 		KeyHint{Key: "p", Description: "Preview"},
-		KeyHint{Key: "e", Description: "Event Graph"},
 	)
 }
 
@@ -673,7 +675,6 @@ func (wl *WorkflowList) workflowPaneHints() []KeyHint {
 		)
 	}
 	hints = append(hints,
-		KeyHint{Key: "e", Description: "Event Graph"},
 		KeyHint{Key: "|", Description: "Columns"},
 		KeyHint{Key: "/", Description: "Filter"},
 		KeyHint{Key: "F", Description: "Query"},
@@ -764,8 +765,8 @@ func (wl *WorkflowList) Focus(delegate func(p tview.Primitive)) {
 	}
 	switch wl.focusPane {
 	case focusEvents:
-		if wl.previewKind == previewHierarchy && wl.hierarchyView != nil && wl.hierarchyView.tree != nil {
-			delegate(wl.hierarchyView.tree)
+		if p := wl.eventsPreviewPrimitive(); p != nil {
+			delegate(p)
 			return
 		}
 		delegate(wl.eventTable)
@@ -803,6 +804,9 @@ func (wl *WorkflowList) Draw(screen tcell.Screen) {
 	}
 	if wl.eventTable != nil {
 		wl.eventTable.SetBackgroundColor(bg)
+	}
+	if wl.eventTreeView != nil {
+		wl.eventTreeView.SetBackgroundColor(bg)
 	}
 	if wl.eventDetail != nil {
 		wl.eventDetail.SetBackgroundColor(bg)

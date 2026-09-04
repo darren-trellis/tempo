@@ -231,6 +231,55 @@ func TestPreviewHierarchyTab(t *testing.T) {
 	}
 }
 
+func TestPreviewEventsTreeToggle(t *testing.T) {
+	wl := NewWorkflowList(&App{}, "default")
+	wl.togglePreviewMode()
+	wl.setPreviewKind(previewEvents)
+	wl.focusPane = focusEvents
+
+	if desc := hintDescription(wl.Hints(), "e"); desc != "" {
+		t.Fatalf("standalone event graph should be gone, got %q", desc)
+	}
+	if desc := hintDescription(wl.Hints(), "b"); desc != "Tree" {
+		t.Fatalf("events list should offer tree, got %q", desc)
+	}
+	if wl.eventTab == nil || wl.eventTab.Content != wl.eventTableScroll {
+		t.Fatal("events tab should start as a list")
+	}
+
+	if ev := wl.handlePreviewKeys(tcell.NewEventKey(tcell.KeyRune, 'b', 0)); ev != nil {
+		t.Fatal("b should toggle the events tree")
+	}
+	if !wl.eventTreeMode {
+		t.Fatal("events should be in tree mode")
+	}
+	if wl.eventTab.Content != wl.eventTreeView {
+		t.Fatal("events tab should show the tree")
+	}
+	if desc := hintDescription(wl.Hints(), "b"); desc != "List" {
+		t.Fatalf("events tree should offer list, got %q", desc)
+	}
+	if desc := hintDescription(wl.Hints(), "space"); desc != "Collapse/Expand" {
+		t.Fatalf("events tree should allow collapse, got %q", desc)
+	}
+
+	wl.focusPane = focusWorkflows
+	if desc := hintDescription(wl.Hints(), "b"); desc != "Tree" {
+		t.Fatalf("workflows pane should keep its own tree toggle, got %q", desc)
+	}
+
+	wl.focusPane = focusEvents
+	if ev := wl.handlePreviewKeys(tcell.NewEventKey(tcell.KeyRune, 'b', 0)); ev != nil {
+		t.Fatal("b should return to the events list")
+	}
+	if wl.eventTreeMode {
+		t.Fatal("events should be back in list mode")
+	}
+	if wl.eventTab.Content != wl.eventTableScroll {
+		t.Fatal("events tab should show the list")
+	}
+}
+
 func TestPreviewHintsArePaneSpecific(t *testing.T) {
 	wl := NewWorkflowList(&App{}, "default")
 	if desc := hintDescription(wl.Hints(), "i"); desc != "Input/Output" {
@@ -238,6 +287,9 @@ func TestPreviewHintsArePaneSpecific(t *testing.T) {
 	}
 	if desc := hintDescription(wl.Hints(), "o"); desc != "" {
 		t.Fatalf("workflows should not hint a standalone hierarchy key, got %q", desc)
+	}
+	if desc := hintDescription(wl.Hints(), "e"); desc != "" {
+		t.Fatalf("workflows should not hint a standalone event graph, got %q", desc)
 	}
 
 	wl.togglePreviewMode()
@@ -254,7 +306,10 @@ func TestPreviewHintsArePaneSpecific(t *testing.T) {
 	wl.setPreviewKind(previewActivities)
 	wl.focusPane = focusEvents
 	if desc := hintDescription(wl.Hints(), "b"); desc != "" {
-		t.Fatalf("preview should not show tree, got %q", desc)
+		t.Fatalf("activities should not show tree, got %q", desc)
+	}
+	if desc := hintDescription(wl.Hints(), "e"); desc != "" {
+		t.Fatalf("standalone event graph should be gone, got %q", desc)
 	}
 	if desc := hintDescription(wl.Hints(), "i"); desc != "Input/Output" {
 		t.Fatalf("activities should show io, got %q", desc)

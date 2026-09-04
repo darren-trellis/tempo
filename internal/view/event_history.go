@@ -444,73 +444,7 @@ func (eh *EventHistory) updateSidePanelFromList(index int) {
 }
 
 func (eh *EventHistory) updateSidePanelFromTree(node *temporal.EventTreeNode) {
-	if node == nil {
-		return
-	}
-
-	status := temporal.GetWorkflowStatus(node.Status)
-	statusTag := status.ColorTag()
-	icon := status.Icon()
-
-	var durationStr string
-	if node.Duration > 0 {
-		durationStr = temporal.FormatDuration(node.Duration)
-	} else {
-		durationStr = "running..."
-	}
-
-	var attemptsStr string
-	if node.Attempts > 1 {
-		attemptsStr = fmt.Sprintf("\n\n[%s::b]Attempts[-:-:-]\n[%s]%d[-]", theme.TagAccent(), theme.TagFg(), node.Attempts)
-	}
-
-	// Extract result/failure from events
-	var dataStr string
-	for _, ev := range node.Events {
-		if ev.Result != "" {
-			formatted := formatSidePanelDetails(ev.Result)
-			dataStr += fmt.Sprintf("\n\n[%s::b]Result[-:-:-]\n%s", theme.TagAccent(), formatted)
-		}
-		if ev.Failure != "" {
-			dataStr += formatFailureSidePanel(ev)
-		}
-	}
-
-	var eventsStr string
-	if len(node.Events) > 0 {
-		eventsStr = fmt.Sprintf("\n\n[%s::b]Events[-:-:-]", theme.TagAccent())
-		for _, ev := range node.Events {
-			evIcon := eventIcon(ev.Type)
-			eventsStr += fmt.Sprintf("\n[%s]%s %s[-] [%s](%d)[-]",
-				eventColorTag(ev.Type), evIcon, ev.Type, theme.TagFgDim(), ev.ID)
-		}
-	}
-
-	text := fmt.Sprintf(`
-[%s::b]Name[-:-:-]
-[%s]%s[-]
-
-[%s::b]Status[-:-:-]
-[%s]%s %s[-]
-
-[%s::b]Duration[-:-:-]
-[%s]%s[-]
-
-[%s::b]Start Time[-:-:-]
-[%s]%s[-]%s%s%s`,
-		theme.TagAccent(),
-		theme.TagFg(), node.Name,
-		theme.TagAccent(),
-		statusTag, icon, node.Status,
-		theme.TagAccent(),
-		theme.TagFg(), durationStr,
-		theme.TagAccent(),
-		theme.TagFg(), node.StartTime.Format("2006-01-02 15:04:05.000"),
-		attemptsStr,
-		dataStr,
-		eventsStr,
-	)
-	eh.sidePanel.SetText(text)
+	eh.sidePanel.SetText(formatTreeNodeDetail(node))
 }
 
 // Name returns the view name.

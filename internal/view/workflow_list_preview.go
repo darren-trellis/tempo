@@ -13,6 +13,72 @@ import (
 	"github.com/rivo/tview"
 )
 
+func formatTreeNodeDetail(node *temporal.EventTreeNode) string {
+	if node == nil {
+		return fmt.Sprintf("[%s]No events[-]", theme.TagFgDim())
+	}
+
+	status := temporal.GetWorkflowStatus(node.Status)
+	statusTag := status.ColorTag()
+	icon := status.Icon()
+
+	durationStr := "running..."
+	if node.Duration > 0 {
+		durationStr = temporal.FormatDuration(node.Duration)
+	}
+
+	var attemptsStr string
+	if node.Attempts > 1 {
+		attemptsStr = fmt.Sprintf("\n\n[%s::b]Attempts[-:-:-]\n[%s]%d[-]", theme.TagAccent(), theme.TagFg(), node.Attempts)
+	}
+
+	var dataStr string
+	for _, ev := range node.Events {
+		if ev.Result != "" {
+			formatted := formatSidePanelDetails(ev.Result)
+			dataStr += fmt.Sprintf("\n\n[%s::b]Result[-:-:-]\n%s", theme.TagAccent(), formatted)
+		}
+		if ev.Failure != "" {
+			dataStr += formatFailureSidePanel(ev)
+		}
+	}
+
+	var eventsStr string
+	if len(node.Events) > 0 {
+		eventsStr = fmt.Sprintf("\n\n[%s::b]Events[-:-:-]", theme.TagAccent())
+		for _, ev := range node.Events {
+			evIcon := eventIcon(ev.Type)
+			eventsStr += fmt.Sprintf("\n[%s]%s %s[-] [%s](%d)[-]",
+				eventColorTag(ev.Type), evIcon, ev.Type, theme.TagFgDim(), ev.ID)
+		}
+	}
+
+	return fmt.Sprintf(`
+[%s::b]Name[-:-:-]
+[%s]%s[-]
+
+[%s::b]Status[-:-:-]
+[%s]%s %s[-]
+
+[%s::b]Duration[-:-:-]
+[%s]%s[-]
+
+[%s::b]Start Time[-:-:-]
+[%s]%s[-]%s%s%s`,
+		theme.TagAccent(),
+		theme.TagFg(), node.Name,
+		theme.TagAccent(),
+		statusTag, icon, node.Status,
+		theme.TagAccent(),
+		theme.TagFg(), durationStr,
+		theme.TagAccent(),
+		theme.TagFg(), node.StartTime.Format("2006-01-02 15:04:05.000"),
+		attemptsStr,
+		dataStr,
+		eventsStr,
+	)
+}
+
 func formatSelectedEventDetail(ev temporal.EnhancedHistoryEvent) string {
 	icon := eventIcon(ev.Type)
 	colorTag := eventColorTag(ev.Type)
@@ -256,6 +322,9 @@ func (wl *WorkflowList) paneAt(x, y int) (workflowFocusPane, bool) {
 		} else {
 			if wl.eventDetailPanel != nil && wl.eventDetailPanel.InRect(x, y) {
 				return focusEventDetail, true
+			}
+			if wl.previewKind == previewEvents && wl.eventTreeMode && wl.eventTreeView != nil && wl.eventTreeView.InRect(x, y) {
+				return focusEvents, true
 			}
 			if wl.eventTableScroll != nil && wl.eventTableScroll.InRect(x, y) {
 				return focusEvents, true
@@ -614,6 +683,19 @@ func (wl *WorkflowList) setupPreview() {
 	wl.eventDetail.SetBackgroundColor(theme.Bg())
 	wl.eventDetail.SetTextColor(theme.Fg())
 
+	wl.eventTreeView = NewEventTreeView()
+	wl.eventTreeView.SetBackgroundColor(theme.Bg())
+	wl.eventTreeView.SetOnSelectionChanged(func(node *temporal.EventTreeNode) {
+		if wl.previewKind != previewEvents || wl.eventDetail == nil {
+			return
+		}
+		wl.eventDetail.SetText(formatTreeNodeDetail(node))
+		wl.eventDetail.ScrollToBeginning()
+	})
+	wl.eventTreeView.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		return wl.handlePreviewKeys(event)
+	})
+
 	wl.eventsPanel = components.NewPanel().SetTitle(fmt.Sprintf("%s Activities", theme.IconActivity))
 	wl.eventsPanel.SetContent(wl.eventTableScroll)
 
@@ -704,13 +786,14 @@ func (wl *WorkflowList) setupPreview() {
 		AddTabWithIcon(previewDetails.title(), previewDetails.icon(), wl.workflowDetailScroll).
 		AddTabWithIcon(previewActivities.title(), previewActivities.icon(), wl.eventTableScroll).
 		AddTabWithIcon(previewEvents.title(), previewEvents.icon(), wl.eventTableScroll).
-		AddTabWithIcon(previewHierarchy.title(), previewHierarchy.icon(), wl.hierarchyView.tree).
-		SetOnChange(func(index int, name string) {
-			if index >= 0 && index < len(previewTabOrder) {
-				wl.setPreviewKind(previewTabOrder[index])
-			}
-		}).
-		SetActive(int(previewActivities))
+		AddTabWithIcon(previewHierarchy.title(), previewHierarchy.icon(), wl.hierarchyView.tree)
+	wl.previewTabs.SetActive(int(previewEvents))
+	wl.eventTab = wl.previewTabs.GetActiveTab()
+	wl.previewTabs.SetOnChange(func(index int, name string) {
+		if index >= 0 && index < len(previewTabOrder) {
+			wl.setPreviewKind(previewTabOrder[index])
+		}
+	}).SetActive(int(previewActivities))
 
 	wl.previewPanel = components.NewPanel()
 	wl.previewPanel.SetContent(wl.previewTabs)
@@ -768,16 +851,21 @@ func (wl *WorkflowList) handlePreviewKeys(event *tcell.EventKey) *tcell.EventKey
 	case 'z':
 		wl.toggleTimeline()
 		return nil
+	case 'b':
+		if wl.previewKind == previewEvents {
+			wl.toggleEventTree()
+			return nil
+		}
+	case ' ':
+		if wl.previewKind == previewEvents && wl.eventTreeMode && wl.eventTreeView != nil {
+			wl.eventTreeView.ToggleSelected()
+			return nil
+		}
 	case 'i':
 		if !wl.previewShowsIO() {
 			return event
 		}
 		if wl.showPreviewIO() {
-			return nil
-		}
-	case 'e':
-		if wl.app != nil && wl.previewWorkflowID != "" {
-			wl.app.NavigateToEvents(wl.previewWorkflowID, wl.previewRunID)
 			return nil
 		}
 	case 'u':
@@ -890,8 +978,8 @@ func (wl *WorkflowList) setFocusPane(pane workflowFocusPane) {
 			wl.app.JigApp().SetFocus(wl.workers.detail)
 		}
 	case focusEvents:
-		if wl.previewKind == previewHierarchy && wl.hierarchyView != nil && wl.hierarchyView.tree != nil {
-			wl.app.JigApp().SetFocus(wl.hierarchyView.tree)
+		if p := wl.eventsPreviewPrimitive(); p != nil {
+			wl.app.JigApp().SetFocus(p)
 		} else {
 			wl.app.JigApp().SetFocus(wl.eventTable)
 		}
@@ -1000,6 +1088,8 @@ func (wl *WorkflowList) syncFocusFromPrimitives() {
 		pane = focusEventDetail
 	case wl.hierarchyView != nil && wl.hierarchyView.tree != nil && wl.hierarchyView.tree.HasFocus():
 		pane = focusEvents
+	case wl.eventTreeView != nil && wl.eventTreeView.HasFocus():
+		pane = focusEvents
 	case wl.eventTable != nil && wl.eventTable.HasFocus():
 		pane = focusEvents
 	case wl.timelineView != nil && wl.timelineView.HasFocus():
@@ -1096,6 +1186,9 @@ func (wl *WorkflowList) clearPreview() {
 	if wl.timelineView != nil {
 		wl.timelineView.SetNodes(nil)
 	}
+	if wl.eventTreeView != nil {
+		wl.eventTreeView.SetNodes(nil)
+	}
 	if wl.eventTable != nil {
 		wl.eventTable.ClearRows()
 		wl.eventTable.SetHeaders("STATUS", "NAME", "STARTED", "DURATION")
@@ -1117,6 +1210,9 @@ func (wl *WorkflowList) setPreviewStatus(message string) {
 		return
 	}
 	wl.eventTable.ClearRows()
+	if wl.previewKind == previewEvents && wl.eventTreeView != nil {
+		wl.eventTreeView.SetNodes(nil)
+	}
 	if wl.previewKind == previewActivities {
 		wl.eventTable.SetHeaders("STATUS", "NAME", "STARTED", "DURATION")
 	} else {
@@ -1280,6 +1376,49 @@ func (wl *WorkflowList) renderPreviewDetails(w temporal.Workflow) {
 	}
 }
 
+func (wl *WorkflowList) eventsPreviewPrimitive() tview.Primitive {
+	if wl.previewKind == previewHierarchy && wl.hierarchyView != nil && wl.hierarchyView.tree != nil {
+		return wl.hierarchyView.tree
+	}
+	if wl.previewKind == previewEvents && wl.eventTreeMode && wl.eventTreeView != nil {
+		return wl.eventTreeView
+	}
+	return wl.eventTable
+}
+
+func (wl *WorkflowList) applyEventsTabMode() {
+	if wl.eventTab != nil {
+		if wl.eventTreeMode && wl.eventTreeView != nil {
+			wl.eventTab.Content = wl.eventTreeView
+		} else {
+			wl.eventTab.Content = wl.eventTableScroll
+		}
+	}
+	if wl.focusPane == focusEvents && wl.previewKind == previewEvents {
+		if wl.app != nil && wl.app.JigApp() != nil {
+			wl.setFocusPane(focusEvents)
+			return
+		}
+		wl.applyFocusStyles()
+	}
+	if wl.app != nil && wl.app.JigApp() != nil && wl.app.JigApp().Menu() != nil {
+		wl.app.JigApp().Menu().SetHints(wl.Hints())
+	}
+}
+
+func (wl *WorkflowList) toggleEventTree() {
+	if wl.previewKind != previewEvents {
+		return
+	}
+	wl.eventTreeMode = !wl.eventTreeMode
+	wl.applyEventsTabMode()
+	if w, ok := wl.currentPreviewWorkflow(); ok {
+		wl.renderPreviewEvents(w)
+		return
+	}
+	wl.renderPreviewEvents(temporal.Workflow{})
+}
+
 func (wl *WorkflowList) renderPreviewEvents(w temporal.Workflow) {
 	wl.syncPreviewChrome()
 	selectedID := int64(0)
@@ -1288,6 +1427,9 @@ func (wl *WorkflowList) renderPreviewEvents(w temporal.Workflow) {
 		if row >= 0 && row < len(wl.previewEvents) {
 			selectedID = wl.previewEvents[row].ID
 		}
+	}
+	if wl.eventTreeView != nil {
+		wl.eventTreeView.SetNodes(temporal.BuildEventTree(wl.previewEvents))
 	}
 	wl.eventTable.ClearRows()
 	wl.eventTable.SetHeaders("ID", "TIME", "TYPE", "NAME")
@@ -1314,6 +1456,12 @@ func (wl *WorkflowList) renderPreviewEvents(w temporal.Workflow) {
 		}
 	}
 	wl.eventTable.SelectRow(idx)
+	if wl.eventTreeMode && wl.eventTreeView != nil {
+		if node := wl.eventTreeView.SelectedNode(); node != nil {
+			wl.eventDetail.SetText(formatTreeNodeDetail(node))
+			return
+		}
+	}
 	wl.eventDetail.SetText(formatSelectedEventDetail(wl.previewEvents[idx]))
 }
 
