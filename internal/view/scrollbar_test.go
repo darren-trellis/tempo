@@ -54,9 +54,16 @@ func TestCharScrollViewDrawsScrollbar(t *testing.T) {
 	view.SetRect(0, 0, 10, 6)
 	view.Draw(screen)
 	screen.Show()
-	_, _, style, _ := screen.GetContent(9, 1)
-	_, bg, _ := style.Decompose()
-	if bg == tcell.ColorDefault {
+	painted := false
+	for y := 0; y < 6; y++ {
+		_, _, style, _ := screen.GetContent(9, y)
+		_, bg, _ := style.Decompose()
+		if bg != tcell.ColorDefault {
+			painted = true
+			break
+		}
+	}
+	if !painted {
 		t.Fatal("expected a vertical scrollbar on the right edge")
 	}
 }
@@ -111,6 +118,25 @@ func TestTextViewScrollbarReservesColumn(t *testing.T) {
 	_, bg, _ := style.Decompose()
 	if bg == tcell.ColorDefault {
 		t.Fatal("expected a text view scrollbar")
+	}
+}
+
+func TestHorizontalScrollbarIsThin(t *testing.T) {
+	table := components.NewTable()
+	table.SetHeaders("ID")
+	table.AddRow("x")
+	view := newCharScrollView(table, func() int { return 40 }).withApp(nil)
+	screen := tcell.NewSimulationScreen("UTF-8")
+	if err := screen.Init(); err != nil {
+		t.Fatal(err)
+	}
+	screen.SetSize(10, 6)
+	view.SetRect(0, 0, 10, 6)
+	view.Draw(screen)
+	screen.Show()
+	mainc, _, _, _ := screen.GetContent(1, 5)
+	if mainc != scrollbarThin {
+		t.Fatalf("horizontal scrollbar should use a thin glyph, got %q", mainc)
 	}
 }
 
