@@ -848,9 +848,6 @@ func (wl *WorkflowList) handlePreviewKeys(event *tcell.EventKey) *tcell.EventKey
 	case 'p':
 		wl.togglePreviewMode()
 		return nil
-	case 'z':
-		wl.toggleTimeline()
-		return nil
 	case 'b':
 		if wl.previewKind == previewEvents {
 			wl.toggleEventTree()

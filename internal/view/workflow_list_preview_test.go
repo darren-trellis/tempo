@@ -296,6 +296,9 @@ func TestPreviewHintsArePaneSpecific(t *testing.T) {
 	if desc := hintDescription(wl.Hints(), "b"); desc != "Tree" {
 		t.Fatalf("workflows pane should show tree, got %q", desc)
 	}
+	if desc := hintDescription(wl.Hints(), "z"); desc != "Timeline" {
+		t.Fatalf("workflows pane should show timeline, got %q", desc)
+	}
 	if desc := hintDescription(wl.Hints(), "tab"); desc != "" {
 		t.Fatalf("tab should not be hinted, got %q", desc)
 	}
@@ -307,6 +310,12 @@ func TestPreviewHintsArePaneSpecific(t *testing.T) {
 	wl.focusPane = focusEvents
 	if desc := hintDescription(wl.Hints(), "b"); desc != "" {
 		t.Fatalf("activities should not show tree, got %q", desc)
+	}
+	if desc := hintDescription(wl.Hints(), "z"); desc != "" {
+		t.Fatalf("preview should not show timeline, got %q", desc)
+	}
+	if ev := wl.handlePreviewKeys(tcell.NewEventKey(tcell.KeyRune, 'z', 0)); ev == nil {
+		t.Fatal("z should not toggle the timeline from preview")
 	}
 	if desc := hintDescription(wl.Hints(), "e"); desc != "" {
 		t.Fatalf("standalone event graph should be gone, got %q", desc)

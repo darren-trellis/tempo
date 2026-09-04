@@ -611,7 +611,6 @@ func (wl *WorkflowList) previewListHints() []KeyHint {
 		return []KeyHint{
 			{Key: "space", Description: "Collapse/Expand"},
 			{Key: "+/-", Description: "Depth"},
-			{Key: "z", Description: "Timeline"},
 			{Key: "p", Description: "Preview"},
 		}
 	}
@@ -623,7 +622,6 @@ func (wl *WorkflowList) previewListHints() []KeyHint {
 		hints = append(hints, KeyHint{Key: "b", Description: treeModeHint(wl.eventTreeMode)})
 	}
 	return append(hints,
-		KeyHint{Key: "z", Description: "Timeline"},
 		KeyHint{Key: "p", Description: "Preview"},
 	)
 }
@@ -632,7 +630,6 @@ func (wl *WorkflowList) previewSideHints() []KeyHint {
 	if wl.previewKind == previewDetails || wl.activityDetailTableFocused() {
 		hints := []KeyHint{{Key: "y", Description: "Yank"}}
 		return append(hints,
-			KeyHint{Key: "z", Description: "Timeline"},
 			KeyHint{Key: "p", Description: "Preview"},
 		)
 	}
@@ -640,7 +637,6 @@ func (wl *WorkflowList) previewSideHints() []KeyHint {
 		return []KeyHint{
 			{Key: "c", Description: "Center Graph"},
 			{Key: "+/-", Description: "Depth"},
-			{Key: "z", Description: "Timeline"},
 			{Key: "p", Description: "Preview"},
 		}
 	}
@@ -651,7 +647,6 @@ func (wl *WorkflowList) timelineHints() []KeyHint {
 	return []KeyHint{
 		{Key: "+/-", Description: "Zoom"},
 		{Key: "m", Description: timelineSizeHint(wl.timelineNarrow)},
-		{Key: "z", Description: "Timeline"},
 		{Key: "p", Description: "Preview"},
 		{Key: "?", Description: "Legend"},
 	}

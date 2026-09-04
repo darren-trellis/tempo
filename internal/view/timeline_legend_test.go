@@ -82,6 +82,9 @@ func TestTimelineHintsIncludeLegend(t *testing.T) {
 	if desc := hintDescription(wl.Hints(), "?"); desc != "Legend" {
 		t.Fatalf("timeline hint: %q", desc)
 	}
+	if desc := hintDescription(wl.Hints(), "z"); desc != "" {
+		t.Fatalf("timeline should not offer z, got %q", desc)
+	}
 
 	eh := NewEventHistory(&App{}, "wf", "run")
 	eh.viewMode = ViewModeTimeline
