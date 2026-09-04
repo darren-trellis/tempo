@@ -54,16 +54,7 @@ func TestCharScrollViewDrawsScrollbar(t *testing.T) {
 	view.SetRect(0, 0, 10, 6)
 	view.Draw(screen)
 	screen.Show()
-	painted := false
-	for y := 0; y < 6; y++ {
-		_, _, style, _ := screen.GetContent(9, y)
-		_, bg, _ := style.Decompose()
-		if bg != tcell.ColorDefault {
-			painted = true
-			break
-		}
-	}
-	if !painted {
+	if !edgeHasGlyph(screen, 9, 0, 6, scrollbarThinVert) {
 		t.Fatal("expected a vertical scrollbar on the right edge")
 	}
 }
@@ -85,6 +76,7 @@ func TestCharScrollViewHidesScrollbarWhenDisabled(t *testing.T) {
 	screen.SetSize(10, 6)
 	view.SetRect(0, 0, 10, 6)
 	view.Draw(screen)
+	screen.Show()
 	shown := newCharScrollView(table, func() int { return 8 }).withApp(nil)
 	shown.SetRect(0, 0, 10, 6)
 	shownScreen := tcell.NewSimulationScreen("UTF-8")
@@ -93,12 +85,12 @@ func TestCharScrollViewHidesScrollbarWhenDisabled(t *testing.T) {
 	}
 	shownScreen.SetSize(10, 6)
 	shown.Draw(shownScreen)
-	_, _, offStyle, _ := screen.GetContent(9, 1)
-	_, _, onStyle, _ := shownScreen.GetContent(9, 1)
-	_, offBg, _ := offStyle.Decompose()
-	_, onBg, _ := onStyle.Decompose()
-	if onBg == offBg {
-		t.Fatal("disabling show_scrollbars should change the right-edge paint")
+	shownScreen.Show()
+	if edgeHasGlyph(screen, 9, 0, 6, scrollbarThinVert) {
+		t.Fatal("disabling show_scrollbars should hide the vertical scrollbar")
+	}
+	if !edgeHasGlyph(shownScreen, 9, 0, 6, scrollbarThinVert) {
+		t.Fatal("enabled scrollbars should draw the thin vertical glyph")
 	}
 }
 
@@ -114,9 +106,7 @@ func TestTextViewScrollbarReservesColumn(t *testing.T) {
 	view.SetRect(0, 0, 12, 4)
 	view.Draw(screen)
 	screen.Show()
-	_, _, style, _ := screen.GetContent(11, 0)
-	_, bg, _ := style.Decompose()
-	if bg == tcell.ColorDefault {
+	if !edgeHasGlyph(screen, 11, 0, 4, scrollbarThinVert) {
 		t.Fatal("expected a text view scrollbar")
 	}
 }
@@ -135,9 +125,19 @@ func TestHorizontalScrollbarIsThin(t *testing.T) {
 	view.Draw(screen)
 	screen.Show()
 	mainc, _, _, _ := screen.GetContent(1, 5)
-	if mainc != scrollbarThin {
+	if mainc != scrollbarThinHoriz {
 		t.Fatalf("horizontal scrollbar should use a thin glyph, got %q", mainc)
 	}
+}
+
+func edgeHasGlyph(screen tcell.SimulationScreen, x, y0, height int, glyph rune) bool {
+	for y := y0; y < y0+height; y++ {
+		mainc, _, _, _ := screen.GetContent(x, y)
+		if mainc == glyph {
+			return true
+		}
+	}
+	return false
 }
 
 func TestScrollMetricsOverflow(t *testing.T) {

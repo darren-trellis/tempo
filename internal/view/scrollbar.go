@@ -59,7 +59,10 @@ func scrollbarThumb(offset, visible, total, length int) (pos, size int) {
 	return pos, size
 }
 
-const scrollbarThin = '▁'
+const (
+	scrollbarThinHoriz = '▁'
+	scrollbarThinVert  = '▕'
+)
 
 func drawScrollbar(screen tcell.Screen, x, y, length int, m scrollMetrics, vertical bool) {
 	if screen == nil || length <= 0 || !m.overflow() {
@@ -69,26 +72,22 @@ func drawScrollbar(screen tcell.Screen, x, y, length int, m scrollMetrics, verti
 	if size <= 0 {
 		return
 	}
-	if vertical {
-		track := tcell.StyleDefault.Background(theme.BgLight())
-		thumb := tcell.StyleDefault.Background(theme.FgDim())
-		for i := 0; i < length; i++ {
-			style := track
-			if i >= pos && i < pos+size {
-				style = thumb
-			}
-			screen.SetContent(x, y+i, ' ', nil, style)
-		}
-		return
-	}
 	track := tcell.StyleDefault.Foreground(theme.FgDim()).Background(theme.Bg())
 	thumb := tcell.StyleDefault.Foreground(theme.Fg()).Background(theme.Bg())
+	glyph := scrollbarThinHoriz
+	if vertical {
+		glyph = scrollbarThinVert
+	}
 	for i := 0; i < length; i++ {
 		style := track
 		if i >= pos && i < pos+size {
 			style = thumb
 		}
-		screen.SetContent(x+i, y, scrollbarThin, nil, style)
+		if vertical {
+			screen.SetContent(x, y+i, glyph, nil, style)
+			continue
+		}
+		screen.SetContent(x+i, y, glyph, nil, style)
 	}
 }
 
