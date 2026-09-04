@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/atterpac/jig/components"
+	"github.com/atterpac/jig/theme"
 	"github.com/galaxy-io/tempo/internal/config"
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
@@ -109,6 +110,52 @@ func TestTextViewScrollbarReservesColumn(t *testing.T) {
 	if !edgeHasGlyph(screen, 11, 0, 4, scrollbarThinVert) {
 		t.Fatal("expected a text view scrollbar")
 	}
+}
+
+func TestScrollbarFollowsTableAfterPageJump(t *testing.T) {
+	table := components.NewTable()
+	table.SetHeaders("ID")
+	for i := 0; i < 40; i++ {
+		table.AddRow("row")
+	}
+	view := newCharScrollView(table, func() int { return 8 }).withApp(nil)
+	screen := tcell.NewSimulationScreen("UTF-8")
+	if err := screen.Init(); err != nil {
+		t.Fatal(err)
+	}
+	screen.SetSize(10, 6)
+	view.SetRect(0, 0, 10, 6)
+	table.Select(0, 0)
+	view.Draw(screen)
+	screen.Show()
+	top := scrollbarThumbY(screen, 9, 6)
+
+	table.Select(35, 0)
+	before, _ := table.GetOffset()
+	view.Draw(screen)
+	screen.Show()
+	after, _ := table.GetOffset()
+	if after <= before {
+		t.Fatalf("table should scroll after select, before=%d after=%d", before, after)
+	}
+	bottom := scrollbarThumbY(screen, 9, 6)
+	if bottom <= top {
+		t.Fatalf("scrollbar should move on the same draw, top=%d bottom=%d offset=%d", top, bottom, after)
+	}
+}
+
+func scrollbarThumbY(screen tcell.SimulationScreen, x, height int) int {
+	for y := 0; y < height; y++ {
+		mainc, _, style, _ := screen.GetContent(x, y)
+		if mainc != scrollbarThinVert {
+			continue
+		}
+		fg, _, _ := style.Decompose()
+		if fg != theme.FgDim() {
+			return y
+		}
+	}
+	return -1
 }
 
 func TestHorizontalScrollbarIsThin(t *testing.T) {

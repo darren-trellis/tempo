@@ -83,6 +83,7 @@ func (eh *EventHistory) setup() {
 	eh.table.SetEvaluateAllRows(true)
 	eh.tableScroll = attachTableCharScroll(eh.table, eh.app)
 	if eh.treeView != nil {
+		eh.treeView.app = eh.app
 		attachTreeScrollbar(eh.treeView.TreeView, eh.app)
 	}
 

@@ -12,6 +12,7 @@ import (
 // EventTreeView displays workflow history events in a collapsible tree structure.
 type EventTreeView struct {
 	*tview.TreeView
+	app          *App
 	root         *tview.TreeNode
 	nodes        []*temporal.EventTreeNode
 	onSelect     func(node *temporal.EventTreeNode)
@@ -78,6 +79,7 @@ func (etv *EventTreeView) Draw(screen tcell.Screen) {
 	etv.root.SetColor(theme.Accent())
 	etv.refreshColors()
 	etv.TreeView.Draw(screen)
+	drawTreeScrollbar(etv.TreeView, screen, etv.app)
 }
 
 // SetNodes populates the tree with event nodes.

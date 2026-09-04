@@ -75,6 +75,7 @@ func (v *charScrollView) Draw(screen tcell.Screen) {
 	if !appShowsScrollbars(v.app) {
 		return
 	}
+	vert, horiz = v.scrollBars(innerW, innerH)
 	if vert.overflow() {
 		drawScrollbar(screen, x+w-1, y, innerH, vert, true)
 	}

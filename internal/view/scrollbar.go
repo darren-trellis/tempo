@@ -202,11 +202,29 @@ func attachTreeScrollbar(tree *tview.TreeView, app *App) {
 		if !appShowsScrollbars(app) || width < 2 || height < 1 {
 			return x, y, width, height
 		}
-		vert := treeScrollMetrics(tree, height)
-		if !vert.overflow() {
+		if !treeScrollMetrics(tree, height).overflow() {
 			return x, y, width, height
 		}
-		drawScrollbar(screen, x+width-1, y, height, vert, true)
 		return x, y, width - 1, height
 	})
+}
+
+func drawTreeScrollbar(tree *tview.TreeView, screen tcell.Screen, app *App) {
+	if tree == nil || screen == nil || !appShowsScrollbars(app) {
+		return
+	}
+	x, y, width, height := tree.GetRect()
+	_, _, innerW, innerH := tree.GetInnerRect()
+	if innerH < 1 {
+		innerH = height
+	}
+	vert := treeScrollMetrics(tree, innerH)
+	if !vert.overflow() {
+		return
+	}
+	barX := x + width - 1
+	if innerW > 0 && innerW < width {
+		barX = x + innerW
+	}
+	drawScrollbar(screen, barX, y, innerH, vert, true)
 }

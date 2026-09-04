@@ -690,6 +690,7 @@ func (wl *WorkflowList) setupPreview() {
 
 	wl.eventTreeView = NewEventTreeView()
 	wl.eventTreeView.SetBackgroundColor(theme.Bg())
+	wl.eventTreeView.app = wl.app
 	attachTreeScrollbar(wl.eventTreeView.TreeView, wl.app)
 	wl.eventTreeView.SetOnSelectionChanged(func(node *temporal.EventTreeNode) {
 		if wl.previewKind != previewEvents {
