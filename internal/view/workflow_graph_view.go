@@ -303,13 +303,21 @@ func (wg *WorkflowGraphView) loadData() {
 }
 
 // showInitialState displays the current workflow immediately while loading relationships.
+func graphExecID(id, runID string) string {
+	if runID == "" {
+		return id
+	}
+	return id + "\x1e" + runID
+}
+
 func (wg *WorkflowGraphView) showInitialState() {
 	if wg.workflow == nil {
 		return
 	}
+	id := graphExecID(wg.workflow.ID, wg.workflow.RunID)
 	wg.treeData = components.NewGraphTreeData()
 	currentNode := &components.GraphTreeNode{
-		ID:        wg.workflow.ID,
+		ID:        id,
 		Label:     truncateLabel(wg.workflow.ID, 30),
 		Sublabel:  wg.workflow.Type,
 		Status:    wg.workflow.Status,
@@ -319,19 +327,18 @@ func (wg *WorkflowGraphView) showInitialState() {
 		Data:      wg.workflow,
 	}
 	wg.treeData.AddNode(currentNode)
-	wg.treeData.RootID = wg.workflow.ID
+	wg.treeData.RootID = id
 	wg.tree.SetData(wg.treeData)
 
-	// Create minimal graph with just the current workflow
 	wg.graphData = components.NewNodeGraphData()
 	wg.graphData.AddNode(&components.GraphNode{
-		ID:      wg.workflow.ID,
+		ID:      id,
 		Label:   truncateLabel(wg.workflow.ID, 14),
 		Status:  wg.workflow.Status,
 		Focused: true,
 		Data:    wg.workflow,
 	})
-	wg.graphData.FocusID = wg.workflow.ID
+	wg.graphData.FocusID = id
 	wg.graph.SetData(wg.graphData)
 }
 
@@ -342,27 +349,37 @@ func (wg *WorkflowGraphView) buildTreeData() {
 		return
 	}
 
-	// Add parent if exists
-	if wg.relationships.Parent != nil {
-		parent := wg.relationships.Parent
-		parentNode := &components.GraphTreeNode{
-			ID:        parent.ID,
-			Label:     parent.ID,
-			Sublabel:  parent.Type,
-			Status:    parent.Status,
-			NodeType:  components.GraphNodeSecondary,
-			CanExpand: false,
-			Expanded:  true,
-			Data:      parent,
+	seen := make(map[string]bool)
+	current := wg.relationships.Current
+	currentID := graphExecID(current.ID, current.RunID)
+
+	if parent := wg.relationships.Parent; parent != nil {
+		parentID := graphExecID(parent.ID, parent.RunID)
+		if parentID != "" && parentID != currentID {
+			parentNode := &components.GraphTreeNode{
+				ID:        parentID,
+				Label:     parent.ID,
+				Sublabel:  parent.Type,
+				Status:    parent.Status,
+				NodeType:  components.GraphNodeSecondary,
+				CanExpand: false,
+				Expanded:  true,
+				Data:      parent,
+			}
+			wg.treeData.AddNode(parentNode)
+			wg.treeData.RootID = parentID
+			parentNode.Children = append(parentNode.Children, currentID)
+			wg.treeData.AddEdge(&components.GraphTreeEdge{
+				From: parentID,
+				To:   currentID,
+				Type: components.GraphEdgeSolid,
+			})
+			seen[parentID] = true
 		}
-		wg.treeData.AddNode(parentNode)
-		wg.treeData.RootID = parent.ID
 	}
 
-	// Add current workflow
-	current := wg.relationships.Current
 	currentNode := &components.GraphTreeNode{
-		ID:        current.ID,
+		ID:        currentID,
 		Label:     current.ID,
 		Sublabel:  current.Type,
 		Status:    current.Status,
@@ -371,41 +388,32 @@ func (wg *WorkflowGraphView) buildTreeData() {
 		Expanded:  true,
 		Data:      current,
 	}
-
-	// Link to parent if exists
-	if wg.relationships.Parent != nil {
-		parentNode := wg.treeData.GetNode(wg.relationships.Parent.ID)
-		if parentNode != nil {
-			parentNode.Children = append(parentNode.Children, current.ID)
-		}
-		wg.treeData.AddEdge(&components.GraphTreeEdge{
-			From: wg.relationships.Parent.ID,
-			To:   current.ID,
-			Type: components.GraphEdgeSolid,
-		})
-	} else {
-		wg.treeData.RootID = current.ID
+	if wg.treeData.RootID == "" {
+		wg.treeData.RootID = currentID
 	}
-
 	wg.treeData.AddNode(currentNode)
+	seen[currentID] = true
 
-	// Add children recursively
-	wg.addChildrenToTree(currentNode, wg.relationships.Children, 1)
+	wg.addChildrenToTree(currentNode, wg.relationships.Children, 1, seen)
 
-	// Add signal relationships as link nodes
 	for _, signal := range wg.relationships.OutgoingSignals {
+		signalID := fmt.Sprintf("signal-%s-%s", signal.FromWorkflowID, signal.ToWorkflowID)
+		if seen[signalID] {
+			continue
+		}
+		seen[signalID] = true
 		signalNode := &components.GraphTreeNode{
-			ID:       fmt.Sprintf("signal-%s-%s", signal.FromWorkflowID, signal.ToWorkflowID),
+			ID:       signalID,
 			Label:    fmt.Sprintf("Signal: %s", signal.SignalName),
 			Sublabel: fmt.Sprintf("-> %s", truncateLabel(signal.ToWorkflowID, 20)),
 			NodeType: components.GraphNodeLink,
 			Data:     signal,
 		}
 		wg.treeData.AddNode(signalNode)
-		currentNode.Children = append(currentNode.Children, signalNode.ID)
+		currentNode.Children = append(currentNode.Children, signalID)
 		wg.treeData.AddEdge(&components.GraphTreeEdge{
-			From:  current.ID,
-			To:    signalNode.ID,
+			From:  currentID,
+			To:    signalID,
 			Type:  components.GraphEdgeDashed,
 			Label: signal.SignalName,
 		})
@@ -414,22 +422,27 @@ func (wg *WorkflowGraphView) buildTreeData() {
 	wg.tree.SetData(wg.treeData)
 }
 
-func (wg *WorkflowGraphView) addChildrenToTree(parentNode *components.GraphTreeNode, children []*temporal.WorkflowNode, depth int) {
+func (wg *WorkflowGraphView) addChildrenToTree(parentNode *components.GraphTreeNode, children []*temporal.WorkflowNode, depth int, seen map[string]bool) {
 	for _, child := range children {
+		id := graphExecID(child.ID, child.RunID)
+		if id == "" || id == parentNode.ID || seen[id] {
+			continue
+		}
+		seen[id] = true
 		childNode := &components.GraphTreeNode{
-			ID:        child.ID,
+			ID:        id,
 			Label:     child.ID,
 			Sublabel:  child.Type,
 			Status:    child.Status,
 			NodeType:  components.GraphNodeSecondary,
 			Depth:     depth,
 			CanExpand: len(child.Children) > 0,
-			Expanded:  depth < 2, // Auto-expand first 2 levels
+			Expanded:  depth < 2,
 			Data:      &child.Workflow,
 		}
 
 		wg.treeData.AddNode(childNode)
-		parentNode.Children = append(parentNode.Children, child.ID)
+		parentNode.Children = append(parentNode.Children, id)
 
 		edgeType := components.GraphEdgeSolid
 		if child.EdgeType == "signal" {
@@ -440,13 +453,12 @@ func (wg *WorkflowGraphView) addChildrenToTree(parentNode *components.GraphTreeN
 
 		wg.treeData.AddEdge(&components.GraphTreeEdge{
 			From: parentNode.ID,
-			To:   child.ID,
+			To:   id,
 			Type: edgeType,
 		})
 
-		// Recurse for grandchildren
 		if len(child.Children) > 0 {
-			wg.addChildrenToTree(childNode, child.Children, depth+1)
+			wg.addChildrenToTree(childNode, child.Children, depth+1, seen)
 		}
 	}
 }
@@ -458,60 +470,72 @@ func (wg *WorkflowGraphView) buildGraphData() {
 		return
 	}
 
-	// Add parent if exists
-	if wg.relationships.Parent != nil {
-		parent := wg.relationships.Parent
-		wg.graphData.AddNode(&components.GraphNode{
-			ID:     parent.ID,
-			Label:  truncateLabel(parent.ID, 14),
-			Status: parent.Status,
-			Data:   parent,
-		})
+	seen := make(map[string]bool)
+	byWorkflow := make(map[string]string)
+	current := wg.relationships.Current
+	currentID := graphExecID(current.ID, current.RunID)
+
+	if parent := wg.relationships.Parent; parent != nil {
+		parentID := graphExecID(parent.ID, parent.RunID)
+		if parentID != "" && parentID != currentID {
+			wg.graphData.AddNode(&components.GraphNode{
+				ID:     parentID,
+				Label:  truncateLabel(parent.ID, 14),
+				Status: parent.Status,
+				Data:   parent,
+			})
+			wg.graphData.AddEdge(&components.GraphEdge{
+				From: parentID,
+				To:   currentID,
+				Type: components.GraphEdgeSolid,
+			})
+			seen[parentID] = true
+			byWorkflow[parent.ID] = parentID
+		}
 	}
 
-	// Add current workflow (focused)
-	current := wg.relationships.Current
 	wg.graphData.AddNode(&components.GraphNode{
-		ID:      current.ID,
+		ID:      currentID,
 		Label:   truncateLabel(current.ID, 14),
 		Status:  current.Status,
 		Focused: true,
 		Data:    current,
 	})
-	wg.graphData.FocusID = current.ID
+	wg.graphData.FocusID = currentID
+	seen[currentID] = true
+	byWorkflow[current.ID] = currentID
 
-	// Add edge from parent to current
-	if wg.relationships.Parent != nil {
-		wg.graphData.AddEdge(&components.GraphEdge{
-			From: wg.relationships.Parent.ID,
-			To:   current.ID,
-			Type: components.GraphEdgeSolid,
-		})
-	}
+	wg.addChildrenToGraph(currentID, wg.relationships.Children, seen, byWorkflow)
 
-	// Add children recursively
-	wg.addChildrenToGraph(current.ID, wg.relationships.Children)
-
-	// Add signal edges
 	for _, signal := range wg.relationships.OutgoingSignals {
-		// Only add edge if target exists in graph
-		if wg.graphData.GetNode(signal.ToWorkflowID) != nil {
-			wg.graphData.AddEdge(&components.GraphEdge{
-				From:  signal.FromWorkflowID,
-				To:    signal.ToWorkflowID,
-				Type:  components.GraphEdgeDashed,
-				Label: signal.SignalName,
-			})
+		from := byWorkflow[signal.FromWorkflowID]
+		to := byWorkflow[signal.ToWorkflowID]
+		if from == "" || to == "" || from == to {
+			continue
 		}
+		wg.graphData.AddEdge(&components.GraphEdge{
+			From:  from,
+			To:    to,
+			Type:  components.GraphEdgeDashed,
+			Label: signal.SignalName,
+		})
 	}
 
 	wg.graph.SetData(wg.graphData)
 }
 
-func (wg *WorkflowGraphView) addChildrenToGraph(parentID string, children []*temporal.WorkflowNode) {
+func (wg *WorkflowGraphView) addChildrenToGraph(parentID string, children []*temporal.WorkflowNode, seen map[string]bool, byWorkflow map[string]string) {
 	for _, child := range children {
+		id := graphExecID(child.ID, child.RunID)
+		if id == "" || id == parentID || seen[id] {
+			continue
+		}
+		seen[id] = true
+		if byWorkflow != nil {
+			byWorkflow[child.ID] = id
+		}
 		wg.graphData.AddNode(&components.GraphNode{
-			ID:     child.ID,
+			ID:     id,
 			Label:  truncateLabel(child.ID, 14),
 			Status: child.Status,
 			Data:   &child.Workflow,
@@ -526,13 +550,12 @@ func (wg *WorkflowGraphView) addChildrenToGraph(parentID string, children []*tem
 
 		wg.graphData.AddEdge(&components.GraphEdge{
 			From: parentID,
-			To:   child.ID,
+			To:   id,
 			Type: edgeType,
 		})
 
-		// Recurse
 		if len(child.Children) > 0 {
-			wg.addChildrenToGraph(child.ID, child.Children)
+			wg.addChildrenToGraph(id, child.Children, seen, byWorkflow)
 		}
 	}
 }
@@ -598,35 +621,43 @@ func (wg *WorkflowGraphView) loadChildren(nodeID string) ([]*components.GraphTre
 	var edges []*components.GraphTreeEdge
 
 	for _, child := range children {
+		id := graphExecID(child.ID, child.RunID)
+		if id == "" || id == nodeID {
+			continue
+		}
+		if wg.treeData != nil && wg.treeData.GetNode(id) != nil {
+			continue
+		}
 		childNode := &components.GraphTreeNode{
-			ID:        child.ID,
+			ID:        id,
 			Label:     truncateLabel(child.ID, 30),
 			Sublabel:  child.Type,
 			Status:    child.Status,
 			NodeType:  components.GraphNodeSecondary,
-			CanExpand: true, // Assume children might have children
+			CanExpand: true,
 			Data:      &child,
 		}
 		nodes = append(nodes, childNode)
 
 		edges = append(edges, &components.GraphTreeEdge{
 			From: nodeID,
-			To:   child.ID,
+			To:   id,
 			Type: components.GraphEdgeSolid,
 		})
 
-		// Also add to graph
-		wg.graphData.AddNode(&components.GraphNode{
-			ID:     child.ID,
-			Label:  truncateLabel(child.ID, 14),
-			Status: child.Status,
-			Data:   &child,
-		})
-		wg.graphData.AddEdge(&components.GraphEdge{
-			From: nodeID,
-			To:   child.ID,
-			Type: components.GraphEdgeSolid,
-		})
+		if wg.graphData != nil && wg.graphData.GetNode(id) == nil {
+			wg.graphData.AddNode(&components.GraphNode{
+				ID:     id,
+				Label:  truncateLabel(child.ID, 14),
+				Status: child.Status,
+				Data:   &child,
+			})
+			wg.graphData.AddEdge(&components.GraphEdge{
+				From: nodeID,
+				To:   id,
+				Type: components.GraphEdgeSolid,
+			})
+		}
 	}
 
 	return nodes, edges
