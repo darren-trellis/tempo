@@ -587,16 +587,25 @@ func (a *App) ShowToastSuccess(message string) {
 
 // ToastSuccess displays a success toast (call from within QueueUpdateDraw).
 func (a *App) ToastSuccess(message string) {
+	if a == nil || a.toasts == nil {
+		return
+	}
 	a.toasts.Success(message)
 }
 
 // ToastError displays an error toast (call from within QueueUpdateDraw).
 func (a *App) ToastError(message string) {
+	if a == nil || a.toasts == nil {
+		return
+	}
 	a.toasts.Error(message)
 }
 
 // ToastWarning displays a warning toast (call from within QueueUpdateDraw).
 func (a *App) ToastWarning(message string) {
+	if a == nil || a.toasts == nil {
+		return
+	}
 	a.toasts.Warning(message)
 }
 
@@ -934,17 +943,17 @@ func (a *App) showDebugScreen() {
 		case 'y':
 			report := debugScreen.GeneratePlainReport()
 			if err := copyToClipboard(report); err != nil {
-				a.ShowToastError("Failed to copy: " + err.Error())
+				a.ToastError("Failed to copy: " + err.Error())
 			} else {
-				a.toasts.Success("Report copied to clipboard!")
+				a.ToastSuccess("Report copied to clipboard!")
 			}
 			return nil
 		case 'Y':
 			tmpl := debugScreen.GenerateIssueTemplate()
 			if err := copyToClipboard(tmpl); err != nil {
-				a.ShowToastError("Failed to copy: " + err.Error())
+				a.ToastError("Failed to copy: " + err.Error())
 			} else {
-				a.toasts.Success("Issue template copied to clipboard!")
+				a.ToastSuccess("Issue template copied to clipboard!")
 			}
 			return nil
 		}
@@ -1470,14 +1479,14 @@ func (a *App) OpenWorkflowInBrowser(workflowID, runID string) {
 	}
 	link, err := a.workflowUILink(workflowID, runID)
 	if err != nil {
-		a.ShowToastError(err.Error())
+		a.ToastError(err.Error())
 		return
 	}
 	if err := openBrowser(link); err != nil {
-		a.ShowToastError("Failed to open browser: " + err.Error())
+		a.ToastError("Failed to open browser: " + err.Error())
 		return
 	}
-	a.ShowToastSuccess("Opened in browser")
+	a.ToastSuccess("Opened in browser")
 }
 
 func (a *App) workflowUILink(workflowID, runID string) (string, error) {

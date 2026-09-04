@@ -138,10 +138,14 @@ func (wl *WorkflowList) copyWorkflowID() {
 
 	wf := wl.workflows[row]
 	if err := copyToClipboard(wf.ID); err != nil {
-		wl.app.ShowToastError("Failed to copy: " + err.Error())
+		if wl.app != nil {
+			wl.app.ToastError("Failed to copy: " + err.Error())
+		}
 		return
 	}
-	wl.app.ShowToastSuccess("Copied workflow ID")
+	if wl.app != nil {
+		wl.app.ToastSuccess("Copied workflow ID")
+	}
 }
 
 func (wl *WorkflowList) openSelectedWorkflowUI() bool {
@@ -150,7 +154,7 @@ func (wl *WorkflowList) openSelectedWorkflowUI() bool {
 	}
 	w, ok := wl.selectedWorkflow()
 	if !ok {
-		wl.app.ShowToastError("No workflow selected")
+		wl.app.ToastError("No workflow selected")
 		return true
 	}
 	wl.app.OpenWorkflowInBrowser(w.ID, w.RunID)
