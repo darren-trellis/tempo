@@ -204,8 +204,14 @@ func (wl *WorkflowList) actionHints(w temporal.Workflow) []KeyHint {
 			KeyHint{Key: "Q", Description: "Query"},
 		)
 	}
+	return hints
+}
+
+func (wl *WorkflowList) listActionHints(w temporal.Workflow) []KeyHint {
+	hints := wl.actionHints(w)
 	if workflowCanReset(w.Status) {
 		hints = append(hints, KeyHint{Key: "R", Description: "Reset"})
 	}
+	hints = append(hints, KeyHint{Key: "D", Description: "Delete"})
 	return hints
 }

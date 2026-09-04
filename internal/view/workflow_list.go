@@ -313,8 +313,22 @@ func (wl *WorkflowList) Start() {
 			wl.showQueryTemplates()
 			return true
 		}).
-		OnRune('D', func(e *tcell.EventKey) bool {
+		OnRune('d', func(e *tcell.EventKey) bool {
+			if wl.selectionMode {
+				if len(wl.table.GetSelectedRows()) > 0 {
+					wl.showBatchDeleteConfirm()
+				}
+				return true
+			}
 			wl.showDateRangePicker()
+			return true
+		}).
+		OnRune('D', func(e *tcell.EventKey) bool {
+			if wl.selectionMode && len(wl.table.GetSelectedRows()) > 0 {
+				wl.showBatchDeleteConfirm()
+				return true
+			}
+			wl.showDeleteSelected()
 			return true
 		}).
 		OnRune('s', func(e *tcell.EventKey) bool {
@@ -390,15 +404,6 @@ func (wl *WorkflowList) Start() {
 		OnRune('N', func(e *tcell.EventKey) bool {
 			wl.showStartWorkflow()
 			return true
-		}).
-		OnRune('d', func(e *tcell.EventKey) bool {
-			if wl.selectionMode {
-				if len(wl.table.GetSelectedRows()) > 0 {
-					wl.showBatchDeleteConfirm()
-				}
-				return true
-			}
-			return false
 		}).
 		OnRune('|', func(e *tcell.EventKey) bool {
 			wl.showColumnEditor()
@@ -637,7 +642,6 @@ func (wl *WorkflowList) previewListHints() []KeyHint {
 		if workflowIsRunning(w.Status) {
 			hints = append(hints, KeyHint{Key: "s", Description: "Signal"})
 		}
-		hints = append(hints, KeyHint{Key: "D", Description: "Delete"})
 	}
 	return append(hints,
 		KeyHint{Key: "r", Description: "Refresh"},
@@ -657,7 +661,6 @@ func (wl *WorkflowList) previewSideHints() []KeyHint {
 			if workflowIsRunning(w.Status) {
 				hints = append(hints, KeyHint{Key: "s", Description: "Signal"})
 			}
-			hints = append(hints, KeyHint{Key: "D", Description: "Delete"})
 		}
 		return append(hints,
 			KeyHint{Key: "r", Description: "Refresh"},
@@ -705,7 +708,7 @@ func (wl *WorkflowList) workflowPaneHints() []KeyHint {
 		KeyHint{Key: "/", Description: "Filter"},
 		KeyHint{Key: "F", Description: "Query"},
 		KeyHint{Key: "f", Description: "Templates"},
-		KeyHint{Key: "D", Description: "Date Range"},
+		KeyHint{Key: "d", Description: "Date Range"},
 	)
 	if wl.visibilityQuery != "" {
 		hints = append(hints,
@@ -719,7 +722,7 @@ func (wl *WorkflowList) workflowPaneHints() []KeyHint {
 		KeyHint{Key: "N", Description: "Start"},
 	)
 	if w, ok := wl.selectedWorkflow(); ok {
-		hints = append(hints, wl.actionHints(w)...)
+		hints = append(hints, wl.listActionHints(w)...)
 	}
 	return append(hints,
 		KeyHint{Key: "y", Description: "Copy ID"},

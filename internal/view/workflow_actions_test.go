@@ -93,4 +93,45 @@ func TestListHintsIncludeWorkflowActions(t *testing.T) {
 	if desc := hintDescription(wl.Hints(), "Q"); desc != "Query" {
 		t.Fatalf("list query hint: %q", desc)
 	}
+	if desc := hintDescription(wl.Hints(), "D"); desc != "Delete" {
+		t.Fatalf("list delete hint: %q", desc)
+	}
+	if desc := hintDescription(wl.Hints(), "d"); desc != "Date Range" {
+		t.Fatalf("list date range hint: %q", desc)
+	}
+
+	resettable := false
+	for i, w := range wl.workflows {
+		if workflowCanReset(w.Status) {
+			wl.table.SelectRow(i)
+			resettable = true
+			break
+		}
+	}
+	if !resettable {
+		t.Fatal("expected a resettable mock workflow")
+	}
+	if desc := hintDescription(wl.Hints(), "R"); desc != "Reset" {
+		t.Fatalf("list reset hint: %q", desc)
+	}
+}
+
+func TestPreviewOmitsDeleteAndReset(t *testing.T) {
+	wl := NewWorkflowList(&App{}, "default")
+	wl.loadMockData()
+	wl.togglePreviewMode()
+	wl.setPreviewKind(previewEvents)
+	wl.setFocusPane(focusEvents)
+	if desc := hintDescription(wl.Hints(), "D"); desc != "" {
+		t.Fatalf("preview should not hint delete, got %q", desc)
+	}
+	if desc := hintDescription(wl.Hints(), "R"); desc != "" {
+		t.Fatalf("preview should not hint reset, got %q", desc)
+	}
+	if ev := wl.handlePreviewKeys(tcell.NewEventKey(tcell.KeyRune, 'D', 0)); ev == nil {
+		t.Fatal("D should not delete from preview")
+	}
+	if ev := wl.handlePreviewKeys(tcell.NewEventKey(tcell.KeyRune, 'R', 0)); ev == nil {
+		t.Fatal("R should not reset from preview")
+	}
 }

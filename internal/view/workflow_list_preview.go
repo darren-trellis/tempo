@@ -902,12 +902,6 @@ func (wl *WorkflowList) handlePreviewKeys(event *tcell.EventKey) *tcell.EventKey
 	case 'Q':
 		wl.showQuerySelected()
 		return nil
-	case 'R':
-		wl.showResetSelected()
-		return nil
-	case 'D':
-		wl.showDeleteSelected()
-		return nil
 	}
 	return event
 }
