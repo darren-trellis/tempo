@@ -108,14 +108,3 @@ func (wl *WorkflowList) executeSignalWithStart(workflowID, workflowType, taskQue
 		})
 	}()
 }
-
-// showWorkflowGraph opens the Hierarchy preview tab for the selected workflow.
-func (wl *WorkflowList) showWorkflowGraph() {
-	wl.previewKind = previewHierarchy
-	if !wl.previewModeEnabled() {
-		wl.togglePreviewMode()
-	} else {
-		wl.setPreviewKind(previewHierarchy)
-	}
-	wl.setFocusPane(focusEvents)
-}

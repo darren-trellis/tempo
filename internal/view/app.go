@@ -512,12 +512,6 @@ func (a *App) NavigateToNamespaceDetail(namespace string) {
 	a.app.Pages().Push(nd)
 }
 
-// NavigateToWorkflowGraph pushes the workflow graph view.
-func (a *App) NavigateToWorkflowGraph(workflow *temporal.Workflow) {
-	wg := NewWorkflowGraphView(a, a.CurrentNamespace(), workflow)
-	a.app.Pages().Push(wg)
-}
-
 // Run starts the application.
 func (a *App) Run() error {
 	// Start connection monitor if we have a provider

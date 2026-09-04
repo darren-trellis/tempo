@@ -387,10 +387,6 @@ func (wl *WorkflowList) Start() {
 			}
 			return false
 		}).
-		OnRune('o', func(e *tcell.EventKey) bool {
-			wl.showWorkflowGraph()
-			return true
-		}).
 		OnRune('|', func(e *tcell.EventKey) bool {
 			wl.showColumnEditor()
 			return true
@@ -692,7 +688,6 @@ func (wl *WorkflowList) workflowPaneHints() []KeyHint {
 	}
 	return append(hints,
 		KeyHint{Key: "L", Description: "Load Filter"},
-		KeyHint{Key: "o", Description: "Hierarchy"},
 		KeyHint{Key: "v", Description: "Select Mode"},
 		KeyHint{Key: "N", Description: "Start"},
 		KeyHint{Key: "W", Description: "Signal+Start"},

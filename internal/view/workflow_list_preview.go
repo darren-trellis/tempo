@@ -775,9 +775,6 @@ func (wl *WorkflowList) handlePreviewKeys(event *tcell.EventKey) *tcell.EventKey
 		if wl.showPreviewIO() {
 			return nil
 		}
-	case 'o':
-		wl.showWorkflowGraph()
-		return nil
 	case 'e':
 		if wl.app != nil && wl.previewWorkflowID != "" {
 			wl.app.NavigateToEvents(wl.previewWorkflowID, wl.previewRunID)

@@ -745,10 +745,6 @@ func (wd *WorkflowDetail) Start() {
 			wd.showStartWorkflow()
 			return true
 		}).
-		OnRune('o', func(e *tcell.EventKey) bool {
-			wd.showWorkflowGraph()
-			return true
-		}).
 		OnRune('u', func(e *tcell.EventKey) bool {
 			if wd.app != nil {
 				wd.app.OpenWorkflowInBrowser(wd.workflowID, wd.runID)
@@ -800,7 +796,6 @@ func (wd *WorkflowDetail) Hints() []KeyHint {
 		{Key: "/", Description: "Search"},
 		{Key: "i", Description: "Input/Output"},
 		{Key: "e", Description: "Event Graph"},
-		{Key: "o", Description: "Relationships"},
 		{Key: "d", Description: "Detail"},
 		{Key: "g", Description: "Go to Child"},
 		{Key: "y", Description: "Yank"},
@@ -1926,13 +1921,6 @@ func (wd *WorkflowDetail) jumpToChildWorkflow() {
 
 	// Navigate to the child workflow
 	wd.app.NavigateToWorkflowDetail(ev.ChildWorkflowID, ev.ChildRunID)
-}
-
-func (wd *WorkflowDetail) showWorkflowGraph() {
-	if wd.workflow == nil {
-		return
-	}
-	wd.app.NavigateToWorkflowGraph(wd.workflow)
 }
 
 // hasChildWorkflowInfo returns true if the selected event is a child workflow event with navigation info.
