@@ -135,7 +135,9 @@ func (a *App) buildApp() {
 		}
 		return a.app.Pages().Current()
 	})
-
+	tviewApp.SetAfterDrawFunc(func(screen tcell.Screen) {
+		a.drawHintStatus(screen)
+	})
 }
 
 func (a *App) setup() {
@@ -598,14 +600,34 @@ func (a *App) setStatusMessage(message string) {
 	a.paintHintStatus()
 }
 
-func (a *App) paintHintStatus() {
-	if a == nil || a.menu == nil {
+func (a *App) paintHintStatus() {}
+
+func (a *App) drawHintStatus(screen tcell.Screen) {
+	if a == nil || a.menu == nil || screen == nil {
 		return
 	}
 	a.statusMu.Lock()
 	text := a.statusText
 	a.statusMu.Unlock()
-	a.menu.SetRightText(text)
+	if text == "" {
+		return
+	}
+	x, y, width, height := a.menu.GetInnerRect()
+	if width < 1 || height < 1 {
+		return
+	}
+	style := tcell.StyleDefault.Background(theme.Bg()).Foreground(theme.Fg())
+	for col := x; col < x+width; col++ {
+		screen.SetContent(col, y, ' ', nil, style)
+	}
+	col := x + 1
+	for _, r := range text {
+		if col >= x+width-1 {
+			break
+		}
+		screen.SetContent(col, y, r, nil, style)
+		col++
+	}
 }
 
 func (a *App) hintBarMessage() string {
