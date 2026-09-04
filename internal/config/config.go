@@ -789,7 +789,7 @@ const (
 	WorkflowColumnRunID      = "run_id"
 
 	MinWorkflowColumnWidth = 4
-	MaxWorkflowColumnWidth = 80
+	MaxWorkflowColumnWidth = 200
 )
 
 // WorkflowColumnConfig is one column in the workflows table.
