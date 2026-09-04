@@ -11,12 +11,22 @@ import (
 	"github.com/galaxy-io/tempo/internal/temporal"
 )
 
+const startWorkflowModalHeight = 24
+
 // startWorkflowPrefill holds the pre-fill values for the start workflow modal.
 type startWorkflowPrefill struct {
 	WorkflowID   string
 	WorkflowType string
 	TaskQueue    string
 	Input        string
+}
+
+func startWorkflowHints() []components.KeyHint {
+	return []components.KeyHint{
+		{Key: "Tab", Description: "Next field"},
+		{Key: "Enter", Description: "Execute"},
+		{Key: "Esc", Description: "Cancel"},
+	}
 }
 
 // showStartWorkflowModal displays the start workflow form and executes it on submit.
@@ -55,20 +65,22 @@ func showStartWorkflowModal(app *App, prefill startWorkflowPrefill) {
 		}).
 		Build()
 
-	modal := newModal(components.ModalConfig{
-		Title:    fmt.Sprintf("%s Start Workflow", theme.IconInfo),
-		Width:    70,
-		Height:   18,
-		Backdrop: true,
-	})
+	modal := newOverlayModal(components.ModalConfig{
+		Title:  fmt.Sprintf("%s Start Workflow", theme.IconInfo),
+		Width:  70,
+		Height: startWorkflowModalHeight,
+	}, nil)
 	modal.SetContent(form)
-	modal.SetHints([]components.KeyHint{
-		{Key: "Tab", Description: "Next field"},
-		{Key: "Ctrl+S", Description: "Execute"},
-		{Key: "Esc", Description: "Cancel"},
+	hints := startWorkflowHints()
+	modal.SetHints(hints)
+	modal.SetOnCancel(func() {
+		app.JigApp().Pages().DismissModal()
 	})
 
 	app.PushModal(modal)
+	if app.JigApp().Menu() != nil {
+		app.JigApp().Menu().SetHints(hints)
+	}
 	app.JigApp().SetFocus(form)
 }
 
