@@ -217,9 +217,7 @@ func (wl *WorkflowList) loadWorkflowIO(w temporal.Workflow) {
 	if wl.app == nil {
 		return
 	}
-	if wl.app.toasts != nil {
-		wl.app.ToastWarning("Loading input/output...")
-	}
+	wl.app.ToastWarning("Loading input/output...")
 	go func() {
 		events, err := wl.fetchWorkflowEvents(w)
 		if wl.app.JigApp() == nil {

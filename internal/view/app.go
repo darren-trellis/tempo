@@ -34,8 +34,11 @@ type App struct {
 	app           *layout.App
 	statusBar     *layout.StatusBar
 	menu          *layout.Menu
-	toasts        *components.ToastManager
 	namespaceList *NamespaceList
+
+	statusMu    sync.Mutex
+	statusText  string
+	statusClear *time.Timer
 
 	// Protected by mu - accessed from multiple goroutines
 	mu            sync.RWMutex
@@ -133,15 +136,6 @@ func (a *App) buildApp() {
 		return a.app.Pages().Current()
 	})
 
-	// Create toast manager for notifications
-	a.toasts = components.NewToastManager(tviewApp)
-	a.toasts.SetPosition(components.ToastBottomRight)
-
-	// Wire up toast rendering as an overlay
-	a.app.GetApplication().SetAfterDrawFunc(func(screen tcell.Screen) {
-		w, h := screen.Size()
-		a.toasts.Draw(screen, w, h)
-	})
 }
 
 func (a *App) setup() {
@@ -559,62 +553,96 @@ func (a *App) checkForUpdates() {
 	}
 
 	a.app.QueueUpdateDraw(func() {
-		a.toasts.Success("Updated, restart plz " + theme.IconHeart)
+		a.ToastSuccess("Updated, restart plz " + theme.IconHeart)
 	})
 }
 
-// ShowToastError displays an error toast notification.
+const statusMessageHold = 3 * time.Second
+
+func (a *App) queueStatusMessage(message string) {
+	if a == nil || a.app == nil {
+		a.setStatusMessage(message)
+		return
+	}
+	go a.app.QueueUpdateDraw(func() {
+		a.setStatusMessage(message)
+	})
+}
+
+func (a *App) setStatusMessage(message string) {
+	if a == nil {
+		return
+	}
+	a.statusMu.Lock()
+	a.statusText = message
+	if a.statusClear != nil {
+		a.statusClear.Stop()
+		a.statusClear = nil
+	}
+	if message != "" {
+		a.statusClear = time.AfterFunc(statusMessageHold, func() {
+			a.statusMu.Lock()
+			a.statusText = ""
+			a.statusClear = nil
+			a.statusMu.Unlock()
+			if a.app == nil {
+				a.paintHintStatus()
+				return
+			}
+			go a.app.QueueUpdateDraw(func() {
+				a.paintHintStatus()
+			})
+		})
+	}
+	a.statusMu.Unlock()
+	a.paintHintStatus()
+}
+
+func (a *App) paintHintStatus() {
+	if a == nil || a.menu == nil {
+		return
+	}
+	a.statusMu.Lock()
+	text := a.statusText
+	a.statusMu.Unlock()
+	a.menu.SetRightText(text)
+}
+
+func (a *App) hintBarMessage() string {
+	if a == nil {
+		return ""
+	}
+	a.statusMu.Lock()
+	defer a.statusMu.Unlock()
+	return a.statusText
+}
+
 func (a *App) ShowToastError(message string) {
-	a.app.QueueUpdateDraw(func() {
-		a.toasts.Error(message)
-	})
+	a.queueStatusMessage(message)
 }
 
-// ShowToastWarning displays a warning toast notification.
 func (a *App) ShowToastWarning(message string) {
-	a.app.QueueUpdateDraw(func() {
-		a.toasts.Warning(message)
-	})
+	a.queueStatusMessage(message)
 }
 
-// ShowToastSuccess displays a success toast notification.
-// Use ToastSuccess instead if already inside QueueUpdateDraw.
 func (a *App) ShowToastSuccess(message string) {
-	a.app.QueueUpdateDraw(func() {
-		a.toasts.Success(message)
-	})
+	a.queueStatusMessage(message)
 }
 
-// ToastSuccess displays a success toast (call from within QueueUpdateDraw).
 func (a *App) ToastSuccess(message string) {
-	if a == nil || a.toasts == nil {
-		return
-	}
-	a.toasts.Success(message)
+	a.setStatusMessage(message)
 }
 
-// ToastError displays an error toast (call from within QueueUpdateDraw).
 func (a *App) ToastError(message string) {
-	if a == nil || a.toasts == nil {
-		return
-	}
-	a.toasts.Error(message)
+	a.setStatusMessage(message)
 }
 
-// ToastWarning displays a warning toast (call from within QueueUpdateDraw).
 func (a *App) ToastWarning(message string) {
-	if a == nil || a.toasts == nil {
-		return
-	}
-	a.toasts.Warning(message)
+	a.setStatusMessage(message)
 }
 
-// ToastInfo displays an info toast (call from within QueueUpdateDraw).
 func (a *App) ToastInfo(message string) {
-	if a.toasts == nil {
-		return
-	}
-	a.toasts.Info(message)
+	a.setStatusMessage(message)
 }
 
 // toggleMouse flips terminal mouse reporting. Turning it off hands clicks and
@@ -1671,7 +1699,7 @@ func (a *App) handleCommandInput(text string) {
 		cmdArgs := strings.TrimPrefix(text, "profile")
 		a.handleProfileCommand(strings.TrimSpace(cmdArgs))
 	} else {
-		a.toasts.Warning(fmt.Sprintf("Unknown command: %s", cmdName))
+		a.ToastWarning(fmt.Sprintf("Unknown command: %s", cmdName))
 	}
 
 	// Restore focus to current view
@@ -1732,7 +1760,7 @@ func (a *App) executeUserCommand(name string, cfg config.CommandConfig, args []s
 
 	expandedCmd, err := command.ExpandCmd(cfg.Cmd, cmdCtx)
 	if err != nil {
-		a.toasts.Error(fmt.Sprintf("Command %q: %s", name, err))
+		a.ToastError(fmt.Sprintf("Command %q: %s", name, err))
 		a.refocusCurrent()
 		return
 	}
@@ -1911,7 +1939,7 @@ func (a *App) runCommandWorkflows(name, expandedCmd string, _ config.CommandConf
 				errMsg = runErr.Error()
 			}
 			a.app.QueueUpdateDraw(func() {
-				a.toasts.Error(fmt.Sprintf("Command %q: %s", name, errMsg))
+				a.ToastError(fmt.Sprintf("Command %q: %s", name, errMsg))
 				a.refocusCurrent()
 			})
 			return
@@ -1940,7 +1968,7 @@ func (a *App) runCommandWorkflow(name, expandedCmd string, _ config.CommandConfi
 				errMsg = runErr.Error()
 			}
 			a.app.QueueUpdateDraw(func() {
-				a.toasts.Error(fmt.Sprintf("Command %q: %s", name, errMsg))
+				a.ToastError(fmt.Sprintf("Command %q: %s", name, errMsg))
 				a.refocusCurrent()
 			})
 			return
