@@ -66,6 +66,23 @@ func (c *previewCache) clear() {
 	c.items = make(map[string][]temporal.EnhancedHistoryEvent)
 }
 
+func (c *previewCache) delete(workflowID, runID string) {
+	if c == nil {
+		return
+	}
+	key := previewCacheKey(workflowID, runID)
+	if _, ok := c.items[key]; !ok {
+		return
+	}
+	delete(c.items, key)
+	for i, existing := range c.order {
+		if existing == key {
+			c.order = append(c.order[:i], c.order[i+1:]...)
+			return
+		}
+	}
+}
+
 func (c *previewCache) evictOldest() {
 	if len(c.order) == 0 {
 		return

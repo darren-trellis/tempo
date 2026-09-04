@@ -76,6 +76,7 @@ type WorkflowList struct {
 	hierarchyView         *WorkflowGraphView
 	hierarchyGraphPanel   *components.Panel
 	previewEvents         []temporal.EnhancedHistoryEvent
+	previewEventSearch    string
 	previewActivities     []previewActivity
 	previewWorkflowID     string
 	previewRunID          string
@@ -349,14 +350,24 @@ func (wl *WorkflowList) Start() {
 				wl.showBatchCancelConfirm()
 				return true
 			}
-			return false
+			wl.showCancelSelected()
+			return true
 		}).
 		OnRune('X', func(e *tcell.EventKey) bool {
 			if wl.selectionMode && len(wl.table.GetSelectedRows()) > 0 {
 				wl.showBatchTerminateConfirm()
 				return true
 			}
-			return false
+			wl.showTerminateSelected()
+			return true
+		}).
+		OnRune('Q', func(e *tcell.EventKey) bool {
+			wl.showQuerySelected()
+			return true
+		}).
+		OnRune('R', func(e *tcell.EventKey) bool {
+			wl.showResetSelected()
+			return true
 		}).
 		OnRune('C', func(e *tcell.EventKey) bool {
 			if wl.visibilityQuery != "" {
@@ -612,12 +623,24 @@ func (wl *WorkflowList) previewListHints() []KeyHint {
 	}
 	hints := wl.previewIOHint()
 	if wl.previewKind == previewEvents {
+		hints = append(hints, KeyHint{Key: "/", Description: "Search"})
 		if wl.eventTreeMode {
 			hints = append(hints, KeyHint{Key: "space", Description: "Collapse/Expand"})
 		}
 		hints = append(hints, KeyHint{Key: "b", Description: treeModeHint(wl.eventTreeMode)})
+		if ev, ok := wl.selectedPreviewEvent(); ok && ev.ChildWorkflowID != "" && ev.ChildRunID != "" {
+			hints = append(hints, KeyHint{Key: "g", Description: "Go to Child"})
+		}
+	}
+	if w, ok := wl.selectedWorkflow(); ok {
+		hints = append(hints, wl.actionHints(w)...)
+		if workflowIsRunning(w.Status) {
+			hints = append(hints, KeyHint{Key: "s", Description: "Signal"})
+		}
+		hints = append(hints, KeyHint{Key: "D", Description: "Delete"})
 	}
 	return append(hints,
+		KeyHint{Key: "r", Description: "Refresh"},
 		KeyHint{Key: "p", Description: "Preview"},
 	)
 }
@@ -629,7 +652,15 @@ func (wl *WorkflowList) previewSideHints() []KeyHint {
 	}
 	if wl.previewKind == previewDetails || wl.activityDetailTableFocused() {
 		hints := []KeyHint{{Key: "y", Description: "Yank"}}
+		if w, ok := wl.selectedWorkflow(); ok {
+			hints = append(hints, wl.actionHints(w)...)
+			if workflowIsRunning(w.Status) {
+				hints = append(hints, KeyHint{Key: "s", Description: "Signal"})
+			}
+			hints = append(hints, KeyHint{Key: "D", Description: "Delete"})
+		}
 		return append(hints,
+			KeyHint{Key: "r", Description: "Refresh"},
 			KeyHint{Key: "p", Description: "Preview"},
 		)
 	}
@@ -682,10 +713,15 @@ func (wl *WorkflowList) workflowPaneHints() []KeyHint {
 			KeyHint{Key: "S", Description: "Save Filter"},
 		)
 	}
-	return append(hints,
+	hints = append(hints,
 		KeyHint{Key: "L", Description: "Load Filter"},
 		KeyHint{Key: "v", Description: "Select Mode"},
 		KeyHint{Key: "N", Description: "Start"},
+	)
+	if w, ok := wl.selectedWorkflow(); ok {
+		hints = append(hints, wl.actionHints(w)...)
+	}
+	return append(hints,
 		KeyHint{Key: "y", Description: "Copy ID"},
 		KeyHint{Key: "u", Description: "Web UI"},
 		KeyHint{Key: "r", Description: "Refresh"},

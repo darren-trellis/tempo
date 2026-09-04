@@ -872,6 +872,39 @@ func (wl *WorkflowList) handlePreviewKeys(event *tcell.EventKey) *tcell.EventKey
 		if wl.openSelectedWorkflowUI() {
 			return nil
 		}
+	case '/':
+		if wl.previewKind == previewEvents {
+			wl.showPreviewEventSearch()
+			return nil
+		}
+	case 'g':
+		if wl.previewKind == previewEvents {
+			wl.jumpToPreviewChild()
+			return nil
+		}
+	case 'r':
+		wl.refreshSelectedPreview()
+		return nil
+	case 'c':
+		if wl.previewKind != previewHierarchy {
+			wl.showCancelSelected()
+			return nil
+		}
+	case 'X':
+		wl.showTerminateSelected()
+		return nil
+	case 's':
+		wl.showSignalSelected()
+		return nil
+	case 'Q':
+		wl.showQuerySelected()
+		return nil
+	case 'R':
+		wl.showResetSelected()
+		return nil
+	case 'D':
+		wl.showDeleteSelected()
+		return nil
 	}
 	return event
 }
@@ -893,9 +926,7 @@ func (wl *WorkflowList) updatePreviewSelection(row int) {
 		}
 		return
 	}
-	if idx < len(wl.previewEvents) {
-		wl.renderSelectedEventDetail()
-	}
+	wl.renderSelectedEventDetail()
 }
 
 func (wl *WorkflowList) previewFocusOrder() []workflowFocusPane {
@@ -1284,6 +1315,7 @@ func (wl *WorkflowList) loadPreview(gen uint64, w temporal.Workflow) {
 	}
 
 	var events []temporal.EnhancedHistoryEvent
+	var fresh *temporal.Workflow
 	var err error
 	if wl.app != nil {
 		if provider := wl.app.Provider(); provider != nil {
@@ -1292,6 +1324,11 @@ func (wl *WorkflowList) loadPreview(gen uint64, w temporal.Workflow) {
 			ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 			defer cancel()
 			events, err = provider.GetEnhancedWorkflowHistory(ctx, wl.namespace, w.ID, w.RunID)
+			if err == nil {
+				if got, gerr := provider.GetWorkflow(ctx, wl.namespace, w.ID, w.RunID); gerr == nil && got != nil {
+					fresh = got
+				}
+			}
 		} else {
 			events = mockPreviewEvents(w)
 		}
@@ -1309,6 +1346,10 @@ func (wl *WorkflowList) loadPreview(gen uint64, w temporal.Workflow) {
 		if err != nil {
 			wl.setPreviewStatus("Failed to load preview: " + err.Error())
 			return
+		}
+		if fresh != nil {
+			w = *fresh
+			wl.mergeWorkflow(*fresh)
 		}
 		wl.showPreviewEvents(w, events)
 	}
@@ -1431,23 +1472,25 @@ func (wl *WorkflowList) toggleEventTree() {
 
 func (wl *WorkflowList) renderPreviewEvents(w temporal.Workflow) {
 	wl.syncPreviewChrome()
+	events := wl.visiblePreviewEvents()
 	selectedID := int64(0)
-	if wl.eventTable != nil && len(wl.previewEvents) > 0 {
-		row := wl.eventTable.SelectedRow()
-		if row >= 0 && row < len(wl.previewEvents) {
-			selectedID = wl.previewEvents[row].ID
-		}
+	if ev, ok := wl.selectedPreviewEvent(); ok {
+		selectedID = ev.ID
 	}
 	if wl.eventTreeView != nil {
-		wl.eventTreeView.SetNodes(temporal.BuildEventTree(wl.previewEvents))
+		wl.eventTreeView.SetNodes(temporal.BuildEventTree(events))
 	}
 	wl.eventTable.ClearRows()
 	wl.eventTable.SetHeaders("ID", "TIME", "TYPE", "NAME")
-	if len(wl.previewEvents) == 0 {
-		wl.setActivityDetailStatus("No events")
+	if len(events) == 0 {
+		if wl.previewEventSearch != "" {
+			wl.setActivityDetailStatus("No matching events")
+		} else {
+			wl.setActivityDetailStatus("No events")
+		}
 		return
 	}
-	for _, ev := range wl.previewEvents {
+	for _, ev := range events {
 		name := getEventNameDetail(&ev)
 		wl.eventTable.AddRowWithColor(eventColor(ev.Type),
 			fmt.Sprintf("%d", ev.ID),
@@ -1458,7 +1501,7 @@ func (wl *WorkflowList) renderPreviewEvents(w temporal.Workflow) {
 	}
 	idx := 0
 	if selectedID != 0 {
-		for i, ev := range wl.previewEvents {
+		for i, ev := range events {
 			if ev.ID == selectedID {
 				idx = i
 				break

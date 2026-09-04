@@ -24,6 +24,15 @@ func TestPreviewCacheFIFO(t *testing.T) {
 	}
 }
 
+func TestPreviewCacheDelete(t *testing.T) {
+	c := newPreviewCache(4)
+	c.put("wf", "run", []temporal.EnhancedHistoryEvent{{ID: 1}})
+	c.delete("wf", "run")
+	if _, ok := c.get("wf", "run"); ok {
+		t.Fatal("deleted preview should miss")
+	}
+}
+
 func TestPreviewCacheDisabled(t *testing.T) {
 	c := newPreviewCache(0)
 	c.put("a", "1", []temporal.EnhancedHistoryEvent{{ID: 1}})

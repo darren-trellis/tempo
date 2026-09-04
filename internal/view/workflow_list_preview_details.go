@@ -206,18 +206,15 @@ func (wl *WorkflowList) renderSelectedEventDetail() {
 			return
 		}
 	}
-	if len(wl.previewEvents) == 0 {
-		wl.setActivityDetailStatus("No events")
+	if ev, ok := wl.selectedPreviewEvent(); ok {
+		wl.setActivityDetailRows(eventInfoRows(ev))
 		return
 	}
-	idx := 0
-	if wl.eventTable != nil {
-		row := wl.eventTable.SelectedRow()
-		if row >= 0 && row < len(wl.previewEvents) {
-			idx = row
-		}
+	if len(wl.visiblePreviewEvents()) == 0 && wl.previewEventSearch != "" {
+		wl.setActivityDetailStatus("No matching events")
+		return
 	}
-	wl.setActivityDetailRows(eventInfoRows(wl.previewEvents[idx]))
+	wl.setActivityDetailStatus("No events")
 }
 
 func (wl *WorkflowList) selectWorkflowByID(id string) bool {
