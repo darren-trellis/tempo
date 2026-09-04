@@ -63,6 +63,8 @@ func (nl *NamespaceList) setup() {
 	nl.preview.SetBackgroundColor(theme.Bg())
 	nl.preview.SetTextColor(theme.Fg())
 	nl.preview.SetWordWrap(true)
+	nl.preview.SetScrollable(true)
+	attachTextViewScrollbar(nl.preview, nl.app)
 
 	// Create empty state
 	nl.emptyState = components.NewEmptyState().

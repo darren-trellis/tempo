@@ -74,7 +74,7 @@ func (wv *WorkerView) setup() {
 
 	wv.tableScroll = newCharScrollView(wv.table, func() int {
 		return tableContentWidth(wv.table)
-	})
+	}).withApp(wv.app)
 	bindTableCharScroll(wv.table, wv.tableScroll, func() int {
 		return mouseScrollStepFromApp(wv.app)
 	})
@@ -84,7 +84,7 @@ func (wv *WorkerView) setup() {
 	wv.detail.SetEvaluateAllRows(true)
 	wv.detailScroll = newCharScrollView(wv.detail, func() int {
 		return workflowInfoContentWidth(wv.detailRows)
-	})
+	}).withApp(wv.app)
 	bindTableCharScroll(wv.detail, wv.detailScroll, func() int {
 		return mouseScrollStepFromApp(wv.app)
 	})

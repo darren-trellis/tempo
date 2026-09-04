@@ -68,7 +68,7 @@ func (sl *ScheduleList) setup() {
 	sl.detail.SetEvaluateAllRows(true)
 	sl.detailScroll = newCharScrollView(sl.detail, func() int {
 		return workflowInfoContentWidth(sl.detailRows)
-	})
+	}).withApp(sl.app)
 	bindTableCharScroll(sl.detail, sl.detailScroll, func() int {
 		return mouseScrollStepFromApp(sl.app)
 	})

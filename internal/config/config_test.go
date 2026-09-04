@@ -154,6 +154,30 @@ func TestPreviewCacheLimit(t *testing.T) {
 	}
 }
 
+func TestShouldShowScrollbars(t *testing.T) {
+	if !DefaultConfig().ShouldShowScrollbars() {
+		t.Fatal("show_scrollbars should default to on")
+	}
+	off := false
+	if (&Config{ShowScrollbars: &off}).ShouldShowScrollbars() {
+		t.Fatal("show_scrollbars: false should hide scrollbars")
+	}
+	on := true
+	if !(&Config{ShowScrollbars: &on}).ShouldShowScrollbars() {
+		t.Fatal("show_scrollbars: true should show scrollbars")
+	}
+	if !((*Config)(nil)).ShouldShowScrollbars() {
+		t.Fatal("nil config should default to on")
+	}
+	parsed, err := ParseConfigFile([]byte("show_scrollbars: false\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if parsed.ShouldShowScrollbars() {
+		t.Fatal("yaml show_scrollbars: false should hide scrollbars")
+	}
+}
+
 func TestMouseScrollStepSize(t *testing.T) {
 	if DefaultConfig().MouseScrollStepSize() != DefaultMouseScrollStep {
 		t.Fatalf("default mouse scroll step = %d", DefaultConfig().MouseScrollStepSize())

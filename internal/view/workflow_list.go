@@ -183,7 +183,7 @@ func (wl *WorkflowList) setup() {
 	applyWorkflowColumnHeaders(wl.table, wl.columnLayout())
 	wl.tableScroll = newCharScrollView(wl.table, func() int {
 		return workflowTableContentWidth(wl.columnLayout())
-	})
+	}).withApp(wl.app)
 	bindTableCharScroll(wl.table, wl.tableScroll, func() int {
 		return mouseScrollStepFromApp(wl.app)
 	})

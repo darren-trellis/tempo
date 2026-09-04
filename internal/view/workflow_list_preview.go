@@ -686,9 +686,11 @@ func (wl *WorkflowList) setupPreview() {
 		SetScrollable(true)
 	wl.eventDetail.SetBackgroundColor(theme.Bg())
 	wl.eventDetail.SetTextColor(theme.Fg())
+	attachTextViewScrollbar(wl.eventDetail, wl.app)
 
 	wl.eventTreeView = NewEventTreeView()
 	wl.eventTreeView.SetBackgroundColor(theme.Bg())
+	attachTreeScrollbar(wl.eventTreeView.TreeView, wl.app)
 	wl.eventTreeView.SetOnSelectionChanged(func(node *temporal.EventTreeNode) {
 		if wl.previewKind != previewEvents {
 			return
@@ -708,7 +710,7 @@ func (wl *WorkflowList) setupPreview() {
 	wl.activityDetail.SetEvaluateAllRows(true)
 	wl.activityDetailScroll = newCharScrollView(wl.activityDetail, func() int {
 		return workflowInfoContentWidth(wl.activityDetailRows)
-	})
+	}).withApp(wl.app)
 	bindTableCharScroll(wl.activityDetail, wl.activityDetailScroll, func() int {
 		return mouseScrollStepFromApp(wl.app)
 	})
@@ -750,7 +752,7 @@ func (wl *WorkflowList) setupPreview() {
 	wl.workflowDetail.SetEvaluateAllRows(true)
 	wl.workflowDetailScroll = newCharScrollView(wl.workflowDetail, func() int {
 		return workflowInfoContentWidth(wl.previewDetailRows)
-	})
+	}).withApp(wl.app)
 	bindTableCharScroll(wl.workflowDetail, wl.workflowDetailScroll, func() int {
 		return mouseScrollStepFromApp(wl.app)
 	})

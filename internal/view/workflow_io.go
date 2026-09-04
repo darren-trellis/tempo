@@ -110,6 +110,7 @@ func showWorkflowIO(app *App, background tview.Primitive, workflowType, input, o
 	inputView.SetBackgroundColor(theme.Bg())
 	inputView.SetTextColor(theme.Fg())
 	inputView.SetText(formatIOContent("Input", input))
+	attachTextViewScrollbar(inputView, app)
 
 	outputView := tview.NewTextView().
 		SetDynamicColors(true).
@@ -118,6 +119,7 @@ func showWorkflowIO(app *App, background tview.Primitive, workflowType, input, o
 	outputView.SetBackgroundColor(theme.Bg())
 	outputView.SetTextColor(theme.Fg())
 	outputView.SetText(formatIOContent("Output", output))
+	attachTextViewScrollbar(outputView, app)
 
 	inputPanel := components.NewPanel().SetTitle(fmt.Sprintf("%s Input", theme.IconArrowRight))
 	inputPanel.SetContent(inputView)

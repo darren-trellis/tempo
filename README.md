@@ -151,9 +151,12 @@ Set `refresh_rate` to a Go duration (`500ms`, `2s`) or a bare number of seconds:
 ```yaml
 refresh_rate: 1s
 workflow_page_size: 100
+show_scrollbars: true
 ```
 
 `workflow_page_size` is how many workflows each list page fetches (default 100, between 10 and 1000). Scrolling loads more pages.
+
+`show_scrollbars` draws a track and thumb on overflow tables, text views, and the event tree (default on). Set `show_scrollbars: false` to hide them.
 
 The workers tab decides whether an instance is still alive from how recently it
 was last seen, because Temporal keeps listing a worker for minutes after it

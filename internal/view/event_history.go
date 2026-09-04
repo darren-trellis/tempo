@@ -82,11 +82,16 @@ func (eh *EventHistory) setup() {
 	eh.table.SetBackgroundColor(theme.Bg())
 	eh.table.SetEvaluateAllRows(true)
 	eh.tableScroll = attachTableCharScroll(eh.table, eh.app)
+	if eh.treeView != nil {
+		attachTreeScrollbar(eh.treeView.TreeView, eh.app)
+	}
 
 	// Configure side panel
 	eh.sidePanel.SetDynamicColors(true)
 	eh.sidePanel.SetTextAlign(tview.AlignLeft)
 	eh.sidePanel.SetBackgroundColor(theme.Bg())
+	eh.sidePanel.SetScrollable(true)
+	attachTextViewScrollbar(eh.sidePanel, eh.app)
 
 	// Create MasterDetailView - default to tree view
 	eh.MasterDetailView = components.NewMasterDetailView().

@@ -124,6 +124,7 @@ type Config struct {
 	WorkflowColumns  []WorkflowColumnConfig      `yaml:"workflow_columns,omitempty"`
 	PreviewCacheSize *int                        `yaml:"preview_cache_size,omitempty"`
 	MouseScrollStep  *int                        `yaml:"mouse_scroll_step,omitempty"`
+	ShowScrollbars   *bool                       `yaml:"show_scrollbars,omitempty"`
 	WorkflowPageSize *int                        `yaml:"workflow_page_size,omitempty"`
 	// How long a worker may go unseen before the workers tab calls it stale,
 	// written as a duration such as "45s" or "2m", or as a plain number of
@@ -244,6 +245,15 @@ func (c *Config) PreviewCacheLimit() int {
 		return MaxPreviewCacheSize
 	}
 	return n
+}
+
+// ShouldShowScrollbars returns whether tables and text views draw scrollbars.
+// Defaults to true if not explicitly set.
+func (c *Config) ShouldShowScrollbars() bool {
+	if c == nil || c.ShowScrollbars == nil {
+		return true
+	}
+	return *c.ShowScrollbars
 }
 
 func (c *Config) MouseScrollStepSize() int {

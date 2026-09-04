@@ -56,18 +56,24 @@ func (nd *NamespaceDetail) setup() {
 		SetDynamicColors(true).
 		SetTextAlign(tview.AlignLeft)
 	nd.infoView.SetBackgroundColor(theme.Bg())
+	nd.infoView.SetScrollable(true)
+	attachTextViewScrollbar(nd.infoView, nd.app)
 
 	// Archival view
 	nd.archivalView = tview.NewTextView().
 		SetDynamicColors(true).
 		SetTextAlign(tview.AlignLeft)
 	nd.archivalView.SetBackgroundColor(theme.Bg())
+	nd.archivalView.SetScrollable(true)
+	attachTextViewScrollbar(nd.archivalView, nd.app)
 
 	// Cluster view
 	nd.clusterView = tview.NewTextView().
 		SetDynamicColors(true).
 		SetTextAlign(tview.AlignLeft)
 	nd.clusterView.SetBackgroundColor(theme.Bg())
+	nd.clusterView.SetScrollable(true)
+	attachTextViewScrollbar(nd.clusterView, nd.app)
 
 	// Create panels with icons (blubber pattern)
 	nd.infoPanel = components.NewPanel().SetTitle(fmt.Sprintf("%s Namespace Info", theme.IconNamespace))

@@ -20,6 +20,7 @@ func (s *clipScreen) SetContent(x, y int, mainc rune, combc []rune, style tcell.
 
 type charScrollView struct {
 	*tview.Box
+	app          *App
 	content      tview.Primitive
 	offset       int
 	contentWidth func() int
@@ -33,20 +34,65 @@ func newCharScrollView(content tview.Primitive, contentWidth func() int) *charSc
 	}
 }
 
+func (v *charScrollView) withApp(app *App) *charScrollView {
+	if v != nil {
+		v.app = app
+	}
+	return v
+}
+
 func (v *charScrollView) Draw(screen tcell.Screen) {
 	x, y, w, h := v.GetInnerRect()
 	v.clamp()
 	if v.content == nil || w <= 0 || h <= 0 {
 		return
 	}
-	width := w
+	innerW, innerH := w, h
+	vert, horiz := v.scrollBars(innerW, innerH)
+	if appShowsScrollbars(v.app) {
+		if vert.overflow() {
+			innerW--
+		}
+		if horiz.overflow() {
+			innerH--
+		}
+		if innerW < 1 {
+			innerW = 1
+		}
+		if innerH < 1 {
+			innerH = 1
+		}
+		vert, horiz = v.scrollBars(innerW, innerH)
+	}
+	width := innerW
 	if v.contentWidth != nil {
 		if cw := v.contentWidth(); cw > width {
 			width = cw
 		}
 	}
-	v.content.SetRect(x-v.offset, y, width, h)
-	v.content.Draw(&clipScreen{Screen: screen, x: x, y: y, w: w, h: h})
+	v.content.SetRect(x-v.offset, y, width, innerH)
+	v.content.Draw(&clipScreen{Screen: screen, x: x, y: y, w: innerW, h: innerH})
+	if !appShowsScrollbars(v.app) {
+		return
+	}
+	if vert.overflow() {
+		drawScrollbar(screen, x+w-1, y, innerH, vert, true)
+	}
+	if horiz.overflow() {
+		drawScrollbar(screen, x, y+h-1, innerW, horiz, false)
+	}
+}
+
+func (v *charScrollView) scrollBars(width, height int) (vert, horiz scrollMetrics) {
+	if table, ok := v.content.(*components.Table); ok {
+		vert = tableVerticalScroll(table, height)
+	}
+	contentW := width
+	if v.contentWidth != nil {
+		contentW = v.contentWidth()
+	}
+	horiz = scrollMetrics{offset: v.offset, visible: width, total: contentW}
+	return vert, horiz
 }
 
 func (v *charScrollView) Focus(delegate func(p tview.Primitive)) {
@@ -86,7 +132,15 @@ func (v *charScrollView) MouseHandler() func(tview.MouseAction, *tcell.EventMous
 }
 
 func (v *charScrollView) viewport() int {
-	_, _, w, _ := v.GetInnerRect()
+	_, _, w, h := v.GetInnerRect()
+	if w < 1 {
+		return 0
+	}
+	if appShowsScrollbars(v.app) {
+		if table, ok := v.content.(*components.Table); ok && tableVerticalScroll(table, h).overflow() && w > 1 {
+			w--
+		}
+	}
 	return w
 }
 
@@ -179,7 +233,7 @@ func scrollOffsetByColumn(offset int, cols []workflowColumn, delta int) int {
 func attachTableCharScroll(table *components.Table, app *App) *charScrollView {
 	view := newCharScrollView(table, func() int {
 		return tableContentWidth(table)
-	})
+	}).withApp(app)
 	bindTableCharScroll(table, view, func() int {
 		return mouseScrollStepFromApp(app)
 	})

@@ -64,6 +64,7 @@ func (wd *WorkflowDetail) setup() {
 		SetTextAlign(tview.AlignLeft).
 		SetScrollable(true)
 	wd.workflowView.SetBackgroundColor(theme.Bg())
+	attachTextViewScrollbar(wd.workflowView, wd.app)
 
 	// Event detail view
 	wd.eventDetailView = tview.NewTextView().
@@ -72,6 +73,7 @@ func (wd *WorkflowDetail) setup() {
 		SetScrollable(true).
 		SetWordWrap(true)
 	wd.eventDetailView.SetBackgroundColor(theme.Bg())
+	attachTextViewScrollbar(wd.eventDetailView, wd.app)
 
 	// Event table
 	wd.eventTable.SetHeaders("ID", "TIME", "TYPE", "NAME")
