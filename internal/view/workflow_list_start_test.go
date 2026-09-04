@@ -33,12 +33,32 @@ func TestStartWorkflowModalHintsStayInFooter(t *testing.T) {
 }
 
 func TestStartWorkflowModalFitsFields(t *testing.T) {
-	const fields = 4
-	const fieldHeight = 4
-	const gaps = fields - 1
-	need := fields*fieldHeight + gaps
+	need := startWorkflowFieldCount*startWorkflowFieldHeight + (startWorkflowFieldCount - 1)
 	inner := startWorkflowModalHeight - 2
 	if inner < need {
-		t.Fatalf("height %d only leaves %d rows, need %d for %d fields", startWorkflowModalHeight, inner, need, fields)
+		t.Fatalf("height %d only leaves %d rows, need %d for %d fields", startWorkflowModalHeight, inner, need, startWorkflowFieldCount)
+	}
+}
+
+func TestStartWorkflowSubmitRoutesOnSignal(t *testing.T) {
+	plain := startWorkflowSubmit{WorkflowID: "wf", WorkflowType: "Type", TaskQueue: "q"}
+	if err := plain.validate(); err != nil {
+		t.Fatalf("plain start: %v", err)
+	}
+	if plain.withSignal() {
+		t.Fatal("empty signal name should start without a signal")
+	}
+
+	signaled := startWorkflowSubmit{WorkflowID: "wf", WorkflowType: "Type", TaskQueue: "q", SignalName: " ready "}
+	if err := signaled.validate(); err != nil {
+		t.Fatalf("signal start: %v", err)
+	}
+	if !signaled.withSignal() || signaled.signalName() != "ready" {
+		t.Fatalf("signal name: %q with=%v", signaled.signalName(), signaled.withSignal())
+	}
+
+	invalid := startWorkflowSubmit{SignalInput: `{"x":1}`}
+	if err := invalid.validate(); err == nil {
+		t.Fatal("signal input without a name should fail")
 	}
 }

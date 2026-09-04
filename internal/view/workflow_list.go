@@ -380,10 +380,6 @@ func (wl *WorkflowList) Start() {
 			wl.showStartWorkflow()
 			return true
 		}).
-		OnRune('W', func(e *tcell.EventKey) bool {
-			wl.showSignalWithStart()
-			return true
-		}).
 		OnRune('d', func(e *tcell.EventKey) bool {
 			if wl.selectionMode {
 				if len(wl.table.GetSelectedRows()) > 0 {
@@ -690,7 +686,6 @@ func (wl *WorkflowList) workflowPaneHints() []KeyHint {
 		KeyHint{Key: "L", Description: "Load Filter"},
 		KeyHint{Key: "v", Description: "Select Mode"},
 		KeyHint{Key: "N", Description: "Start"},
-		KeyHint{Key: "W", Description: "Signal+Start"},
 		KeyHint{Key: "y", Description: "Copy ID"},
 		KeyHint{Key: "u", Description: "Web UI"},
 		KeyHint{Key: "r", Description: "Refresh"},

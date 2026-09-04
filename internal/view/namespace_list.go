@@ -396,7 +396,7 @@ func (nl *NamespaceList) Start() {
 		OnRune('S', func(e *tcell.EventKey) bool {
 			ns := nl.getSelectedNamespace()
 			if ns != nil {
-				nl.showSignalWithStart(ns.Name)
+				showStartWorkflowModal(nl.app, startWorkflowPrefill{Namespace: ns.Name})
 			}
 			return true
 		})
@@ -445,7 +445,7 @@ func (nl *NamespaceList) Hints() []KeyHint {
 	}
 
 	hints = append(hints,
-		KeyHint{Key: "S", Description: "Signal+Start"},
+		KeyHint{Key: "S", Description: "Start"},
 		KeyHint{Key: "p", Description: "Preview"},
 		KeyHint{Key: "r", Description: "Refresh"},
 		KeyHint{Key: "a", Description: autoHint},
@@ -480,99 +480,6 @@ func (nl *NamespaceList) getSelectedNamespace() *temporal.Namespace {
 		return &nl.namespaces[row]
 	}
 	return nil
-}
-
-// showSignalWithStart displays a modal for SignalWithStart operation.
-func (nl *NamespaceList) showSignalWithStart(namespace string) {
-	modal := newModal(components.ModalConfig{
-		Title:    fmt.Sprintf("%s Signal With Start (%s)", theme.IconInfo, namespace),
-		Width:    70,
-		Height:   20,
-		Backdrop: true,
-	})
-
-	form := components.NewFormBuilder().
-		Text("workflowId", "Workflow ID").
-		Placeholder("Enter workflow ID").
-		Validate(validators.Required()).
-		Done().
-		Text("workflowType", "Workflow Type").
-		Placeholder("Enter workflow type").
-		Validate(validators.Required()).
-		Done().
-		Text("taskQueue", "Task Queue").
-		Placeholder("Enter task queue").
-		Validate(validators.Required()).
-		Done().
-		Text("signalName", "Signal Name").
-		Placeholder("Enter signal name").
-		Validate(validators.Required()).
-		Done().
-		Text("signalInput", "Signal Input (JSON, optional)").
-		Placeholder("{}").
-		Done().
-		Text("workflowInput", "Workflow Input (JSON, optional)").
-		Placeholder("{}").
-		Done().
-		OnSubmit(func(values map[string]any) {
-			workflowID := values["workflowId"].(string)
-			workflowType := values["workflowType"].(string)
-			taskQueue := values["taskQueue"].(string)
-			signalName := values["signalName"].(string)
-			signalInput := values["signalInput"].(string)
-			workflowInput := values["workflowInput"].(string)
-
-			nl.closeModal()
-			nl.executeSignalWithStart(namespace, workflowID, workflowType, taskQueue, signalName, signalInput, workflowInput)
-		}).
-		OnCancel(func() {
-			nl.closeModal()
-		}).
-		Build()
-
-	modal.SetContent(form)
-	modal.SetHints([]components.KeyHint{
-		{Key: "Tab", Description: "Next field"},
-		{Key: "Enter", Description: "Execute"},
-		{Key: "Esc", Description: "Cancel"},
-	})
-
-	nl.app.PushModal(modal)
-	nl.app.JigApp().SetFocus(form)
-}
-
-// executeSignalWithStart performs the SignalWithStart operation asynchronously.
-func (nl *NamespaceList) executeSignalWithStart(namespace, workflowID, workflowType, taskQueue, signalName, signalInput, workflowInput string) {
-	provider := nl.app.Provider()
-	if provider == nil {
-		return
-	}
-
-	req := temporal.SignalWithStartRequest{
-		WorkflowID:   workflowID,
-		WorkflowType: workflowType,
-		TaskQueue:    taskQueue,
-		SignalName:   signalName,
-	}
-
-	if signalInput != "" {
-		req.SignalInput = []byte(signalInput)
-	}
-	if workflowInput != "" {
-		req.WorkflowInput = []byte(workflowInput)
-	}
-
-	async.NewLoader[string]().
-		WithTimeout(10 * time.Second).
-		OnSuccess(func(_ string) {
-			nl.app.ToastSuccess(fmt.Sprintf("SignalWithStart: %s", workflowID))
-		}).
-		OnError(func(err error) {
-			ShowErrorModal(nl.app.JigApp(), "SignalWithStart Failed", err.Error())
-		}).
-		Run(func(ctx context.Context) (string, error) {
-			return provider.SignalWithStartWorkflow(ctx, namespace, req)
-		})
 }
 
 // closeModal dismisses the current modal and restores focus.
