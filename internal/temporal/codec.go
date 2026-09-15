@@ -137,38 +137,47 @@ func decodePayloadsInMessages(codec converter.PayloadCodec, msgs ...proto.Messag
 }
 
 func collectPayloads(m protoreflect.Message, out *[]*commonpb.Payload) {
-	if !m.IsValid() {
+	collectPayloadsDepth(m, out, 0)
+}
+
+func collectPayloadsDepth(m protoreflect.Message, out *[]*commonpb.Payload, depth int) {
+	if !m.IsValid() || depth > 32 {
 		return
 	}
 	m.Range(func(fd protoreflect.FieldDescriptor, v protoreflect.Value) bool {
 		if fd.Kind() != protoreflect.MessageKind {
 			return true
 		}
+		if fd.Name() == "search_attributes" {
+			return true
+		}
 		switch {
 		case fd.IsMap():
 			if fd.MapValue().Kind() == protoreflect.MessageKind {
 				v.Map().Range(func(_ protoreflect.MapKey, mv protoreflect.Value) bool {
-					collectFromMessage(mv.Message(), out)
+					collectFromMessage(mv.Message(), out, depth+1)
 					return true
 				})
 			}
 		case fd.IsList():
 			list := v.List()
 			for i := 0; i < list.Len(); i++ {
-				collectFromMessage(list.Get(i).Message(), out)
+				collectFromMessage(list.Get(i).Message(), out, depth+1)
 			}
 		default:
-			collectFromMessage(v.Message(), out)
+			collectFromMessage(v.Message(), out, depth+1)
 		}
 		return true
 	})
 }
 
-func collectFromMessage(m protoreflect.Message, out *[]*commonpb.Payload) {
+func collectFromMessage(m protoreflect.Message, out *[]*commonpb.Payload, depth int) {
 	if !m.IsValid() {
 		return
 	}
 	switch p := m.Interface().(type) {
+	case *commonpb.SearchAttributes:
+		return
 	case *commonpb.Payloads:
 		for _, payload := range p.GetPayloads() {
 			if payload != nil {
@@ -180,6 +189,6 @@ func collectFromMessage(m protoreflect.Message, out *[]*commonpb.Payload) {
 			*out = append(*out, p)
 		}
 	default:
-		collectPayloads(m, out)
+		collectPayloadsDepth(m, out, depth+1)
 	}
 }

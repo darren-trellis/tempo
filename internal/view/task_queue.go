@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -43,6 +44,7 @@ type TaskQueueView struct {
 	baseTitle      string
 	cache          *taskQueueCache
 	pollerGen      uint64
+	statsGen       uint64
 	pollerTimer    *time.Timer
 }
 
@@ -89,14 +91,13 @@ func (tq *TaskQueueView) setup() {
 	tq.pollerPanel = components.NewPanel().SetTitle(fmt.Sprintf("%s Pollers", theme.IconActivity))
 	tq.pollerPanel.SetContent(tq.pollerScroll)
 
-	// Update pollers when queue selection changes
-	tq.queueTable.SetSelectionChangedFunc(func(row, col int) {
-		// Skip if we're suppressing selection events (during programmatic updates)
+	tq.queueTable.SetSelectionChangedFunc(func(_, _ int) {
 		if tq.suppressSelect {
 			return
 		}
-		if row > 0 && row-1 < len(tq.queues) {
-			tq.loadPollers(row - 1)
+		idx := tq.queueTable.SelectedRow()
+		if idx >= 0 && idx < len(tq.queues) {
+			tq.loadPollers(idx)
 		}
 	})
 
@@ -203,6 +204,7 @@ func (tq *TaskQueueView) loadData() {
 				})
 			}
 
+			atomic.AddUint64(&tq.statsGen, 1)
 			tq.applyFilter(tq.searchText)
 
 			if len(tq.queues) > 0 && tq.queues[0].Name != "(no task queues found)" {
@@ -212,6 +214,7 @@ func (tq *TaskQueueView) loadData() {
 				}
 				tq.loadPollers(row)
 			}
+			tq.prefetchQueueStats()
 		})
 	}()
 }
@@ -245,32 +248,11 @@ func (tq *TaskQueueView) populateQueueTable() {
 	tq.queueTable.SetHeaders("NAME", "TYPE", "POLLERS", "BACKLOG")
 
 	for _, q := range tq.queues {
-		backlogIcon := theme.IconCompleted
-		backlogColor := temporal.StatusCompleted.Color()
-		if q.Backlog > 50 {
-			backlogIcon = theme.IconError
-			backlogColor = temporal.StatusFailed.Color()
-		} else if q.Backlog > 10 {
-			backlogIcon = theme.IconRunning
-			backlogColor = temporal.StatusRunning.Color()
-		}
-
-		typeIcon := theme.IconWorkflow
-		if q.Type == "Activity" {
-			typeIcon = theme.IconActivity
-		}
-
-		// Track row position before adding
+		cells, colors := queueRowCells(q)
 		tableRow := tq.queueTable.Table.GetRowCount()
-		tq.queueTable.AddRow(
-			theme.IconTaskQueue+" "+q.Name,
-			typeIcon+" "+q.Type,
-			fmt.Sprintf("%d", q.PollerCount),
-			fmt.Sprintf("%s %d", backlogIcon, q.Backlog),
-		)
-		// Color the backlog cell
+		tq.queueTable.AddRow(cells...)
 		cell := tq.queueTable.GetCell(tableRow, 3)
-		cell.SetTextColor(backlogColor)
+		cell.SetTextColor(colors[3])
 	}
 
 	if tq.queueTable.RowCount() > 0 {
@@ -296,6 +278,46 @@ func (tq *TaskQueueView) namespace() string {
 		return ""
 	}
 	return tq.app.CurrentNamespace()
+}
+
+func queueRowCells(q taskQueueEntry) (cells []string, colors []tcell.Color) {
+	backlogIcon := theme.IconCompleted
+	backlogColor := temporal.StatusCompleted.Color()
+	if q.Backlog > 50 {
+		backlogIcon = theme.IconError
+		backlogColor = temporal.StatusFailed.Color()
+	} else if q.Backlog > 10 {
+		backlogIcon = theme.IconRunning
+		backlogColor = temporal.StatusRunning.Color()
+	}
+	typeIcon := theme.IconWorkflow
+	if q.Type == "Activity" {
+		typeIcon = theme.IconActivity
+	}
+	return []string{
+		theme.IconTaskQueue + " " + q.Name,
+		typeIcon + " " + q.Type,
+		fmt.Sprintf("%d", q.PollerCount),
+		fmt.Sprintf("%s %d", backlogIcon, q.Backlog),
+	}, []tcell.Color{
+		0, 0, 0, backlogColor,
+	}
+}
+
+func (tq *TaskQueueView) paintQueueRow(index int) {
+	if index < 0 || index >= len(tq.queues) || tq.queueTable == nil {
+		return
+	}
+	cells, colors := queueRowCells(tq.queues[index])
+	_ = tq.queueTable.UpdateColoredRow(index, cells, colors)
+}
+
+func (tq *TaskQueueView) onUI(fn func()) {
+	if tq != nil && tq.app != nil && tq.app.JigApp() != nil {
+		tq.app.JigApp().QueueUpdateDraw(fn)
+		return
+	}
+	fn()
 }
 
 func (tq *TaskQueueView) loadPollers(queueIndex int) {
@@ -356,33 +378,125 @@ func (tq *TaskQueueView) fetchPollers(gen uint64, queue taskQueueEntry) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	info, pollers, err := provider.DescribeTaskQueue(ctx, tq.namespace(), queue.Name)
-	if atomic.LoadUint64(&tq.pollerGen) != gen {
-		return
-	}
-
-	apply := func() {
+	tq.onUI(func() {
 		if err != nil {
 			if tq.selectedQueue == queue.Name {
 				tq.showPollerError(err)
 			}
 			return
 		}
-		entry := taskQueueCacheEntry{pollers: pollers}
-		if info != nil {
-			entry.pollerCount = info.PollerCount
-			entry.backlog = info.Backlog
+		tq.applyDescribedQueue(queue.Name, info, pollers)
+	})
+}
+
+func (tq *TaskQueueView) queuesNeedingStats() []taskQueueEntry {
+	out := make([]taskQueueEntry, 0, len(tq.allQueues))
+	ns := tq.namespace()
+	for _, q := range tq.allQueues {
+		if q.Name == "" || q.Name == "(no task queues found)" {
+			continue
 		}
-		tq.cache.put(tq.namespace(), queue.Name, entry)
-		if tq.selectedQueue != queue.Name {
-			return
+		if _, ok := tq.cache.get(ns, q.Name); ok {
+			continue
 		}
-		tq.applyPollerCache(queue.Name, entry)
+		out = append(out, q)
 	}
-	if tq.app.JigApp() != nil {
-		tq.app.JigApp().QueueUpdateDraw(apply)
+	return out
+}
+
+func (tq *TaskQueueView) prefetchQueueStats() {
+	if tq == nil || tq.app == nil || tq.app.Provider() == nil {
 		return
 	}
-	apply()
+	queues := tq.queuesNeedingStats()
+	if len(queues) == 0 {
+		return
+	}
+	gen := atomic.LoadUint64(&tq.statsGen)
+	if gen == 0 {
+		gen = atomic.AddUint64(&tq.statsGen, 1)
+	}
+	run := func() { tq.fetchQueueStats(gen, queues) }
+	if tq.app.JigApp() != nil {
+		go run()
+		return
+	}
+	run()
+}
+
+func (tq *TaskQueueView) fetchQueueStats(gen uint64, queues []taskQueueEntry) {
+	if tq.app == nil {
+		return
+	}
+	provider := tq.app.Provider()
+	if provider == nil {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	ns := tq.namespace()
+
+	type result struct {
+		name    string
+		info    *temporal.TaskQueueInfo
+		pollers []temporal.Poller
+		err     error
+	}
+	jobs := make(chan taskQueueEntry)
+	out := make(chan result)
+	workers := workerQueueSweepConcurrency
+	if len(queues) < workers {
+		workers = len(queues)
+	}
+
+	var wg sync.WaitGroup
+	for i := 0; i < workers; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for q := range jobs {
+				if atomic.LoadUint64(&tq.statsGen) != gen {
+					continue
+				}
+				info, pollers, err := provider.DescribeTaskQueue(ctx, ns, q.Name)
+				out <- result{name: q.Name, info: info, pollers: pollers, err: err}
+			}
+		}()
+	}
+	go func() {
+		for _, q := range queues {
+			jobs <- q
+		}
+		close(jobs)
+		wg.Wait()
+		close(out)
+	}()
+	for r := range out {
+		if r.err != nil || atomic.LoadUint64(&tq.statsGen) != gen {
+			continue
+		}
+		res := r
+		tq.onUI(func() {
+			if atomic.LoadUint64(&tq.statsGen) != gen {
+				return
+			}
+			tq.applyDescribedQueue(res.name, res.info, res.pollers)
+		})
+	}
+}
+
+func (tq *TaskQueueView) applyDescribedQueue(name string, info *temporal.TaskQueueInfo, pollers []temporal.Poller) {
+	entry := taskQueueCacheEntry{pollers: pollers, pollerCount: len(pollers)}
+	if info != nil {
+		entry.pollerCount = info.PollerCount
+		entry.backlog = info.Backlog
+	}
+	tq.cache.put(tq.namespace(), name, entry)
+	tq.updateQueueStats(name, entry.pollerCount, entry.backlog)
+	if tq.selectedQueue == name {
+		tq.pollers = copyPollers(entry.pollers)
+		tq.populatePollerTable("")
+	}
 }
 
 func (tq *TaskQueueView) applyPollerCache(queueName string, entry taskQueueCacheEntry) {
@@ -392,25 +506,20 @@ func (tq *TaskQueueView) applyPollerCache(queueName string, entry taskQueueCache
 }
 
 func (tq *TaskQueueView) updateQueueStats(name string, pollerCount, backlog int) {
-	for i := range tq.queues {
-		if tq.queues[i].Name == name {
-			tq.queues[i].PollerCount = pollerCount
-			tq.queues[i].Backlog = backlog
-		}
-	}
 	for i := range tq.allQueues {
 		if tq.allQueues[i].Name == name {
 			tq.allQueues[i].PollerCount = pollerCount
 			tq.allQueues[i].Backlog = backlog
 		}
 	}
-	row := tq.queueTable.SelectedRow()
-	tq.suppressSelect = true
-	tq.populateQueueTable()
-	if row >= 0 && row < len(tq.queues) {
-		tq.queueTable.SelectRow(row)
+	for i := range tq.queues {
+		if tq.queues[i].Name == name {
+			tq.queues[i].PollerCount = pollerCount
+			tq.queues[i].Backlog = backlog
+			tq.paintQueueRow(i)
+			return
+		}
 	}
-	tq.suppressSelect = false
 }
 
 func (tq *TaskQueueView) loadMockPollers(queue taskQueueEntry) {
@@ -507,6 +616,7 @@ func (tq *TaskQueueView) Start() {
 		if row >= 0 && row < len(tq.queues) {
 			tq.schedulePollers(row, false)
 		}
+		tq.prefetchQueueStats()
 		return
 	}
 	tq.loadData()

@@ -241,9 +241,12 @@ func (wd *WorkflowDetail) loadData() {
 			wd.events = events
 			wd.populateEventTable()
 
-			// Extract input/output from events
 			if wd.workflow != nil {
 				wd.extractWorkflowIO()
+				if wd.workflow.Status == "Running" && temporal.HistoryHasTaskFailure(events) {
+					wd.workflow.TaskFailure = true
+					wd.render()
+				}
 			}
 		})
 	}()
@@ -319,7 +322,7 @@ type workflowInfoRow struct {
 }
 
 func workflowInfoRows(now time.Time, w temporal.Workflow) []workflowInfoRow {
-	statusHandle := temporal.GetWorkflowStatus(w.Status)
+	statusLabel, statusHandle := temporal.WorkflowDisplayStatus(w)
 	durationStr := "In progress"
 	if w.EndTime != nil {
 		durationStr = w.EndTime.Sub(w.StartTime).Round(time.Second).String()
@@ -344,8 +347,8 @@ func workflowInfoRows(now time.Time, w temporal.Workflow) []workflowInfoRow {
 		workflowInfoRow{
 			Key:      workflowInfoStatus,
 			Label:    "Status",
-			Value:    w.Status,
-			Display:  statusHandle.Icon() + " " + w.Status,
+			Value:    statusLabel,
+			Display:  statusHandle.Icon() + " " + statusLabel,
 			Color:    statusHandle.Color(),
 			ColorTag: statusHandle.ColorTag(),
 		},
@@ -834,10 +837,15 @@ func truncateStr(s string, maxLen int) string {
 // Mutation methods
 
 func (wd *WorkflowDetail) actionTarget() workflowActionTarget {
+	status := ""
+	if wd.workflow != nil {
+		status = wd.workflow.Status
+	}
 	return workflowActionTarget{
 		Namespace: wd.app.CurrentNamespace(),
 		ID:        wd.workflowID,
 		RunID:     wd.runID,
+		Status:    status,
 	}
 }
 

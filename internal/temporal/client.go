@@ -94,6 +94,10 @@ func NewClient(ctx context.Context, connConfig ConnectionConfig) (*Client, error
 	// Redirect logs to file instead of stdout
 	initLogFile()
 
+	if config.IsTemporalCloudAddress(connConfig.Address) && connConfig.APIKey == "" {
+		return nil, fmt.Errorf("Temporal Cloud requires an API key")
+	}
+
 	opts := client.Options{
 		HostPort:  connConfig.Address,
 		Namespace: connConfig.Namespace,
@@ -249,6 +253,10 @@ func (c *Client) reconnectWithConfig(ctx context.Context, connConfig ConnectionC
 	// The old connection stays in place until the new one is dialed. Clearing it
 	// first left every in-flight call dereferencing a nil client for the length of
 	// the dial, and a failed switch dropped a working connection.
+
+	if config.IsTemporalCloudAddress(connConfig.Address) && connConfig.APIKey == "" {
+		return fmt.Errorf("Temporal Cloud requires an API key")
+	}
 
 	opts := client.Options{
 		HostPort:  connConfig.Address,
@@ -558,43 +566,7 @@ func (c *Client) ListWorkflows(ctx context.Context, namespace string, opts ListO
 
 	var workflows []Workflow
 	for _, exec := range resp.GetExecutions() {
-		wf := Workflow{
-			ID:        exec.GetExecution().GetWorkflowId(),
-			RunID:     exec.GetExecution().GetRunId(),
-			Type:      exec.GetType().GetName(),
-			Status:    MapWorkflowStatus(exec.GetStatus()),
-			Namespace: namespace,
-			TaskQueue: exec.GetTaskQueue(),
-			StartTime: exec.GetStartTime().AsTime(),
-		}
-
-		if exec.GetCloseTime() != nil && !exec.GetCloseTime().AsTime().IsZero() {
-			t := exec.GetCloseTime().AsTime()
-			wf.EndTime = &t
-		}
-
-		if exec.GetParentExecution() != nil && exec.GetParentExecution().GetWorkflowId() != "" {
-			parentID := exec.GetParentExecution().GetWorkflowId()
-			wf.ParentID = &parentID
-		}
-
-		// Extract memo if present
-		if exec.GetMemo() != nil && exec.GetMemo().GetFields() != nil {
-			wf.Memo = make(map[string]string)
-			for k, v := range exec.GetMemo().GetFields() {
-				// Try to extract string value from payload
-				if v != nil && v.GetData() != nil {
-					var strVal string
-					if err := json.Unmarshal(v.GetData(), &strVal); err == nil {
-						wf.Memo[k] = strVal
-					} else {
-						wf.Memo[k] = string(v.GetData())
-					}
-				}
-			}
-		}
-
-		workflows = append(workflows, wf)
+		workflows = append(workflows, workflowFromExecutionInfo(exec, namespace))
 	}
 
 	return workflows, string(resp.GetNextPageToken()), nil
@@ -618,31 +590,17 @@ func (c *Client) GetWorkflow(ctx context.Context, namespace, workflowID, runID s
 		return nil, fmt.Errorf("failed to describe workflow: %w", err)
 	}
 
-	info := resp.GetWorkflowExecutionInfo()
-	wf := &Workflow{
-		ID:        info.GetExecution().GetWorkflowId(),
-		RunID:     info.GetExecution().GetRunId(),
-		Type:      info.GetType().GetName(),
-		Status:    MapWorkflowStatus(info.GetStatus()),
-		Namespace: namespace,
-		TaskQueue: info.GetTaskQueue(),
-		StartTime: info.GetStartTime().AsTime(),
-	}
-
-	if info.GetCloseTime() != nil && !info.GetCloseTime().AsTime().IsZero() {
-		t := info.GetCloseTime().AsTime()
-		wf.EndTime = &t
-	}
-
-	if info.GetParentExecution() != nil && info.GetParentExecution().GetWorkflowId() != "" {
-		parentID := info.GetParentExecution().GetWorkflowId()
-		wf.ParentID = &parentID
+	wf := workflowFromExecutionInfo(resp.GetWorkflowExecutionInfo(), namespace)
+	if !wf.TaskFailure && wf.Status == "Running" {
+		if task := resp.GetPendingWorkflowTask(); task != nil && task.GetAttempt() > 1 {
+			wf.TaskFailure = true
+		}
 	}
 
 	// Note: Input/Output are populated separately from event history
 	// to avoid redundant API calls. See workflow_detail.go loadData().
 
-	return wf, nil
+	return &wf, nil
 }
 
 // GetWorkflowHistory returns the event history for a workflow execution.
@@ -1591,43 +1549,6 @@ func (c *Client) ListWorkers(ctx context.Context, namespace string) ([]Worker, e
 		}
 	}
 	return workers, nil
-}
-
-func (c *Client) ListTaskQueueNames(ctx context.Context, namespace string) ([]string, error) {
-	names := map[string]struct{}{}
-	ok := false
-	var firstErr error
-
-	if workers, err := c.ListWorkers(ctx, namespace); err == nil {
-		ok = true
-		addTaskQueueNames(names, workerTaskQueues(workers)...)
-	} else {
-		firstErr = err
-	}
-
-	if workflows, _, err := c.ListWorkflows(ctx, namespace, ListOptions{PageSize: 100}); err == nil {
-		ok = true
-		for _, wf := range workflows {
-			addTaskQueueNames(names, wf.TaskQueue)
-		}
-	} else if firstErr == nil {
-		firstErr = err
-	}
-
-	if schedules, _, err := c.ListSchedules(ctx, namespace, ListOptions{PageSize: 100}); err == nil {
-		ok = true
-		for _, s := range schedules {
-			addTaskQueueNames(names, s.TaskQueue)
-		}
-	} else if firstErr == nil {
-		firstErr = err
-	}
-
-	out := sortedTaskQueueNames(names)
-	if !ok && firstErr != nil {
-		return nil, firstErr
-	}
-	return out, nil
 }
 
 // formatDuration formats a protobuf duration as a human-readable string.

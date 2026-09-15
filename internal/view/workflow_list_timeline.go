@@ -98,6 +98,9 @@ func (wl *WorkflowList) setupTimeline() {
 		wl.onTimelineLaneChange(lane)
 	})
 	wl.timelineView.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		if wl.handlePaneResizeKey(event) {
+			return nil
+		}
 		switch event.Key() {
 		case tcell.KeyTab:
 			wl.cycleFocus(1)
@@ -141,23 +144,23 @@ func (wl *WorkflowList) applyMainLayout() {
 	if !wl.workflowsActive() {
 		if wl.mainFlex != nil {
 			wl.mainFlex.Clear()
-			if wl.workflowsPanel != nil {
-				wl.mainFlex.AddItem(wl.workflowsPanel, 0, 11, true)
+			var secondary tview.Primitive
+			if wl.taskQueuesActive() && wl.pollersVisible && wl.taskQueues != nil {
+				secondary = wl.taskQueues.pollerPanel
 			}
-			if wl.taskQueuesActive() && wl.pollersVisible && wl.taskQueues != nil && wl.taskQueues.pollerPanel != nil {
-				wl.mainFlex.AddItem(wl.taskQueues.pollerPanel, 0, 9, false)
+			if wl.schedulesActive() && wl.scheduleDetailVisible && wl.schedules != nil {
+				secondary = wl.schedules.detailFlex
 			}
-			if wl.schedulesActive() && wl.scheduleDetailVisible && wl.schedules != nil && wl.schedules.detailFlex != nil {
-				wl.mainFlex.AddItem(wl.schedules.detailFlex, 0, 9, false)
+			if wl.workersActive() && wl.workerDetailVisible && wl.workers != nil {
+				secondary = wl.workers.detailFlex
 			}
-			if wl.workersActive() && wl.workerDetailVisible && wl.workers != nil && wl.workers.detailFlex != nil {
-				wl.mainFlex.AddItem(wl.workers.detailFlex, 0, 9, false)
-			}
+			wl.addPrimarySecondary(wl.workflowsPanel, secondary, true)
 		}
 		wl.Clear()
 		if wl.mainFlex != nil {
 			wl.AddItem(wl.mainFlex, 0, 1, true)
 		}
+		wl.applyStoredPaneSizes()
 		return
 	}
 
@@ -168,18 +171,15 @@ func (wl *WorkflowList) applyMainLayout() {
 	if wl.mainFlex != nil {
 		wl.mainFlex.Clear()
 		if on {
-			var left tview.Primitive = wl.workflowsPanel
+			left := tview.Primitive(wl.workflowsPanel)
 			if docked {
-				col := tview.NewFlex().SetDirection(tview.FlexRow)
-				col.SetBackgroundColor(theme.Bg())
-				col.AddItem(wl.workflowsPanel, 0, 1, true)
-				col.AddItem(wl.timelinePanel, timelinePanelHeight, 0, false)
-				left = col
+				stack := wl.ensurePrimaryStack()
+				stack.Clear()
+				stack.AddItem(wl.workflowsPanel, 0, 1, true)
+				stack.AddItem(wl.timelinePanel, wl.timelineSize(), 0, false)
+				left = stack
 			}
-			wl.mainFlex.AddItem(left, 0, 11, true)
-			if wl.rightFlex != nil {
-				wl.mainFlex.AddItem(wl.rightFlex, 0, 9, false)
-			}
+			wl.addPrimarySecondary(left, wl.rightFlex, true)
 		} else if wl.workflowsPanel != nil {
 			wl.mainFlex.AddItem(wl.workflowsPanel, 0, 1, true)
 		}
@@ -190,8 +190,9 @@ func (wl *WorkflowList) applyMainLayout() {
 		wl.AddItem(wl.mainFlex, 0, 1, true)
 	}
 	if showTimeline && !docked {
-		wl.AddItem(wl.timelinePanel, timelinePanelHeight, 0, false)
+		wl.AddItem(wl.timelinePanel, wl.timelineSize(), 0, false)
 	}
+	wl.applyStoredPaneSizes()
 }
 
 func (wl *WorkflowList) toggleTimeline() {
@@ -246,6 +247,7 @@ func (wl *WorkflowList) selectedWorkflow() (temporal.Workflow, bool) {
 }
 
 func (wl *WorkflowList) syncHistoryForSelectedRow() {
+	wl.clearListEdgePinIfMoved()
 	wl.rememberHighlightedWorkflow()
 	wl.maybeFetchPages()
 	if !wl.historyNeeded() || wl.table == nil {
@@ -284,7 +286,7 @@ func (wl *WorkflowList) onTimelineLaneChange(lane *TimelineLane) {
 		return
 	}
 	wl.highlightedActivityID = id
-	for i, a := range wl.previewActivities {
+	for i, a := range wl.visiblePreviewActivities() {
 		if a.ScheduledID != id {
 			continue
 		}

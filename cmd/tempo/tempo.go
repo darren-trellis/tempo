@@ -97,8 +97,11 @@ func main() {
 		cfg.ActiveProfile = activeProfileName
 	}
 
-	// Get the profile's connection config and expand env vars
 	profileConfig, _ := cfg.GetProfile(activeProfileName)
+	if err := profileConfig.CloudAPIKeyError(); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
 	profileConfig = profileConfig.ExpandEnv()
 
 	// Build temporal connection config from profile

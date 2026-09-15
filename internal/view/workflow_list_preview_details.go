@@ -50,6 +50,9 @@ func (wl *WorkflowList) setPreviewDetailStatus(message string) {
 }
 
 func (wl *WorkflowList) handlePreviewDetailKeys(event *tcell.EventKey) *tcell.EventKey {
+	if wl.handlePaneResizeKey(event) {
+		return nil
+	}
 	if wl.handlePreviewDetailScroll(event) {
 		return nil
 	}
@@ -66,7 +69,7 @@ func (wl *WorkflowList) handlePreviewDetailKeys(event *tcell.EventKey) *tcell.Ev
 }
 
 func (wl *WorkflowList) handlePreviewDetailScroll(event *tcell.EventKey) bool {
-	if wl.workflowDetailScroll == nil || event == nil {
+	if wl.workflowDetailScroll == nil || event == nil || event.Modifiers() != tcell.ModNone {
 		return false
 	}
 	switch event.Key() {
@@ -118,6 +121,9 @@ func (wl *WorkflowList) activatePreviewDetailRow() {
 }
 
 func (wl *WorkflowList) handleActivityDetailKeys(event *tcell.EventKey) *tcell.EventKey {
+	if wl.handlePaneResizeKey(event) {
+		return nil
+	}
 	if handleTableCharScroll(wl.activityDetailScroll, wl.activityDetail, event) {
 		return nil
 	}

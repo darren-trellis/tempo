@@ -99,9 +99,13 @@ tempo --address localhost:7233 // default dev server address loads without flag
 | Key | Action |
 |-----|--------|
 | `j` / `k` | Navigate down / up |
+| `Tab` | Switch pane (Primary / Secondary / Tertiary) |
+| `Shift+Option+←↑↓→` | Resize the focused pane |
 | `Enter` | Select / expand |
 | `Esc` / `Backspace` | Go back |
 | `q` | Quit (from root view) |
+
+The **Primary** pane is Workflows, Task Queues, Schedules, or Workers. **Secondary** is the preview. **Tertiary** is Input/Output, Activity Details, Event Details, or Graph.
 
 **Global**
 | Key | Action |
@@ -152,11 +156,14 @@ Set `refresh_rate` to a Go duration (`500ms`, `2s`) or a bare number of seconds:
 refresh_rate: 1s
 workflow_page_size: 100
 show_scrollbars: true
+preview_load_delay: 200ms
 ```
 
 `workflow_page_size` is how many workflows each list page fetches (default 100, between 10 and 1000). Scrolling loads more pages.
 
 `show_scrollbars` draws a track and thumb on overflow tables, text views, and the event tree (default on). Set `show_scrollbars: false` to hide them.
+
+`preview_load_delay` is how long preview waits after you highlight a workflow before fetching its history (default `200ms`). That keeps rapid movement from firing a request per row. Set `0` to load immediately. Values are Go durations, clamped to 2s.
 
 The workers tab decides whether an instance is still alive from how recently it
 was last seen, because Temporal keeps listing a worker for minutes after it

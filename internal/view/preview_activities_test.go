@@ -194,8 +194,11 @@ func TestActivityDetailRendersTable(t *testing.T) {
 	if wl.activityDetailKind != activityDetailInput {
 		t.Fatalf("] should go to input, got %d", wl.activityDetailKind)
 	}
-	if desc := hintDescription(wl.Hints(), "y"); desc != "" {
-		t.Fatalf("input tab should not show yank, got %q", desc)
+	if desc := hintDescription(wl.Hints(), "y"); desc != "Yank" {
+		t.Fatalf("input tab should show yank, got %q", desc)
+	}
+	if desc := hintDescription(wl.Hints(), "e"); desc != "Editor" {
+		t.Fatalf("input tab should show editor, got %q", desc)
 	}
 }
 
@@ -342,8 +345,8 @@ func TestPreviewKindCycle(t *testing.T) {
 	if wl.previewKind != previewDetails || wl.previewTabs.GetActive() != int(previewDetails) {
 		t.Fatalf("next kind: %d tab %d", wl.previewKind, wl.previewTabs.GetActive())
 	}
-	if wl.rightFlex.GetItemCount() != 1 {
-		t.Fatalf("details should hide the sibling pane, got %d items", wl.rightFlex.GetItemCount())
+	if wl.rightFlex.GetItemCount() != 2 {
+		t.Fatalf("details should show the input/output pane, got %d items", wl.rightFlex.GetItemCount())
 	}
 
 	wl.cyclePreviewKind(1)

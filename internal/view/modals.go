@@ -68,8 +68,8 @@ with a keyboard-driven interface.[-]
 		theme.TagFgDim())
 
 	m.content.SetText(splashText)
-	m.Modal.SetContent(m.content)
-	m.Modal.SetHints([]components.KeyHint{
+	m.SetContent(m.content)
+	m.SetHints([]components.KeyHint{
 		{Key: "any key", Description: "Continue"},
 	})
 	m.Modal.SetOnCancel(func() {
@@ -132,8 +132,8 @@ func (m *HelpModal) setup() {
 		return event
 	})
 
-	m.Modal.SetContent(m.content)
-	m.Modal.SetHints([]components.KeyHint{
+	m.SetContent(m.content)
+	m.SetHints([]components.KeyHint{
 		{Key: "Esc", Description: "Close"},
 	})
 }
@@ -185,8 +185,17 @@ func (m *HelpModal) updateContent() {
 [%s]g[-]          Go to top
 [%s]G[-]          Go to bottom
 [%s]Enter[-]      Select / Open
-[%s]Tab[-]        Switch panel (where applicable)
+[%s]Tab[-]        Switch pane (Primary / Secondary / Tertiary)
+[%s]S-⌥-←↑↓→[-]  Resize focused pane
+
+[%s::b]Panes[-:-:-]
+
+Primary      Workflows, Task Queues, Schedules, Workers
+Secondary    Preview
+Tertiary     Input/Output, Activity Details, Event Details, Graph
 `, theme.TagAccent(),
+		theme.TagAccent(),
+		theme.TagAccent(),
 		theme.TagAccent(),
 		theme.TagAccent(),
 		theme.TagAccent(),
@@ -252,8 +261,8 @@ func (m *ThemeSelectorModal) setup() {
 		}
 	})
 
-	m.Modal.SetContent(m.table)
-	m.Modal.SetHints([]components.KeyHint{
+	m.SetContent(m.table)
+	m.SetHints([]components.KeyHint{
 		{Key: "Enter", Description: "Select"},
 		{Key: "Esc", Description: "Cancel"},
 	})
@@ -368,10 +377,7 @@ func (m *ProfileModal) setup() {
 		return event
 	})
 
-	m.Modal.SetContent(m.table)
-	if panel := m.GetPanel(); panel != nil {
-		panel.SetContent(m.table)
-	}
+	m.SetContent(m.table)
 	m.Modal.SetOnCancel(func() {
 		if m.onClose != nil {
 			m.onClose()
@@ -460,10 +466,10 @@ func (f *ProfileForm) setup() {
 		Namespace: "default",
 	}, false)
 
-	f.Modal.SetContent(f.form)
-	f.Modal.SetHints([]components.KeyHint{
+	f.SetContent(f.form)
+	f.SetHints([]components.KeyHint{
 		{Key: "Tab", Description: "Next field"},
-		{Key: "Ctrl+S", Description: "Save"},
+		{Key: "Enter", Description: "Save"},
 		{Key: "Esc", Description: "Cancel"},
 	})
 }
@@ -585,7 +591,7 @@ func (f *ProfileForm) SetProfile(name string, cfg config.ConnectionConfig) {
 	}
 
 	f.form = f.buildForm(name, cfg, f.isEdit)
-	f.Modal.SetContent(f.form)
+	f.SetContent(f.form)
 }
 
 func (f *ProfileForm) SetOnSave(fn func(string, config.ConnectionConfig)) { f.onSave = fn }
@@ -643,8 +649,8 @@ func (m *DeleteConfirmModal) setup() {
 		theme.TagAccent(), m.itemName,
 		theme.TagError()))
 
-	m.Modal.SetContent(content)
-	m.Modal.SetHints([]components.KeyHint{
+	m.SetContent(content)
+	m.SetHints([]components.KeyHint{
 		{Key: "y", Description: "Yes, delete"},
 		{Key: "n/Esc", Description: "Cancel"},
 	})
@@ -709,8 +715,8 @@ func (m *ErrorModal) setup() {
 		theme.TagError(), m.message,
 		theme.TagFgDim()))
 
-	m.Modal.SetContent(content)
-	m.Modal.SetHints([]components.KeyHint{
+	m.SetContent(content)
+	m.SetHints([]components.KeyHint{
 		{Key: "any key", Description: "Close"},
 	})
 	m.Modal.SetOnCancel(func() {
@@ -759,8 +765,8 @@ func (m *InfoModal) setup(message string) {
 		theme.TagFg(), message,
 		theme.TagFgDim()))
 
-	m.Modal.SetContent(content)
-	m.Modal.SetHints([]components.KeyHint{
+	m.SetContent(content)
+	m.SetHints([]components.KeyHint{
 		{Key: "any key", Description: "Close"},
 	})
 	m.Modal.SetOnCancel(func() {

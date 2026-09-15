@@ -6,7 +6,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/atterpac/jig/theme"
 	"github.com/galaxy-io/tempo/internal/temporal"
 )
 
@@ -21,19 +20,12 @@ func (wl *WorkflowList) applyFilterWithFallback(serverFallback bool) {
 	if wl.filterText == "" {
 		filtered = wl.allWorkflows
 	} else {
-		filter := strings.ToLower(wl.filterText)
-		for _, w := range wl.allWorkflows {
-			if strings.Contains(strings.ToLower(w.ID), filter) ||
-				strings.Contains(strings.ToLower(w.Type), filter) ||
-				strings.Contains(strings.ToLower(w.Status), filter) {
-				filtered = append(filtered, w)
-			}
-		}
-
+		filtered = matchingWorkflows(wl.allWorkflows, wl.filterText)
 		if len(filtered) == 0 && serverFallback && wl.visibilityQuery == "" {
 			wl.convertFilterToVisibilityQuery()
 			return
 		}
+		filtered = wl.expandFilteredWorkflows(filtered)
 	}
 	wl.applyWorkflowOrder(filtered)
 	wl.populateTable()
@@ -46,10 +38,7 @@ func (wl *WorkflowList) convertFilterToVisibilityQuery() {
 	}
 
 	searchTerm := wl.filterText
-	wl.visibilityQuery = fmt.Sprintf(
-		"WorkflowId STARTS_WITH '%s' OR WorkflowType STARTS_WITH '%s'",
-		searchTerm, searchTerm,
-	)
+	wl.visibilityQuery = workflowIDFilterQuery(searchTerm)
 	wl.filterText = ""
 	wl.updatePanelTitle()
 	wl.loadData()
@@ -82,23 +71,15 @@ func (wl *WorkflowList) showFilter() {
 // applyFilterWithServerSearch filters locally, and if no results, triggers server search.
 func (wl *WorkflowList) applyFilterWithServerSearch(text string) {
 	if text == "" {
-		wl.workflows = wl.allWorkflows
+		wl.applyWorkflowOrder(wl.allWorkflows)
 		wl.populateTable()
 		wl.updateStats()
 		wl.updateFilterTitle("", "")
 		return
 	}
 
-	// Try local filter first
-	filter := strings.ToLower(text)
-	wl.workflows = nil
-	for _, w := range wl.allWorkflows {
-		if strings.Contains(strings.ToLower(w.ID), filter) ||
-			strings.Contains(strings.ToLower(w.Type), filter) ||
-			strings.Contains(strings.ToLower(w.Status), filter) {
-			wl.workflows = append(wl.workflows, w)
-		}
-	}
+	filtered := wl.expandFilteredWorkflows(matchingWorkflows(wl.allWorkflows, text))
+	wl.applyWorkflowOrder(filtered)
 
 	// Show top match hint
 	topHint := ""
@@ -133,10 +114,7 @@ func (wl *WorkflowList) searchServer(searchTerm string) {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 
-		query := fmt.Sprintf(
-			"WorkflowId STARTS_WITH '%s' OR WorkflowType STARTS_WITH '%s'",
-			searchTerm, searchTerm,
-		)
+		query := workflowIDFilterQuery(searchTerm)
 		opts := temporal.ListOptions{
 			PageSize: wl.pageSize(),
 			Query:    query,
@@ -153,7 +131,7 @@ func (wl *WorkflowList) searchServer(searchTerm string) {
 				return
 			}
 
-			wl.workflows = workflows
+			wl.applyWorkflowOrder(wl.expandFilteredWorkflows(workflows))
 			wl.serverCompletions = make([]string, 0, len(workflows))
 			for _, w := range workflows {
 				wl.serverCompletions = append(wl.serverCompletions, w.ID)
@@ -180,9 +158,7 @@ func (wl *WorkflowList) updateFilterTitle(filter, hint string) {
 		return
 	}
 
-	// Show only what the user typed in the title (no autocomplete suffix)
-	title := fmt.Sprintf("%s Workflows (/%s)", theme.IconWorkflow, filter)
-	wl.SetMasterTitle(title)
+	wl.applyProfileTitle()
 
 	// Set ghost text suggestion in command bar if we have a matching hint
 	if hint != "" && strings.HasPrefix(strings.ToLower(hint), strings.ToLower(filter)) {
@@ -222,4 +198,95 @@ func (wl *WorkflowList) clearAllFilters() {
 	} else {
 		wl.loadData()
 	}
+}
+
+func workflowIDFilterQuery(term string) string {
+	return fmt.Sprintf("WorkflowId STARTS_WITH '%s'", term)
+}
+
+func workflowMatchesFilter(w temporal.Workflow, filter string) bool {
+	return strings.Contains(strings.ToLower(w.ID), filter)
+}
+
+func matchingWorkflows(workflows []temporal.Workflow, text string) []temporal.Workflow {
+	filter := strings.ToLower(text)
+	if filter == "" {
+		return append([]temporal.Workflow(nil), workflows...)
+	}
+	matches := make([]temporal.Workflow, 0, len(workflows))
+	for _, w := range workflows {
+		if workflowMatchesFilter(w, filter) {
+			matches = append(matches, w)
+		}
+	}
+	return matches
+}
+
+func (wl *WorkflowList) expandFilteredWorkflows(matches []temporal.Workflow) []temporal.Workflow {
+	if wl == nil || !wl.workflowTreeMode {
+		return matches
+	}
+	pool := mergeWorkflows(wl.originalWorkflows, wl.allWorkflows, matches)
+	return expandWorkflowFilterTree(pool, matches)
+}
+
+func mergeWorkflows(sets ...[]temporal.Workflow) []temporal.Workflow {
+	seen := make(map[string]bool)
+	out := make([]temporal.Workflow, 0)
+	for _, set := range sets {
+		for _, w := range set {
+			key := workflowIdentityKey(w)
+			if seen[key] {
+				continue
+			}
+			seen[key] = true
+			out = append(out, w)
+		}
+	}
+	return out
+}
+
+func expandWorkflowFilterTree(all, matches []temporal.Workflow) []temporal.Workflow {
+	if len(matches) == 0 {
+		return nil
+	}
+	matchKeys := make(map[string]bool, len(matches))
+	for _, w := range matches {
+		matchKeys[workflowIdentityKey(w)] = true
+	}
+	children, _ := workflowChildLinks(all)
+	include := make([]bool, len(all))
+	var mark func(int)
+	mark = func(i int) {
+		if i < 0 || i >= len(all) || include[i] {
+			return
+		}
+		include[i] = true
+		for _, c := range children[i] {
+			mark(c)
+		}
+	}
+	for i, w := range all {
+		if matchKeys[workflowIdentityKey(w)] {
+			mark(i)
+		}
+	}
+	out := make([]temporal.Workflow, 0, len(all))
+	seen := make(map[string]bool, len(all))
+	for i, w := range all {
+		if !include[i] {
+			continue
+		}
+		out = append(out, w)
+		seen[workflowIdentityKey(w)] = true
+	}
+	for _, w := range matches {
+		key := workflowIdentityKey(w)
+		if seen[key] {
+			continue
+		}
+		out = append(out, w)
+		seen[key] = true
+	}
+	return out
 }

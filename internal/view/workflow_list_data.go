@@ -19,6 +19,13 @@ func (wl *WorkflowList) pageSize() int {
 	return config.DefaultWorkflowPageSize
 }
 
+func (wl *WorkflowList) previewLoadDelay() time.Duration {
+	if wl != nil && wl.app != nil {
+		return wl.app.Config().PreviewLoadDelay()
+	}
+	return config.DefaultPreviewLoadDelay
+}
+
 func (wl *WorkflowList) setLoading(loading bool) {
 	wl.loading = loading
 	wl.app.SetViewLoading("workflows", loading)
@@ -37,6 +44,7 @@ func (wl *WorkflowList) invalidateCaches() {
 	wl.previewCache.clear()
 	wl.previewEvents = nil
 	wl.previewActivities = nil
+	wl.previewPending = false
 	wl.previewWorkflowID = ""
 	wl.previewRunID = ""
 	if wl.hierarchyView != nil {
@@ -272,8 +280,57 @@ func (wl *WorkflowList) refreshCounts() {
 	}()
 }
 
+type listEdgePin int
+
+const (
+	listEdgeNone listEdgePin = iota
+	listEdgeStart
+	listEdgeEnd
+)
+
+func (wl *WorkflowList) jumpWorkflowListEdge(end bool) {
+	if wl == nil || len(wl.workflows) == 0 {
+		return
+	}
+	col := 0
+	if wl.table != nil {
+		_, col = wl.table.GetOffset()
+	}
+	if end {
+		wl.listEdgePin = listEdgeEnd
+		wl.selectWorkflowRow(len(wl.workflows) - 1)
+		if wl.table != nil {
+			wl.table.SetOffset(len(wl.workflows)-1, col)
+		}
+	} else {
+		wl.listEdgePin = listEdgeStart
+		wl.selectWorkflowRow(0)
+		if wl.table != nil {
+			wl.table.SetOffset(0, col)
+		}
+	}
+	wl.rememberHighlightedWorkflow()
+}
+
+func (wl *WorkflowList) clearListEdgePinIfMoved() {
+	if wl == nil || wl.table == nil || wl.listEdgePin == listEdgeNone {
+		return
+	}
+	row := wl.table.SelectedRow()
+	switch wl.listEdgePin {
+	case listEdgeStart:
+		if row != 0 {
+			wl.listEdgePin = listEdgeNone
+		}
+	case listEdgeEnd:
+		if row != len(wl.workflows)-1 {
+			wl.listEdgePin = listEdgeNone
+		}
+	}
+}
+
 func (wl *WorkflowList) maybeFetchPages() {
-	if wl == nil || wl.preloaded || wl.pageBusy || wl.liveBusy {
+	if wl == nil || wl.preloaded || wl.pageBusy || wl.liveBusy || wl.listEdgePin != listEdgeNone {
 		return
 	}
 	if wl.filterText != "" {
@@ -282,19 +339,50 @@ func (wl *WorkflowList) maybeFetchPages() {
 	if !wl.workflowsActive() || wl.app == nil || wl.app.Provider() == nil {
 		return
 	}
-	idx := workflowIndexByIdentity(wl.allWorkflows, wl.highlightedWorkflowID, wl.highlightedRunID)
+	switch wl.adjacentPageNeed() {
+	case 1:
+		wl.fetchAdjacentPage(false)
+	case -1:
+		wl.fetchAdjacentPage(true)
+	}
+}
+
+// adjacentPageNeed reports whether the visible list should load the next page
+// (1), the previous page (-1), or neither (0). g/G land on the exact first or
+// last row; fetching there while the 4-page window is full trims the other end
+// and yanks the highlight back into the remaining rows.
+func (wl *WorkflowList) adjacentPageNeed() int {
+	if wl == nil {
+		return 0
+	}
+	n := len(wl.workflows)
+	if n == 0 {
+		n = len(wl.allWorkflows)
+	}
+	if n == 0 {
+		return 0
+	}
+	idx := -1
+	if wl.table != nil {
+		idx = wl.table.SelectedRow()
+	}
+	if idx < 0 {
+		idx = workflowIndexByIdentity(wl.workflows, wl.highlightedWorkflowID, wl.highlightedRunID)
+	}
 	if idx < 0 {
 		idx = 0
 	}
+	if idx == 0 || idx == n-1 {
+		return 0
+	}
 	budget := wl.visibleWorkflowBudget()
-	n := len(wl.allWorkflows)
-	if wl.pager.hasNext() && (n == 0 || idx+budget >= n-1) {
-		wl.fetchAdjacentPage(false)
-		return
+	if wl.pager.hasNext() && idx+budget >= n-1 {
+		return 1
 	}
 	if wl.pager.hasPrev() && idx < budget {
-		wl.fetchAdjacentPage(true)
+		return -1
 	}
+	return 0
 }
 
 func (wl *WorkflowList) fetchAdjacentPage(prev bool) {
@@ -324,6 +412,7 @@ func (wl *WorkflowList) fetchAdjacentPage(prev bool) {
 	query := wl.pager.query
 	gen := wl.pageGen
 	wl.pageBusy = true
+	wl.setLoading(true)
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
@@ -332,33 +421,68 @@ func (wl *WorkflowList) fetchAdjacentPage(prev bool) {
 			PageToken: token,
 			Query:     query,
 		})
-		wl.app.JigApp().QueueUpdateDraw(func() {
+		finish := func() {
 			if gen != wl.pageGen {
 				return
 			}
 			wl.pageBusy = false
+			wl.setLoading(false)
 			if err != nil {
 				return
 			}
 			wl.pager.accept(pageIndex, token, next, workflows)
 			wl.applyLoadedWindow()
 			wl.maybeFetchPages()
-		})
+		}
+		if jig := wl.app.JigApp(); jig != nil {
+			jig.QueueUpdateDraw(finish)
+			return
+		}
+		finish()
 	}()
 }
 
 func (wl *WorkflowList) applyLoadedWindow() {
+	if wl.listEdgePin == listEdgeNone {
+		wl.rememberListAnchor()
+	} else {
+		wl.hasListAnchor = false
+	}
 	wl.allWorkflows = wl.pager.items()
 	wl.applyFilter()
 }
 
+func (wl *WorkflowList) rememberListAnchor() {
+	if wl == nil {
+		return
+	}
+	id, runID := wl.highlightedWorkflowID, wl.highlightedRunID
+	idx := workflowIndexByIdentity(wl.workflows, id, runID)
+	if idx < 0 && wl.table != nil {
+		row := wl.table.SelectedRow()
+		if row >= 0 && row < len(wl.workflows) {
+			idx = row
+			wl.highlightedWorkflowID = wl.workflows[row].ID
+			wl.highlightedRunID = wl.workflows[row].RunID
+		}
+	}
+	if idx < 0 {
+		wl.hasListAnchor = false
+		return
+	}
+	wl.listAnchorIndex = idx
+	wl.hasListAnchor = true
+}
+
 func (wl *WorkflowList) applyServerCounts(counts temporal.WorkflowCounts) {
 	wl.serverStats = WorkflowStats{
-		Running:    counts.Running,
-		Completed:  counts.Completed,
-		Failed:     counts.Failed,
-		Canceled:   counts.Canceled,
-		Terminated: counts.Terminated,
+		Running:        counts.Running,
+		Completed:      counts.Completed,
+		Failed:         counts.Failed,
+		Canceled:       counts.Canceled,
+		Terminated:     counts.Terminated,
+		TimedOut:       counts.TimedOut,
+		ContinuedAsNew: counts.ContinuedAsNew,
 	}
 	wl.serverStatsOK = true
 	wl.updateStats()
@@ -405,7 +529,7 @@ func (wl *WorkflowList) loadMockData() {
 		{
 			ID: "inventory-check-111", RunID: "run-004-ghi", Type: "InventoryWorkflow",
 			Status: "Running", Namespace: wl.namespace, TaskQueue: "inventory-tasks",
-			StartTime: now.Add(-10 * time.Minute),
+			StartTime: now.Add(-10 * time.Minute), TaskFailure: true,
 		},
 		{
 			ID: "user-signup-222", RunID: "run-005-jkl", Type: "UserOnboardingWorkflow",
@@ -419,6 +543,7 @@ func (wl *WorkflowList) loadMockData() {
 // renderColumns redraws the headers and row cells for the current column layout,
 // leaving the selection and preview alone. Used for live column edits.
 func (wl *WorkflowList) renderColumns() {
+	rowOff, colOff, horiz := wl.workflowTableScroll()
 	cols := wl.columnLayout()
 	row := wl.table.SelectedRow()
 	wl.table.ClearRows()
@@ -427,16 +552,14 @@ func (wl *WorkflowList) renderColumns() {
 	for i, w := range wl.workflows {
 		cells := make([]components.TableCell, len(cols))
 		for j, col := range cols {
-			cells[j] = col.cell(now, w, wl.workflowDepth(i))
+			cells[j] = col.cell(now, w, wl.workflowRowPrefix(i))
 		}
 		wl.table.AddStyledRow(cells)
 	}
 	if row >= 0 && row < wl.table.RowCount() {
-		wl.table.SelectRow(row)
+		wl.selectWorkflowRow(row)
 	}
-	if wl.tableScroll != nil {
-		wl.tableScroll.clamp()
-	}
+	wl.restoreWorkflowTableScroll(rowOff, colOff, horiz)
 }
 
 func (wl *WorkflowList) rememberHighlightedWorkflow() {
@@ -470,7 +593,40 @@ func workflowIndexByIdentity(workflows []temporal.Workflow, id, runID string) in
 	return fallback
 }
 
+func (wl *WorkflowList) workflowTableScroll() (rowOffset, colOffset, horiz int) {
+	if wl != nil && wl.table != nil {
+		rowOffset, colOffset = wl.table.GetOffset()
+	}
+	if wl != nil && wl.tableScroll != nil {
+		horiz = wl.tableScroll.offset
+	}
+	return rowOffset, colOffset, horiz
+}
+
+func (wl *WorkflowList) restoreWorkflowTableScroll(rowOffset, colOffset, horiz int) {
+	if wl == nil {
+		return
+	}
+	if wl.table != nil {
+		wl.table.SetOffset(rowOffset, colOffset)
+	}
+	if wl.tableScroll != nil {
+		wl.tableScroll.scrollTo(horiz)
+	}
+}
+
+func (wl *WorkflowList) selectWorkflowRow(idx int) {
+	if wl == nil || wl.table == nil || idx < 0 {
+		return
+	}
+	if wl.table.SelectedRow() == idx {
+		return
+	}
+	wl.table.SelectRow(idx)
+}
+
 func (wl *WorkflowList) populateTable() {
+	rowOff, colOff, horiz := wl.workflowTableScroll()
 	id, runID := wl.highlightedWorkflowID, wl.highlightedRunID
 	if id == "" && wl.table != nil {
 		row := wl.table.SelectedRow()
@@ -490,6 +646,7 @@ func (wl *WorkflowList) populateTable() {
 			wl.table.ConfigureEmpty(theme.IconSearch, "No Results", "No workflows match the current filter")
 		}
 		wl.SetMasterContent(wl.table)
+		wl.applyProfileTitle()
 		wl.clearPreview()
 		return
 	}
@@ -500,7 +657,7 @@ func (wl *WorkflowList) populateTable() {
 	for i, w := range wl.workflows {
 		cells := make([]components.TableCell, len(cols))
 		for j, col := range cols {
-			cells[j] = col.cell(now, w, wl.workflowDepth(i))
+			cells[j] = col.cell(now, w, wl.workflowRowPrefix(i))
 		}
 		wl.table.AddStyledRow(cells)
 	}
@@ -509,8 +666,28 @@ func (wl *WorkflowList) populateTable() {
 	if idx < 0 {
 		idx = 0
 	}
-	wl.table.SelectRow(idx)
+	switch wl.listEdgePin {
+	case listEdgeStart:
+		idx = 0
+		rowOff = 0
+		wl.hasListAnchor = false
+	case listEdgeEnd:
+		idx = len(wl.workflows) - 1
+		rowOff = 0
+		wl.hasListAnchor = false
+	default:
+		if wl.hasListAnchor {
+			rowOff += idx - wl.listAnchorIndex
+			if rowOff < 0 {
+				rowOff = 0
+			}
+			wl.hasListAnchor = false
+		}
+	}
+	wl.selectWorkflowRow(idx)
+	wl.restoreWorkflowTableScroll(rowOff, colOff, horiz)
 	wl.rememberHighlightedWorkflow()
+	wl.applyProfileTitle()
 	wl.schedulePreview(wl.workflows[idx], false)
 }
 
@@ -531,13 +708,17 @@ func (wl *WorkflowList) displayedStats() WorkflowStats {
 			stats.Canceled++
 		case "Terminated":
 			stats.Terminated++
+		case "TimedOut":
+			stats.TimedOut++
+		case "ContinuedAsNew":
+			stats.ContinuedAsNew++
 		}
 	}
 	return stats
 }
 
 func (wl *WorkflowList) updateStats() {
-	if wl.app == nil || wl.app.statusBar == nil {
+	if wl.app == nil {
 		return
 	}
 	wl.app.SetWorkflowStats(wl.displayedStats())
@@ -559,12 +740,22 @@ func (wl *WorkflowList) showError(err error) {
 
 // Auto-refresh methods
 
+func autoRefreshMessage(on bool) string {
+	if on {
+		return "Auto-refresh on"
+	}
+	return "Auto-refresh off"
+}
+
 func (wl *WorkflowList) toggleAutoRefresh() {
 	wl.autoRefresh = !wl.autoRefresh
 	if wl.autoRefresh {
 		wl.startAutoRefresh()
 	} else {
 		wl.stopAutoRefresh()
+	}
+	if wl.app != nil {
+		wl.app.ToastSuccess(autoRefreshMessage(wl.autoRefresh))
 	}
 }
 

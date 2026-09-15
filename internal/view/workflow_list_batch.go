@@ -19,11 +19,43 @@ func (wl *WorkflowList) toggleSelectionMode() {
 		wl.table.SetMultiSelect(true)
 		wl.SetMasterTitle(fmt.Sprintf("%s Workflows (Select Mode)", theme.IconWorkflow))
 	} else {
+		indices := wl.selectedWorkflowIndices()
 		wl.table.SetMultiSelect(false)
 		wl.table.ClearSelection()
+		wl.refreshWorkflowRowStyles(indices...)
 		wl.updatePanelTitle()
 	}
 	wl.refreshSelectHints()
+}
+
+func (wl *WorkflowList) toggleRowSelection() {
+	if wl == nil || wl.table == nil {
+		return
+	}
+	tableRow, _ := wl.table.GetSelection()
+	dataIdx := wl.table.SelectedRow()
+	wl.table.ToggleSelection()
+	if dataIdx >= 0 && !wl.table.IsRowSelected(tableRow) {
+		wl.refreshWorkflowRowStyles(dataIdx)
+	}
+}
+
+func (wl *WorkflowList) refreshWorkflowRowStyles(indices ...int) {
+	if wl == nil || wl.table == nil || len(indices) == 0 {
+		return
+	}
+	now := time.Now()
+	cols := wl.columnLayout()
+	for _, i := range indices {
+		if i < 0 || i >= len(wl.workflows) {
+			continue
+		}
+		cells := make([]components.TableCell, len(cols))
+		for j, col := range cols {
+			cells[j] = col.cell(now, wl.workflows[i], wl.workflowRowPrefix(i))
+		}
+		_ = wl.table.UpdateStyledRow(i, cells)
+	}
 }
 
 func (wl *WorkflowList) updateSelectionPreview() {
@@ -107,7 +139,7 @@ func (wl *WorkflowList) showBatchCancelConfirm() {
 	})
 	modal.SetContent(content)
 	modal.SetHints([]components.KeyHint{
-		{Key: "Ctrl+S", Description: "Confirm"},
+		{Key: "Enter", Description: "Confirm"},
 		{Key: "Esc", Description: "Cancel"},
 	})
 
@@ -163,12 +195,21 @@ func (wl *WorkflowList) showBatchTerminateConfirm() {
 		return
 	}
 
-	// Count running workflows
 	var runningCount int
 	for _, idx := range selected {
 		if idx < len(wl.workflows) && wl.workflows[idx].Status == "Running" {
 			runningCount++
 		}
+	}
+	if runningCount == 0 {
+		if wl.app != nil {
+			status := ""
+			if idx := selected[0]; idx < len(wl.workflows) {
+				status = wl.workflows[idx].Status
+			}
+			wl.app.ToastError(terminateUnavailableMessage(status))
+		}
+		return
 	}
 
 	form := components.NewFormBuilder().
@@ -211,7 +252,7 @@ func (wl *WorkflowList) showBatchTerminateConfirm() {
 	})
 	modal.SetContent(content)
 	modal.SetHints([]components.KeyHint{
-		{Key: "Ctrl+S", Description: "Terminate"},
+		{Key: "Enter", Description: "Terminate"},
 		{Key: "Esc", Description: "Cancel"},
 	})
 

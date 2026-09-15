@@ -3,6 +3,7 @@ package view
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync/atomic"
 	"time"
 
@@ -105,17 +106,18 @@ func formatSelectedEventDetail(ev temporal.EnhancedHistoryEvent) string {
 }
 
 func (wl *WorkflowList) selectedPreviewActivity() (previewActivity, bool) {
-	if wl.eventTable == nil {
+	activities := wl.visiblePreviewActivities()
+	if wl.eventTable == nil || len(activities) == 0 {
 		return previewActivity{}, false
 	}
 	row := wl.eventTable.SelectedRow()
-	if row < 0 && len(wl.previewActivities) > 0 {
+	if row < 0 && len(activities) > 0 {
 		row = 0
 	}
-	if row < 0 || row >= len(wl.previewActivities) {
+	if row < 0 || row >= len(activities) {
 		return previewActivity{}, false
 	}
-	return wl.previewActivities[row], true
+	return activities[row], true
 }
 
 func (wl *WorkflowList) previewIOPayload() (title, input, output string, ok bool) {
@@ -165,6 +167,74 @@ func (wl *WorkflowList) workflowIOEvents(w temporal.Workflow) ([]temporal.Enhanc
 		return events, true
 	}
 	return nil, false
+}
+
+func (wl *WorkflowList) previewIOViewFocused() bool {
+	if wl == nil || wl.focusPane != focusEventDetail {
+		return false
+	}
+	if wl.previewKind == previewDetails {
+		return true
+	}
+	return wl.previewKind == previewActivities && (wl.activityDetailKind == activityDetailInput || wl.activityDetailKind == activityDetailOutput)
+}
+
+func (wl *WorkflowList) previewIOEditorPayload() (label, content string, ok bool) {
+	if !wl.previewIOViewFocused() {
+		return "", "", false
+	}
+	if wl.previewKind == previewActivities {
+		a, found := wl.selectedPreviewActivity()
+		if !found {
+			if visible := wl.visiblePreviewActivities(); len(visible) > 0 {
+				a = visible[0]
+			} else {
+				return "", "", false
+			}
+		}
+		if wl.activityDetailKind == activityDetailOutput {
+			out := a.Result
+			if out == "" {
+				out = a.Failure
+			}
+			return "output", out, true
+		}
+		return "input", a.Input, true
+	}
+	input, output := workflowIOFromEvents(wl.previewEvents)
+	if wl.workflowIOKind == workflowIOOutput {
+		return "output", output, true
+	}
+	return "input", input, true
+}
+
+func (wl *WorkflowList) openPreviewIOInEditor() bool {
+	label, content, ok := wl.previewIOEditorPayload()
+	if !ok {
+		return false
+	}
+	openInEditor(wl.app, label, content)
+	return true
+}
+
+func (wl *WorkflowList) yankPreviewIO() bool {
+	label, content, ok := wl.previewIOEditorPayload()
+	if !ok {
+		return false
+	}
+	if wl.app == nil {
+		return true
+	}
+	if strings.TrimSpace(content) == "" {
+		wl.app.ToastError("No " + label + " to copy")
+		return true
+	}
+	if err := copyToClipboard(content); err != nil {
+		wl.app.ToastError("Failed to copy: " + err.Error())
+		return true
+	}
+	wl.app.ToastSuccess("Copied " + label)
+	return true
 }
 
 func (wl *WorkflowList) showPreviewIO() bool {
@@ -264,11 +334,7 @@ func (wl *WorkflowList) activateSelectedWorkflow() {
 	wf := wl.workflows[row]
 	if wl.previewModeEnabled() {
 		wl.schedulePreview(wf, false)
-		if wl.previewKind == previewDetails {
-			wl.setFocusPane(focusEventDetail)
-		} else {
-			wl.setFocusPane(focusEvents)
-		}
+		wl.setFocusPane(focusEvents)
 		return
 	}
 	if wl.app != nil {
@@ -304,11 +370,14 @@ func (wl *WorkflowList) paneAt(x, y int) (workflowFocusPane, bool) {
 			return focusWorkflows, false
 		}
 		if wl.previewKind == previewDetails {
-			if wl.workflowDetailScroll != nil && wl.workflowDetailScroll.InRect(x, y) {
+			if wl.eventDetailPanel != nil && wl.eventDetailPanel.InRect(x, y) {
 				return focusEventDetail, true
 			}
+			if wl.workflowDetailScroll != nil && wl.workflowDetailScroll.InRect(x, y) {
+				return focusEvents, true
+			}
 			if wl.workflowDetail != nil && wl.workflowDetail.InRect(x, y) {
-				return focusEventDetail, true
+				return focusEvents, true
 			}
 		} else if wl.previewKind == previewHierarchy {
 			if wl.hierarchyGraphPanel != nil && wl.hierarchyGraphPanel.InRect(x, y) {
@@ -480,6 +549,9 @@ func (wl *WorkflowList) handlePreviewTabKey(event *tcell.EventKey) bool {
 	if wl.focusPane == focusEventDetail && wl.previewKind == previewActivities {
 		return wl.handleActivityDetailTabKey(event)
 	}
+	if wl.focusPane == focusEventDetail && wl.previewKind == previewDetails {
+		return wl.handleWorkflowIOTabKey(event)
+	}
 	switch event.Rune() {
 	case '[':
 		wl.cyclePreviewKind(-1)
@@ -536,6 +608,70 @@ func (wl *WorkflowList) cycleActivityDetailKind(delta int) {
 	wl.setActivityDetailKind(activityDetailKind(next))
 }
 
+func (wl *WorkflowList) handleWorkflowIOTabKey(event *tcell.EventKey) bool {
+	if event == nil {
+		return false
+	}
+	switch event.Rune() {
+	case '[':
+		wl.cycleWorkflowIOKind(-1)
+		return true
+	case ']':
+		wl.cycleWorkflowIOKind(1)
+		return true
+	case '1':
+		wl.setWorkflowIOKind(workflowIOInput)
+		return true
+	case '2':
+		wl.setWorkflowIOKind(workflowIOOutput)
+		return true
+	}
+	return false
+}
+
+func (wl *WorkflowList) cycleWorkflowIOKind(delta int) {
+	n := len(workflowIOTabOrder)
+	next := (int(wl.workflowIOKind) + delta) % n
+	if next < 0 {
+		next += n
+	}
+	wl.setWorkflowIOKind(workflowIOKind(next))
+}
+
+func (wl *WorkflowList) setWorkflowIOKind(kind workflowIOKind) {
+	wl.workflowIOKind = kind
+	if wl.workflowIOTabs != nil && wl.workflowIOTabs.GetActive() != int(kind) {
+		wl.workflowIOTabs.SetActive(int(kind))
+		return
+	}
+	wl.renderWorkflowIO()
+	if wl.focusPane == focusEventDetail {
+		wl.setFocusPane(focusEventDetail)
+	}
+}
+
+func (wl *WorkflowList) renderWorkflowIO() {
+	if wl.workflowIOView == nil {
+		return
+	}
+	if len(wl.previewEvents) == 0 {
+		message := "Select a workflow to load preview"
+		if wl.previewWorkflowID != "" {
+			message = "Loading..."
+		}
+		wl.workflowIOView.SetText(fmt.Sprintf("[%s]%s[-]", theme.TagFgDim(), message))
+		wl.workflowIOView.ScrollToBeginning()
+		return
+	}
+	input, output := workflowIOFromEvents(wl.previewEvents)
+	if wl.workflowIOKind == workflowIOOutput {
+		wl.workflowIOView.SetText(formatIOContent("Output", output))
+	} else {
+		wl.workflowIOView.SetText(formatIOContent("Input", input))
+	}
+	wl.workflowIOView.ScrollToBeginning()
+}
+
 func (wl *WorkflowList) setActivityDetailKind(kind activityDetailKind) {
 	wl.activityDetailKind = kind
 	if wl.activityDetailTabs != nil && wl.activityDetailTabs.GetActive() != int(kind) {
@@ -569,17 +705,22 @@ func (wl *WorkflowList) activityDetailFocusPrimitive() tview.Primitive {
 }
 
 func (wl *WorkflowList) renderSelectedActivityDetail() {
-	if len(wl.previewActivities) == 0 {
-		wl.setActivityDetailStatus("No activities")
+	visible := wl.visiblePreviewActivities()
+	if len(visible) == 0 {
+		status := "No activities"
+		if len(wl.previewActivities) > 0 && wl.previewActivitySearch != "" {
+			status = "No matching activities"
+		}
+		wl.setActivityDetailStatus(status)
 		if wl.eventDetail != nil {
-			wl.eventDetail.SetText(fmt.Sprintf("[%s]No activities[-]", theme.TagFgDim()))
+			wl.eventDetail.SetText(fmt.Sprintf("[%s]%s[-]", theme.TagFgDim(), status))
 			wl.eventDetail.ScrollToBeginning()
 		}
 		return
 	}
 	a, ok := wl.selectedPreviewActivity()
 	if !ok {
-		a = wl.previewActivities[0]
+		a = visible[0]
 	}
 	switch wl.activityDetailKind {
 	case activityDetailInput:
@@ -612,11 +753,7 @@ func (wl *WorkflowList) setPreviewKind(kind previewKind) {
 	wasPreview := wl.focusPane != focusWorkflows
 	wl.applyPreviewPage()
 	if wasPreview {
-		if wl.previewKind == previewDetails {
-			wl.setFocusPane(focusEventDetail)
-		} else {
-			wl.setFocusPane(focusEvents)
-		}
+		wl.setFocusPane(focusEvents)
 		return
 	}
 	if wl.app != nil && wl.app.JigApp() != nil {
@@ -630,14 +767,13 @@ func (wl *WorkflowList) applyPreviewPage() {
 	}
 	if wl.rightFlex != nil {
 		wl.rightFlex.Clear()
-		if wl.previewPanel != nil {
-			wl.rightFlex.AddItem(wl.previewPanel, 0, 3, false)
+		var tertiary tview.Primitive
+		if wl.previewShowsSidePane() {
+			tertiary = wl.eventDetailPanel
+		} else if wl.previewKind == previewHierarchy {
+			tertiary = wl.hierarchyGraphPanel
 		}
-		if wl.previewShowsSidePane() && wl.eventDetailPanel != nil {
-			wl.rightFlex.AddItem(wl.eventDetailPanel, 0, 2, false)
-		} else if wl.previewKind == previewHierarchy && wl.hierarchyGraphPanel != nil {
-			wl.rightFlex.AddItem(wl.hierarchyGraphPanel, 0, 2, false)
-		}
+		wl.addSecondaryTertiary(wl.rightFlex, wl.previewPanel, tertiary)
 	}
 	if wl.previewKind == previewHierarchy {
 		if w, ok := wl.selectedWorkflow(); ok {
@@ -747,6 +883,37 @@ func (wl *WorkflowList) setupPreview() {
 	wl.eventDetailPanel = components.NewPanel().SetTitle(fmt.Sprintf("%s Activity Details", theme.IconActivity))
 	wl.eventDetailPanel.SetContent(wl.activityDetailTabs)
 
+	wl.workflowIOView = tview.NewTextView().
+		SetDynamicColors(true).
+		SetTextAlign(tview.AlignLeft).
+		SetWordWrap(true).
+		SetScrollable(true)
+	wl.workflowIOView.SetBackgroundColor(theme.Bg())
+	wl.workflowIOView.SetTextColor(theme.Fg())
+	attachTextViewScrollbar(wl.workflowIOView, wl.app)
+	wl.workflowIOView.SetInputCapture(wl.capturePreviewTextView(wl.workflowIOView))
+
+	wl.workflowIOTabs = components.NewTabs().
+		SetShowIcons(true).
+		SetShowBadges(false).
+		AddTabWithIcon(workflowIOInput.title(), workflowIOInput.icon(), wl.workflowIOView).
+		AddTabWithIcon(workflowIOOutput.title(), workflowIOOutput.icon(), wl.workflowIOView).
+		SetOnChange(func(index int, name string) {
+			if index >= 0 && index < len(workflowIOTabOrder) {
+				wl.setWorkflowIOKind(workflowIOTabOrder[index])
+			}
+		}).
+		SetActive(int(workflowIOInput))
+	wl.workflowIOTabs.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		if handled := wl.handlePreviewKeys(event); handled == nil {
+			return nil
+		}
+		if isJigTabsNavKey(event) {
+			return nil
+		}
+		return event
+	})
+
 	wl.workflowDetail = components.NewTable()
 	wl.workflowDetail.SetBorder(false)
 	wl.workflowDetail.SetBackgroundColor(theme.Bg())
@@ -800,6 +967,7 @@ func (wl *WorkflowList) setupPreview() {
 			wl.setPreviewKind(previewTabOrder[index])
 		}
 	}).SetActive(int(previewActivities))
+	wl.applyEventsTabMode()
 
 	wl.previewPanel = components.NewPanel()
 	wl.previewPanel.SetContent(wl.previewTabs)
@@ -833,6 +1001,9 @@ func (wl *WorkflowList) capturePreviewTextView(view *tview.TextView) func(*tcell
 }
 
 func (wl *WorkflowList) handlePreviewKeys(event *tcell.EventKey) *tcell.EventKey {
+	if wl.handlePaneResizeKey(event) {
+		return nil
+	}
 	switch event.Key() {
 	case tcell.KeyTab:
 		wl.cycleFocus(1)
@@ -864,6 +1035,14 @@ func (wl *WorkflowList) handlePreviewKeys(event *tcell.EventKey) *tcell.EventKey
 			wl.eventTreeView.ToggleSelected()
 			return nil
 		}
+	case 'e':
+		if wl.openPreviewIOInEditor() {
+			return nil
+		}
+	case 'y':
+		if wl.yankPreviewIO() {
+			return nil
+		}
 	case 'i':
 		if !wl.previewShowsIO() {
 			return event
@@ -880,6 +1059,10 @@ func (wl *WorkflowList) handlePreviewKeys(event *tcell.EventKey) *tcell.EventKey
 			wl.showPreviewEventSearch()
 			return nil
 		}
+		if wl.previewKind == previewActivities {
+			wl.showPreviewActivitySearch()
+			return nil
+		}
 	case 'g':
 		if wl.previewKind == previewEvents {
 			wl.jumpToPreviewChild()
@@ -887,20 +1070,6 @@ func (wl *WorkflowList) handlePreviewKeys(event *tcell.EventKey) *tcell.EventKey
 		}
 	case 'r':
 		wl.refreshSelectedPreview()
-		return nil
-	case 'c':
-		if wl.previewKind != previewHierarchy {
-			wl.showCancelSelected()
-			return nil
-		}
-	case 'X':
-		wl.showTerminateSelected()
-		return nil
-	case 's':
-		wl.showSignalSelected()
-		return nil
-	case 'Q':
-		wl.showQuerySelected()
 		return nil
 	}
 	return event
@@ -912,9 +1081,10 @@ func (wl *WorkflowList) updatePreviewSelection(row int) {
 	}
 	idx := row - 1
 	if wl.previewKind == previewActivities {
-		if idx < len(wl.previewActivities) {
+		visible := wl.visiblePreviewActivities()
+		if idx < len(visible) {
 			if !wl.timelineSyncing {
-				wl.highlightedActivityID = wl.previewActivities[idx].ScheduledID
+				wl.highlightedActivityID = visible[idx].ScheduledID
 			}
 			wl.renderSelectedActivityDetail()
 			if !wl.timelineSyncing {
@@ -1011,8 +1181,8 @@ func (wl *WorkflowList) setFocusPane(pane workflowFocusPane) {
 			wl.app.JigApp().SetFocus(wl.eventTable)
 		}
 	case focusEventDetail:
-		if wl.previewKind == previewDetails {
-			wl.app.JigApp().SetFocus(wl.workflowDetail)
+		if wl.previewKind == previewDetails && wl.workflowIOView != nil {
+			wl.app.JigApp().SetFocus(wl.workflowIOView)
 		} else if wl.previewKind == previewHierarchy && wl.hierarchyView != nil && wl.hierarchyView.graph != nil {
 			wl.app.JigApp().SetFocus(wl.hierarchyView.graph)
 		} else if p := wl.activityDetailFocusPrimitive(); p != nil {
@@ -1042,7 +1212,7 @@ func (wl *WorkflowList) applyFocusStyles() {
 		wl.workflowsPanel.SetFocused(wl.focusPane == focusWorkflows)
 	}
 	if wl.previewPanel != nil {
-		wl.previewPanel.SetFocused(wl.focusPane == focusEvents || (wl.previewKind == previewDetails && wl.focusPane == focusEventDetail))
+		wl.previewPanel.SetFocused(wl.focusPane == focusEvents)
 	}
 	if wl.eventDetailPanel != nil {
 		wl.eventDetailPanel.SetFocused(wl.previewShowsSidePane() && wl.focusPane == focusEventDetail)
@@ -1093,7 +1263,7 @@ func (wl *WorkflowList) applyFocusStyles() {
 		wl.eventTable.SetSelectable(wl.focusPane == focusEvents && wl.previewKind != previewHierarchy, false)
 	}
 	if wl.workflowDetail != nil {
-		wl.workflowDetail.SetSelectable(wl.previewKind == previewDetails && wl.focusPane == focusEventDetail, false)
+		wl.workflowDetail.SetSelectable(wl.previewKind == previewDetails && wl.focusPane == focusEvents, false)
 	}
 	if wl.activityDetail != nil {
 		wl.activityDetail.SetSelectable(wl.activityDetailTableFocused() && wl.focusPane == focusEventDetail, false)
@@ -1104,6 +1274,10 @@ func (wl *WorkflowList) syncFocusFromPrimitives() {
 	var pane workflowFocusPane
 	switch {
 	case wl.workflowDetail != nil && wl.workflowDetail.HasFocus():
+		pane = focusEvents
+	case wl.workflowIOView != nil && wl.workflowIOView.HasFocus():
+		pane = focusEventDetail
+	case wl.workflowIOTabs != nil && wl.workflowIOTabs.HasFocus():
 		pane = focusEventDetail
 	case wl.activityDetail != nil && wl.activityDetail.HasFocus():
 		pane = focusEventDetail
@@ -1205,24 +1379,36 @@ func (wl *WorkflowList) syncPreviewChrome() {
 		}
 		return
 	}
+	if wl.previewKind == previewDetails {
+		wl.eventDetailPanel.SetTitle(fmt.Sprintf("%s Input/Output", theme.IconInfo))
+		if wl.workflowIOTabs != nil {
+			wl.eventDetailPanel.SetContent(wl.workflowIOTabs)
+		}
+		return
+	}
 	wl.eventDetailPanel.SetTitle(fmt.Sprintf("%s Event Details", theme.IconEvent))
 	if wl.eventDetail != nil {
 		wl.eventDetailPanel.SetContent(wl.eventDetail)
 	}
 }
 
-func (wl *WorkflowList) clearPreview() {
+func (wl *WorkflowList) clearPreviewContent() {
 	wl.previewEvents = nil
 	wl.previewActivities = nil
-	wl.previewWorkflowID = ""
-	wl.previewRunID = ""
-	wl.highlightedActivityID = 0
 	if wl.timelineView != nil {
 		wl.timelineView.SetNodes(nil)
 	}
 	if wl.eventTreeView != nil {
 		wl.eventTreeView.SetNodes(nil)
 	}
+}
+
+func (wl *WorkflowList) clearPreview() {
+	wl.previewPending = false
+	wl.clearPreviewContent()
+	wl.previewWorkflowID = ""
+	wl.previewRunID = ""
+	wl.highlightedActivityID = 0
 	if wl.eventTable != nil {
 		wl.eventTable.ClearRows()
 		wl.eventTable.SetHeaders("STATUS", "NAME", "STARTED", "DURATION")
@@ -1232,6 +1418,7 @@ func (wl *WorkflowList) clearPreview() {
 	}
 	wl.setActivityDetailStatus("Select a workflow to load preview")
 	wl.setPreviewDetailStatus("Select a workflow to load preview")
+	wl.renderWorkflowIO()
 	wl.syncPreviewChrome()
 }
 
@@ -1239,22 +1426,32 @@ func (wl *WorkflowList) setPreviewStatus(message string) {
 	wl.syncPreviewChrome()
 	if wl.previewKind == previewDetails {
 		wl.setPreviewDetailStatus(message)
+		if wl.workflowIOView != nil {
+			wl.workflowIOView.SetText(fmt.Sprintf("[%s]%s[-]", theme.TagFgDim(), message))
+		}
 		return
 	}
 	if wl.previewKind == previewHierarchy {
 		return
 	}
-	wl.eventTable.ClearRows()
+	if wl.eventTable != nil {
+		wl.eventTable.ClearRows()
+		if wl.previewKind == previewActivities {
+			wl.eventTable.SetHeaders("STATUS", "NAME", "STARTED", "DURATION")
+		} else {
+			wl.eventTable.SetHeaders("ID", "TIME", "TYPE", "NAME")
+		}
+		if message != "" {
+			wl.eventTable.AddStyledRow([]components.TableCell{
+				{Text: message, Color: theme.FgDim(), Selectable: true},
+			})
+		}
+	}
 	if wl.previewKind == previewEvents && wl.eventTreeView != nil {
 		wl.eventTreeView.SetNodes(nil)
 	}
-	if wl.previewKind == previewActivities {
-		wl.eventTable.SetHeaders("STATUS", "NAME", "STARTED", "DURATION")
-		if wl.eventDetail != nil {
-			wl.eventDetail.SetText(fmt.Sprintf("[%s]%s[-]", theme.TagFgDim(), message))
-		}
-	} else {
-		wl.eventTable.SetHeaders("ID", "TIME", "TYPE", "NAME")
+	if wl.eventDetail != nil {
+		wl.eventDetail.SetText(fmt.Sprintf("[%s]%s[-]", theme.TagFgDim(), message))
 	}
 	wl.setActivityDetailStatus(message)
 }
@@ -1277,6 +1474,7 @@ func (wl *WorkflowList) schedulePreview(w temporal.Workflow, force bool) {
 			atomic.AddUint64(&wl.previewGen, 1)
 			wl.previewWorkflowID = w.ID
 			wl.previewRunID = w.RunID
+			wl.previewPending = false
 			if wl.previewTimer != nil {
 				wl.previewTimer.Stop()
 			}
@@ -1289,19 +1487,18 @@ func (wl *WorkflowList) schedulePreview(w temporal.Workflow, force bool) {
 	wl.previewWorkflowID = w.ID
 	wl.previewRunID = w.RunID
 	if !alreadyShowing {
-		if wl.previewKind == previewDetails {
-			wl.renderPreviewDetails(w)
-		} else if wl.previewKind == previewHierarchy {
+		wl.previewPending = true
+		wl.clearPreviewContent()
+		wl.setPreviewStatus("Loading...")
+		if wl.previewKind == previewHierarchy {
 			wl.renderPreviewHierarchy(w)
-		} else {
-			wl.setPreviewStatus("Loading...")
 		}
 	}
 
 	if wl.previewTimer != nil {
 		wl.previewTimer.Stop()
 	}
-	wl.previewTimer = time.AfterFunc(200*time.Millisecond, func() {
+	wl.previewTimer = time.AfterFunc(wl.previewLoadDelay(), func() {
 		wl.loadPreview(gen, w)
 	})
 }
@@ -1341,12 +1538,18 @@ func (wl *WorkflowList) loadPreview(gen uint64, w temporal.Workflow) {
 			return
 		}
 		if err != nil {
+			wl.previewPending = false
 			wl.setPreviewStatus("Failed to load preview: " + err.Error())
 			return
 		}
 		if fresh != nil {
 			w = *fresh
-			wl.mergeWorkflow(*fresh)
+		}
+		if w.Status == "Running" && temporal.HistoryHasTaskFailure(events) {
+			w.TaskFailure = true
+		}
+		if fresh != nil || w.TaskFailure {
+			wl.mergeWorkflow(w)
 		}
 		wl.showPreviewEvents(w, events)
 	}
@@ -1358,6 +1561,7 @@ func (wl *WorkflowList) loadPreview(gen uint64, w temporal.Workflow) {
 }
 
 func (wl *WorkflowList) showPreviewEvents(w temporal.Workflow, events []temporal.EnhancedHistoryEvent) {
+	wl.previewPending = false
 	wl.previewEvents = events
 	wl.previewActivities = previewActivitiesFromEvents(events)
 	wl.previewCache.put(w.ID, w.RunID, events)
@@ -1378,6 +1582,13 @@ func (wl *WorkflowList) showPreviewEvents(w temporal.Workflow, events []temporal
 }
 
 func (wl *WorkflowList) renderPreview(w temporal.Workflow) {
+	if wl.previewPending {
+		wl.setPreviewStatus("Loading...")
+		if wl.previewKind == previewHierarchy {
+			wl.renderPreviewHierarchy(w)
+		}
+		return
+	}
 	switch wl.previewKind {
 	case previewDetails:
 		wl.renderPreviewDetails(w)
@@ -1422,9 +1633,13 @@ func (wl *WorkflowList) renderPreviewDetails(w temporal.Workflow) {
 	if wl.workflowDetailScroll != nil {
 		wl.workflowDetailScroll.clamp()
 	}
+	wl.renderWorkflowIO()
 }
 
 func (wl *WorkflowList) eventsPreviewPrimitive() tview.Primitive {
+	if wl.previewKind == previewDetails && wl.workflowDetail != nil {
+		return wl.workflowDetail
+	}
 	if wl.previewKind == previewHierarchy && wl.hierarchyView != nil && wl.hierarchyView.tree != nil {
 		return wl.hierarchyView.tree
 	}
@@ -1511,13 +1726,25 @@ func (wl *WorkflowList) renderPreviewEvents(w temporal.Workflow) {
 
 func (wl *WorkflowList) renderPreviewActivities(w temporal.Workflow) {
 	wl.syncPreviewChrome()
+	activities := wl.visiblePreviewActivities()
 	wl.eventTable.ClearRows()
 	wl.eventTable.SetHeaders("STATUS", "NAME", "STARTED", "DURATION")
-	if len(wl.previewActivities) == 0 {
-		wl.eventDetail.SetText(fmt.Sprintf("[%s]No activities[-]", theme.TagFgDim()))
+	if len(activities) == 0 {
+		if wl.previewActivitySearch != "" {
+			wl.setActivityDetailStatus("No matching activities")
+		} else {
+			wl.setActivityDetailStatus("No activities")
+		}
+		if wl.eventDetail != nil {
+			if wl.previewActivitySearch != "" {
+				wl.eventDetail.SetText(fmt.Sprintf("[%s]No matching activities[-]", theme.TagFgDim()))
+			} else {
+				wl.eventDetail.SetText(fmt.Sprintf("[%s]No activities[-]", theme.TagFgDim()))
+			}
+		}
 		return
 	}
-	for _, a := range wl.previewActivities {
+	for _, a := range activities {
 		name := a.Type
 		if name == "" {
 			name = "Activity"
@@ -1536,14 +1763,19 @@ func (wl *WorkflowList) renderPreviewActivities(w temporal.Workflow) {
 	}
 	idx := 0
 	if wl.highlightedActivityID != 0 {
-		for i, a := range wl.previewActivities {
+		found := false
+		for i, a := range activities {
 			if a.ScheduledID == wl.highlightedActivityID {
 				idx = i
+				found = true
 				break
 			}
 		}
+		if !found {
+			wl.highlightedActivityID = activities[0].ScheduledID
+		}
 	} else {
-		wl.highlightedActivityID = wl.previewActivities[0].ScheduledID
+		wl.highlightedActivityID = activities[0].ScheduledID
 	}
 	wl.eventTable.SelectRow(idx)
 	wl.renderSelectedActivityDetail()

@@ -78,6 +78,40 @@ func expandEnvVar(s string) string {
 	return os.ExpandEnv(s)
 }
 
+func IsTemporalCloudAddress(addr string) bool {
+	host, _, _ := strings.Cut(strings.ToLower(strings.TrimSpace(addr)), ":")
+	return strings.HasSuffix(host, ".temporal.io") || strings.HasSuffix(host, ".tmprl.cloud")
+}
+
+func EnvRefName(s string) string {
+	s = strings.TrimSpace(s)
+	switch {
+	case strings.HasPrefix(s, "${") && strings.HasSuffix(s, "}"):
+		inner := strings.TrimSuffix(strings.TrimPrefix(s, "${"), "}")
+		if i := strings.IndexAny(inner, ":"); i >= 0 {
+			inner = inner[:i]
+		}
+		return strings.TrimSpace(strings.TrimRight(inner, "-"))
+	case strings.HasPrefix(s, "$"):
+		return strings.TrimSpace(strings.TrimPrefix(s, "$"))
+	default:
+		return ""
+	}
+}
+
+func (c ConnectionConfig) CloudAPIKeyError() error {
+	if !IsTemporalCloudAddress(c.Address) {
+		return nil
+	}
+	if expandEnvVar(c.APIKey) != "" {
+		return nil
+	}
+	if name := EnvRefName(c.APIKey); name != "" {
+		return fmt.Errorf("Temporal Cloud requires an API key; %s is not set", name)
+	}
+	return fmt.Errorf("Temporal Cloud requires an API key")
+}
+
 // ToTemporalConfig converts config.ConnectionConfig to temporal-compatible format.
 // Returns address, namespace, TLS fields, and API key as separate values.
 func (c ConnectionConfig) ToTemporalConfig() (address, namespace, tlsCert, tlsKey, tlsCA, tlsServerName string, tlsSkipVerify bool, apiKey string) {
@@ -134,6 +168,9 @@ type Config struct {
 	// How often auto-refresh reloads the current list, written as a duration
 	// such as "1s" or "500ms", or as a plain number of seconds.
 	RefreshInterval *Setting `yaml:"refresh_rate,omitempty"`
+	// How long preview waits after a new workflow is highlighted before
+	// fetching history, written as a duration such as "200ms" or "0".
+	PreviewLoadWait *Setting `yaml:"preview_load_delay,omitempty"`
 }
 
 // Setting is a duration that tolerates how people actually write one: "45s",
@@ -291,6 +328,31 @@ const (
 	MinRefreshRate     = 250 * time.Millisecond
 	MaxRefreshRate     = 5 * time.Minute
 )
+
+const (
+	DefaultPreviewLoadDelay = 200 * time.Millisecond
+	MaxPreviewLoadDelay     = 2 * time.Second
+)
+
+// PreviewLoadDelay is how long preview waits after a new workflow is
+// highlighted before fetching history. Set preview_load_delay to a duration
+// such as "200ms" or "0" to load immediately.
+func (c *Config) PreviewLoadDelay() time.Duration {
+	if c == nil {
+		return DefaultPreviewLoadDelay
+	}
+	d, ok := c.PreviewLoadWait.Duration()
+	if !ok {
+		return DefaultPreviewLoadDelay
+	}
+	if d < 0 {
+		return 0
+	}
+	if d > MaxPreviewLoadDelay {
+		return MaxPreviewLoadDelay
+	}
+	return d
+}
 
 // RefreshRate is how often auto-refresh reloads the current list. Set
 // refresh_rate to a duration such as "1s" or "500ms".

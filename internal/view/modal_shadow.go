@@ -15,11 +15,44 @@ const (
 type shadowedModal struct {
 	*components.Modal
 	background tview.Primitive
+	hints      []components.KeyHint
 }
 
 func newModal(cfg components.ModalConfig) *shadowedModal {
 	cfg.Backdrop = false
 	return &shadowedModal{Modal: components.NewModal(cfg)}
+}
+
+func (m *shadowedModal) SetContent(content tview.Primitive) *shadowedModal {
+	if m == nil || m.Modal == nil {
+		return m
+	}
+	m.Modal.SetContent(content)
+	if panel := m.GetPanel(); panel != nil {
+		panel.SetContent(content)
+	}
+	return m
+}
+
+func (m *shadowedModal) SetHints(hints []components.KeyHint) *shadowedModal {
+	if m == nil {
+		return m
+	}
+	m.hints = hints
+	return m
+}
+
+func (m *shadowedModal) Hints() []components.KeyHint {
+	if m == nil {
+		return nil
+	}
+	if len(m.hints) > 0 {
+		return m.hints
+	}
+	if m.Modal != nil {
+		return m.Modal.Hints()
+	}
+	return nil
 }
 
 func (m *shadowedModal) setModalBackground(p tview.Primitive) {

@@ -18,6 +18,13 @@ const (
 	listKindCount
 )
 
+func workflowListTabName(tree bool) string {
+	if tree {
+		return "Workflows (Tree)"
+	}
+	return "Workflows (List)"
+}
+
 func workflowTabName(title string) string {
 	title = strings.TrimSpace(title)
 	if icon := theme.IconWorkflow; icon != "" && strings.HasPrefix(title, icon) {
@@ -33,7 +40,7 @@ func (wl *WorkflowList) setupListTabs() {
 	wl.listTabs = components.NewTabs().
 		SetShowIcons(true).
 		SetShowBadges(false).
-		AddTabWithIcon("Workflows (List)", theme.IconWorkflow, wl.tableScroll).
+		AddTabWithIcon(workflowListTabName(wl.workflowTreeMode), theme.IconWorkflow, wl.tableScroll).
 		AddTabWithIcon("Task Queues", theme.IconTaskQueue, wl.taskQueues.queueScroll).
 		AddTabWithIcon("Schedules", theme.IconSchedule, wl.schedules.tableScroll).
 		AddTabWithIcon("Workers", theme.IconUsers, wl.workers.tableScroll).
@@ -43,7 +50,7 @@ func (wl *WorkflowList) setupListTabs() {
 	wl.listTabs.SetActive(int(listWorkflows))
 	wl.workflowTab = wl.listTabs.GetActiveTab()
 	wl.listTabs.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
-		if wl.handleFocusCycleKey(event) {
+		if wl.handlePaneResizeKey(event) || wl.handleFocusCycleKey(event) {
 			return nil
 		}
 		if wl.handleListTabKey(event) {
@@ -126,7 +133,7 @@ func (wl *WorkflowList) bindTaskQueueKeys() {
 	}
 	tq := wl.taskQueues
 	tq.queueTable.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
-		if wl.handleFocusCycleKey(event) || wl.handleListTabKey(event) {
+		if wl.handlePaneResizeKey(event) || wl.handleFocusCycleKey(event) || wl.handleListTabKey(event) {
 			return nil
 		}
 		if handleTableCharScroll(tq.queueScroll, tq.queueTable, event) {
@@ -148,7 +155,7 @@ func (wl *WorkflowList) bindTaskQueueKeys() {
 		return event
 	})
 	tq.pollerTable.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
-		if wl.handleFocusCycleKey(event) {
+		if wl.handlePaneResizeKey(event) || wl.handleFocusCycleKey(event) {
 			return nil
 		}
 		if handleTableCharScroll(tq.pollerScroll, tq.pollerTable, event) {
@@ -200,7 +207,7 @@ func (wl *WorkflowList) bindScheduleKeys() {
 	}
 	sl := wl.schedules
 	sl.table.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
-		if wl.handleFocusCycleKey(event) || wl.handleListTabKey(event) {
+		if wl.handlePaneResizeKey(event) || wl.handleFocusCycleKey(event) || wl.handleListTabKey(event) {
 			return nil
 		}
 		if handleTableCharScroll(sl.tableScroll, sl.table, event) {
@@ -234,13 +241,13 @@ func (wl *WorkflowList) bindScheduleKeys() {
 		return event
 	})
 	sl.detail.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
-		if wl.handleFocusCycleKey(event) {
+		if wl.handlePaneResizeKey(event) || wl.handleFocusCycleKey(event) {
 			return nil
 		}
 		return sl.handleDetailKeys(event)
 	})
 	sl.runsTable.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
-		if wl.handleFocusCycleKey(event) {
+		if wl.handlePaneResizeKey(event) || wl.handleFocusCycleKey(event) {
 			return nil
 		}
 		return sl.handleRunsKeys(event)
@@ -253,7 +260,7 @@ func (wl *WorkflowList) bindWorkerKeys() {
 	}
 	wv := wl.workers
 	wv.table.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
-		if wl.handleFocusCycleKey(event) || wl.handleListTabKey(event) {
+		if wl.handlePaneResizeKey(event) || wl.handleFocusCycleKey(event) || wl.handleListTabKey(event) {
 			return nil
 		}
 		if handleTableCharScroll(wv.tableScroll, wv.table, event) {
@@ -275,7 +282,7 @@ func (wl *WorkflowList) bindWorkerKeys() {
 		return event
 	})
 	wv.detail.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
-		if wl.handleFocusCycleKey(event) {
+		if wl.handlePaneResizeKey(event) || wl.handleFocusCycleKey(event) {
 			return nil
 		}
 		if handleTableCharScroll(wv.detailScroll, wv.detail, event) {

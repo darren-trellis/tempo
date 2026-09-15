@@ -5,8 +5,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/atterpac/jig/components"
 	"github.com/galaxy-io/tempo/internal/temporal"
 	"github.com/gdamore/tcell/v2"
+	"github.com/rivo/tview"
 )
 
 func TestSelectModeKeys(t *testing.T) {
@@ -116,6 +118,77 @@ func TestSelectModeDelete(t *testing.T) {
 	if ev := wl.table.GetInputCapture()(tcell.NewEventKey(tcell.KeyRune, 'd', 0)); ev != nil {
 		t.Fatal("d should open delete confirm in select mode")
 	}
+}
+
+func TestSelectModeRestoresRowColors(t *testing.T) {
+	wl := NewWorkflowList(&App{}, "default")
+	wl.keepDataOnStart = true
+	wl.Start()
+	wl.loadMockData()
+	wl.table.SelectRow(0)
+
+	row := 1
+	cols := wl.table.GetColumnCount()
+	if cols == 0 {
+		t.Fatal("expected workflow columns")
+	}
+	original := make([]tcell.Color, cols)
+	for col := 0; col < cols; col++ {
+		cell := wl.table.GetCell(row, col)
+		if cell == nil {
+			t.Fatalf("missing cell %d", col)
+		}
+		original[col] = tableCellForeground(cell)
+	}
+
+	if ev := wl.table.GetInputCapture()(tcell.NewEventKey(tcell.KeyRune, 'v', 0)); ev != nil {
+		t.Fatal("v should enter select mode")
+	}
+	if ev := wl.table.GetInputCapture()(tcell.NewEventKey(tcell.KeyRune, ' ', 0)); ev != nil {
+		t.Fatal("space should select the current row")
+	}
+
+	screen := tcell.NewSimulationScreen("UTF-8")
+	if err := screen.Init(); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(screen.Fini)
+	screen.SetSize(120, 20)
+	wl.table.SetRect(0, 0, 120, 20)
+	wl.table.Draw(screen)
+
+	painted := false
+	for col := 0; col < cols; col++ {
+		cell := wl.table.GetCell(row, col)
+		if cell != nil && tableCellForeground(cell) != original[col] {
+			painted = true
+			break
+		}
+	}
+	if !painted {
+		t.Fatal("select mode should paint selected row colors")
+	}
+
+	if !wl.HandleEscape() || wl.selectionMode {
+		t.Fatal("esc should exit select mode")
+	}
+	for col := 0; col < cols; col++ {
+		cell := wl.table.GetCell(row, col)
+		if cell == nil {
+			t.Fatalf("missing cell %d after exit", col)
+		}
+		if got := tableCellForeground(cell); got != original[col] {
+			t.Fatalf("col %d color %v, want %v", col, got, original[col])
+		}
+	}
+}
+
+func tableCellForeground(cell *tview.TableCell) tcell.Color {
+	if cell.Style != tcell.StyleDefault {
+		fg, _, _ := cell.Style.Decompose()
+		return fg
+	}
+	return cell.Color
 }
 
 func TestNewWorkflowListDoesNotPanic(t *testing.T) {
@@ -240,43 +313,43 @@ func TestPreviewEventsTreeToggle(t *testing.T) {
 	if desc := hintDescription(wl.Hints(), "e"); desc != "" {
 		t.Fatalf("standalone event graph should be gone, got %q", desc)
 	}
-	if desc := hintDescription(wl.Hints(), "b"); desc != "Tree" {
-		t.Fatalf("events list should offer tree, got %q", desc)
-	}
-	if wl.eventTab == nil || wl.eventTab.Content != wl.eventTableScroll {
-		t.Fatal("events tab should start as a list")
-	}
-
-	if ev := wl.handlePreviewKeys(tcell.NewEventKey(tcell.KeyRune, 'b', 0)); ev != nil {
-		t.Fatal("b should toggle the events tree")
-	}
-	if !wl.eventTreeMode {
-		t.Fatal("events should be in tree mode")
-	}
-	if wl.eventTab.Content != wl.eventTreeView {
-		t.Fatal("events tab should show the tree")
-	}
 	if desc := hintDescription(wl.Hints(), "b"); desc != "List" {
 		t.Fatalf("events tree should offer list, got %q", desc)
+	}
+	if wl.eventTab == nil || wl.eventTab.Content != wl.eventTreeView {
+		t.Fatal("events tab should start as a tree")
 	}
 	if desc := hintDescription(wl.Hints(), "space"); desc != "Collapse/Expand" {
 		t.Fatalf("events tree should allow collapse, got %q", desc)
 	}
 
-	wl.focusPane = focusWorkflows
+	if ev := wl.handlePreviewKeys(tcell.NewEventKey(tcell.KeyRune, 'b', 0)); ev != nil {
+		t.Fatal("b should toggle the events list")
+	}
+	if wl.eventTreeMode {
+		t.Fatal("events should be in list mode")
+	}
+	if wl.eventTab.Content != wl.eventTableScroll {
+		t.Fatal("events tab should show the list")
+	}
 	if desc := hintDescription(wl.Hints(), "b"); desc != "Tree" {
+		t.Fatalf("events list should offer tree, got %q", desc)
+	}
+
+	wl.focusPane = focusWorkflows
+	if desc := hintDescription(wl.Hints(), "b"); desc != "List" {
 		t.Fatalf("workflows pane should keep its own tree toggle, got %q", desc)
 	}
 
 	wl.focusPane = focusEvents
 	if ev := wl.handlePreviewKeys(tcell.NewEventKey(tcell.KeyRune, 'b', 0)); ev != nil {
-		t.Fatal("b should return to the events list")
+		t.Fatal("b should return to the events tree")
 	}
-	if wl.eventTreeMode {
-		t.Fatal("events should be back in list mode")
+	if !wl.eventTreeMode {
+		t.Fatal("events should be back in tree mode")
 	}
-	if wl.eventTab.Content != wl.eventTableScroll {
-		t.Fatal("events tab should show the list")
+	if wl.eventTab.Content != wl.eventTreeView {
+		t.Fatal("events tab should show the tree")
 	}
 }
 
@@ -293,8 +366,8 @@ func TestPreviewHintsArePaneSpecific(t *testing.T) {
 	}
 
 	wl.togglePreviewMode()
-	if desc := hintDescription(wl.Hints(), "b"); desc != "Tree" {
-		t.Fatalf("workflows pane should show tree, got %q", desc)
+	if desc := hintDescription(wl.Hints(), "b"); desc != "List" {
+		t.Fatalf("workflows pane should show list, got %q", desc)
 	}
 	if desc := hintDescription(wl.Hints(), "z"); desc != "Timeline" {
 		t.Fatalf("workflows pane should show timeline, got %q", desc)
@@ -330,12 +403,23 @@ func TestPreviewHintsArePaneSpecific(t *testing.T) {
 		t.Fatalf("workflows pane should keep io on details tab, got %q", desc)
 	}
 
-	wl.focusPane = focusEventDetail
+	wl.focusPane = focusEvents
 	if desc := hintDescription(wl.Hints(), "i"); desc != "" {
-		t.Fatalf("details should not show io, got %q", desc)
+		t.Fatalf("details table should not show io, got %q", desc)
 	}
 	if desc := hintDescription(wl.Hints(), "y"); desc != "Yank" {
-		t.Fatalf("details should show yank, got %q", desc)
+		t.Fatalf("details table should show yank, got %q", desc)
+	}
+
+	wl.focusPane = focusEventDetail
+	if desc := hintDescription(wl.Hints(), "i"); desc != "" {
+		t.Fatalf("details io pane should not show io, got %q", desc)
+	}
+	if desc := hintDescription(wl.Hints(), "e"); desc != "Editor" {
+		t.Fatalf("details io pane should show editor, got %q", desc)
+	}
+	if desc := hintDescription(wl.Hints(), "y"); desc != "Yank" {
+		t.Fatalf("details io pane should show yank, got %q", desc)
 	}
 	if desc := hintDescription(wl.Hints(), "j/k"); desc != "" {
 		t.Fatalf("obvious nav keys should stay off the footer, got %q", desc)
@@ -488,6 +572,52 @@ func TestTimelineFollowsSelectionWithoutPreview(t *testing.T) {
 	}
 }
 
+func TestSwitchingWorkflowShowsLoadingNotStalePreview(t *testing.T) {
+	now := time.Now()
+	wf1 := temporal.Workflow{ID: "wf-1", RunID: "run-1", Type: "OldType", Status: "Completed", StartTime: now.Add(-time.Minute)}
+	wf2 := temporal.Workflow{ID: "wf-2", RunID: "run-2", Type: "NewType", Status: "Running", StartTime: now}
+	oldEvents := []temporal.EnhancedHistoryEvent{
+		{ID: 1, Type: "WorkflowExecutionStarted", Time: now.Add(-time.Minute), Input: `{"old":true}`},
+		{ID: 5, Type: "ActivityTaskScheduled", Time: now.Add(-50 * time.Second), ActivityType: "OldActivity"},
+		{ID: 6, Type: "ActivityTaskCompleted", Time: now.Add(-40 * time.Second), ScheduledEventID: 5, Result: `"old-out"`},
+	}
+
+	wl := NewWorkflowList(&App{}, "default")
+	wl.workflows = []temporal.Workflow{wf1, wf2}
+	wl.allWorkflows = wl.workflows
+	wl.togglePreviewMode()
+	wl.showPreviewEvents(wf1, oldEvents)
+
+	if !strings.Contains(wl.eventTable.GetCell(1, 1).Text, "OldActivity") {
+		t.Fatalf("setup should show the previous activity, got %q", wl.eventTable.GetCell(1, 1).Text)
+	}
+
+	wl.schedulePreview(wf2, false)
+	if len(wl.previewEvents) != 0 || len(wl.previewActivities) != 0 {
+		t.Fatal("switching workflows should drop the previous preview")
+	}
+	if !wl.previewPending {
+		t.Fatal("uncached workflow should be pending")
+	}
+	if got := tableStatusText(wl.eventTable); got != "Loading..." {
+		t.Fatalf("activities secondary: %q", got)
+	}
+	if got := tableStatusText(wl.activityDetail); got != "Loading..." {
+		t.Fatalf("activities tertiary: %q", got)
+	}
+
+	wl.setPreviewKind(previewDetails)
+	if got := tableStatusText(wl.workflowDetail); got != "Loading..." {
+		t.Fatalf("details secondary: %q", got)
+	}
+	if text := wl.workflowIOView.GetText(true); !strings.Contains(text, "Loading...") {
+		t.Fatalf("details tertiary: %q", text)
+	}
+	if strings.Contains(wl.workflowIOView.GetText(true), `"old"`) {
+		t.Fatal("details io should not keep the previous workflow payload")
+	}
+}
+
 func TestHidingPreviewKeepsPendingTimelineLoad(t *testing.T) {
 	now := time.Now()
 	wf1 := temporal.Workflow{ID: "wf-1", RunID: "run-1", Type: "A", StartTime: now.Add(-time.Minute)}
@@ -554,6 +684,24 @@ func TestTimelineHighlightsSelectedActivity(t *testing.T) {
 	if lane == nil || timelineLaneScheduledID(*lane) != 8 {
 		t.Fatal("timeline should highlight the selected activity bar")
 	}
+}
+
+func tableStatusText(table *components.Table) string {
+	if table == nil || table.RowCount() == 0 {
+		return ""
+	}
+	for row := 0; row <= table.RowCount(); row++ {
+		cell := table.GetCell(row, 0)
+		if cell == nil || cell.Text == "" {
+			continue
+		}
+		switch cell.Text {
+		case "STATUS", "ID", "NAME", "TIME", "TYPE":
+			continue
+		}
+		return cell.Text
+	}
+	return ""
 }
 
 func hintDescription(hints []KeyHint, key string) string {

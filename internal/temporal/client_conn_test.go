@@ -33,6 +33,8 @@ func TestClientCallsWithoutConnectionReturnErrors(t *testing.T) {
 		"DescribeTaskQueue":          func() error { _, _, err := c.DescribeTaskQueue(ctx, "n", "q"); return err },
 		"ListWorkers":                func() error { _, err := c.ListWorkers(ctx, "n"); return err },
 		"ListTaskQueueNames":         func() error { _, err := c.ListTaskQueueNames(ctx, "n"); return err },
+		"ListWorkflowTypes":          func() error { _, err := c.ListWorkflowTypes(ctx, "n"); return err },
+		"ListStartCatalog":           func() error { _, _, err := c.ListStartCatalog(ctx, "n"); return err },
 		"ListSchedules":              func() error { _, _, err := c.ListSchedules(ctx, "n", ListOptions{}); return err },
 		"GetSchedule":                func() error { _, err := c.GetSchedule(ctx, "n", "s"); return err },
 		"PauseSchedule":              func() error { return c.PauseSchedule(ctx, "n", "s", "why") },
@@ -76,5 +78,15 @@ func TestReconnectKeepsWorkingConnectionOnFailure(t *testing.T) {
 	}
 	if got := c.Config().Namespace; got == "other" {
 		t.Fatal("a failed switch should not adopt the new profile's config")
+	}
+}
+
+func TestNewClientRequiresCloudAPIKey(t *testing.T) {
+	_, err := NewClient(context.Background(), ConnectionConfig{
+		Address:   "us-west-2.aws.api.temporal.io:7233",
+		Namespace: "prod-beta.cvhrv",
+	})
+	if err == nil || !strings.Contains(err.Error(), "API key") {
+		t.Fatalf("got %v", err)
 	}
 }

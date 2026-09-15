@@ -116,6 +116,36 @@ func TestOverlayModalMaximize(t *testing.T) {
 	}
 }
 
+func TestShadowedModalHintsStayInFooter(t *testing.T) {
+	modal := newModal(components.ModalConfig{Title: "Cancel", Width: 20, Height: 8})
+	modal.SetHints([]components.KeyHint{
+		{Key: "Enter", Description: "Confirm"},
+		{Key: "Esc", Description: "Cancel"},
+	})
+	if hintDescription(modal.Hints(), "Enter") != "Confirm" {
+		t.Fatalf("footer hints: %+v", modal.Hints())
+	}
+	if hintDescription(modal.Hints(), "Ctrl+S") != "" {
+		t.Fatal("ctrl+s should not be advertised")
+	}
+	if bar := modal.GetHintBar(); bar != nil && len(bar.Hints) != 0 {
+		t.Fatalf("dialog hints should stay in the footer, got in-modal %+v", bar.Hints)
+	}
+}
+
+func TestProfileFormHintsStayInFooter(t *testing.T) {
+	form := NewProfileForm()
+	if hintDescription(form.Hints(), "Enter") != "Save" {
+		t.Fatalf("profile form hints: %+v", form.Hints())
+	}
+	if hintDescription(form.Hints(), "Ctrl+S") != "" {
+		t.Fatal("ctrl+s should not be advertised")
+	}
+	if bar := form.GetHintBar(); bar != nil && len(bar.Hints) != 0 {
+		t.Fatalf("profile form hints should stay in the footer, got in-modal %+v", bar.Hints)
+	}
+}
+
 func TestProfileModalHintsStayInFooter(t *testing.T) {
 	modal := NewProfileModal()
 	hints := modal.Hints()

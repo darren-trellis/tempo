@@ -1,6 +1,7 @@
 package view
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/atterpac/jig/components"
@@ -28,6 +29,10 @@ const (
 type WorkflowList struct {
 	*tview.Flex
 	mainFlex              *tview.Flex
+	primaryStack          *tview.Flex
+	primaryWidth          int
+	tertiaryHeight        int
+	timelineHeight        int
 	app                   *App
 	namespace             string
 	table                 *components.Table
@@ -41,7 +46,7 @@ type WorkflowList struct {
 	pollersVisible        bool
 	scheduleDetailVisible bool
 	workerDetailVisible   bool
-	workflowsPanel        *components.Panel
+	workflowsPanel        *chromePanel
 	previewPanel          *components.Panel
 	previewTabs           *components.Tabs
 	rightFlex             *tview.Flex
@@ -66,6 +71,9 @@ type WorkflowList struct {
 	timelineSyncing       bool
 	workflowTreeMode      bool
 	workflowDepths        []int
+	workflowTreePrefixes  []string
+	workflowHasChildren   []bool
+	workflowCollapsed     map[string]bool
 	focusPane             workflowFocusPane
 	previewKind           previewKind
 	activityDetailKind    activityDetailKind
@@ -73,15 +81,20 @@ type WorkflowList struct {
 	activityDetail        *components.Table
 	activityDetailScroll  *charScrollView
 	activityDetailRows    []workflowInfoRow
+	workflowIOKind        workflowIOKind
+	workflowIOTabs        *components.Tabs
+	workflowIOView        *tview.TextView
 	hierarchyView         *WorkflowGraphView
 	hierarchyGraphPanel   *components.Panel
 	previewEvents         []temporal.EnhancedHistoryEvent
 	previewEventSearch    string
 	previewActivities     []previewActivity
+	previewActivitySearch string
 	previewWorkflowID     string
 	previewRunID          string
 	previewGen            uint64
 	previewTimer          *time.Timer
+	previewPending        bool
 	previewMode           bool
 	previewCache          *previewCache
 	allWorkflows          []temporal.Workflow // Full unfiltered list
@@ -91,6 +104,9 @@ type WorkflowList struct {
 	pager                 workflowPager
 	pageBusy              bool
 	pageGen               uint64
+	listAnchorIndex       int
+	hasListAnchor         bool
+	listEdgePin           listEdgePin
 	serverStats           WorkflowStats
 	serverStatsOK         bool
 	loading               bool
@@ -133,6 +149,8 @@ func NewWorkflowList(app *App, namespace string) *WorkflowList {
 		pollersVisible:        true,
 		scheduleDetailVisible: true,
 		workerDetailVisible:   true,
+		workflowTreeMode:      true,
+		eventTreeMode:         true,
 	}
 	wl.setup()
 
@@ -145,18 +163,20 @@ func NewWorkflowList(app *App, namespace string) *WorkflowList {
 // NewWorkflowListWithData creates a workflow list pre-populated with data (no server fetch).
 func NewWorkflowListWithData(app *App, namespace string, workflows []temporal.Workflow) *WorkflowList {
 	wl := &WorkflowList{
-		Flex:           tview.NewFlex().SetDirection(tview.FlexRow),
-		app:            app,
-		namespace:      namespace,
-		table:          components.NewTable(),
-		allWorkflows:   workflows,
-		workflows:      workflows,
-		stopRefresh:    make(chan struct{}, 1),
-		searchHistory:  make([]string, 0, 50),
-		historyIndex:   -1,
-		maxHistorySize: 50,
-		previewKind:    previewActivities,
-		preloaded:      true,
+		Flex:             tview.NewFlex().SetDirection(tview.FlexRow),
+		app:              app,
+		namespace:        namespace,
+		table:            components.NewTable(),
+		allWorkflows:     workflows,
+		workflows:        workflows,
+		stopRefresh:      make(chan struct{}, 1),
+		searchHistory:    make([]string, 0, 50),
+		historyIndex:     -1,
+		maxHistorySize:   50,
+		previewKind:      previewActivities,
+		preloaded:        true,
+		workflowTreeMode: true,
+		eventTreeMode:    true,
 	}
 	wl.setup()
 
@@ -189,7 +209,8 @@ func (wl *WorkflowList) setup() {
 	})
 	wl.setupPreview()
 
-	wl.workflowsPanel = components.NewPanel()
+	wl.workflowsPanel = newChromePanel(wl.app)
+	wl.applyProfileTitle()
 	wl.setupListTabs()
 	wl.updatePanelTitle()
 
@@ -219,6 +240,10 @@ func (wl *WorkflowList) RefreshTheme() {
 	}
 	wl.eventDetail.SetBackgroundColor(bg)
 	wl.eventDetail.SetTextColor(theme.Fg())
+	if wl.workflowIOView != nil {
+		wl.workflowIOView.SetBackgroundColor(bg)
+		wl.workflowIOView.SetTextColor(theme.Fg())
+	}
 	if wl.rightFlex != nil {
 		wl.rightFlex.SetBackgroundColor(bg)
 	}
@@ -250,13 +275,58 @@ func (wl *WorkflowList) RefreshTheme() {
 	wl.applyFocusStyles()
 }
 
+func (wl *WorkflowList) displayedWorkflowCount() int {
+	if wl == nil {
+		return 0
+	}
+	return len(wl.workflows)
+}
+
+func (wl *WorkflowList) primaryPaneTitle() string {
+	name := ""
+	if wl != nil && wl.app != nil {
+		name = wl.app.profileTitle()
+	}
+	n := 0
+	if wl != nil {
+		n = wl.displayedWorkflowCount()
+	}
+	filter := ""
+	if wl != nil {
+		switch {
+		case wl.filterText != "":
+			filter = "/" + wl.filterText
+		case wl.visibilityQuery != "":
+			q := wl.visibilityQuery
+			if len(q) > 40 {
+				q = q[:37] + "..."
+			}
+			filter = q
+		}
+	}
+	switch {
+	case name != "" && filter != "":
+		return fmt.Sprintf("%s (%s) (%d)", name, filter, n)
+	case name != "":
+		return fmt.Sprintf("%s (%d)", name, n)
+	case filter != "":
+		return fmt.Sprintf("(%s) (%d)", filter, n)
+	default:
+		return fmt.Sprintf("(%d)", n)
+	}
+}
+
+func (wl *WorkflowList) applyProfileTitle() {
+	if wl == nil || wl.workflowsPanel == nil {
+		return
+	}
+	wl.workflowsPanel.SetTitle(wl.primaryPaneTitle())
+}
+
 func (wl *WorkflowList) SetMasterTitle(title string) {
 	name := workflowTabName(title)
 	if wl.workflowTab != nil {
 		wl.workflowTab.Name = name
-	}
-	if wl.workflowsPanel != nil && wl.listTabs == nil {
-		wl.workflowsPanel.SetTitle(title)
 	}
 }
 
@@ -291,15 +361,21 @@ func (wl *WorkflowList) Name() string {
 func (wl *WorkflowList) Start() {
 	bindings := input.NewKeyBindings().
 		OnRune(' ', func(e *tcell.EventKey) bool {
+			if workflowTreeFoldAllKey(e) {
+				return wl.toggleWorkflowTreeFoldAll()
+			}
 			if wl.selectionMode {
-				wl.table.ToggleSelection()
+				wl.toggleRowSelection()
 				if next := wl.table.SelectedRow() + 1; next < wl.table.RowCount() {
 					wl.table.SelectRow(next)
 				}
 				wl.updateSelectionPreview()
 				return true
 			}
-			return false
+			return wl.toggleWorkflowTreeFold()
+		}).
+		On(tcell.KeyCtrlSpace, func(e *tcell.EventKey) bool {
+			return wl.toggleWorkflowTreeFoldAll()
 		}).
 		OnRune('/', func(e *tcell.EventKey) bool {
 			wl.showFilter()
@@ -332,7 +408,7 @@ func (wl *WorkflowList) Start() {
 			return true
 		}).
 		OnRune('s', func(e *tcell.EventKey) bool {
-			wl.setListKind(listSchedules)
+			wl.showSignalSelected()
 			return true
 		}).
 		OnRune('a', func(e *tcell.EventKey) bool {
@@ -434,6 +510,9 @@ func (wl *WorkflowList) Start() {
 		})
 
 	wl.table.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		if wl.handlePaneResizeKey(event) {
+			return nil
+		}
 		if wl.handleListTabKey(event) || wl.handlePreviewTabKey(event) {
 			return nil
 		}
@@ -456,11 +535,13 @@ func (wl *WorkflowList) Start() {
 			wl.ensureWorkers()
 		}
 		wl.restoreFocus()
+		wl.updateStats()
 		return
 	}
 	if wl.keepDataOnStart {
 		wl.keepDataOnStart = false
 		wl.restoreFocus()
+		wl.updateStats()
 		return
 	}
 	wl.loadData()
@@ -479,7 +560,18 @@ func (wl *WorkflowList) shouldFocusWorkflowTable() bool {
 }
 
 func (wl *WorkflowList) handleWorkflowScroll(event *tcell.EventKey) bool {
-	if wl.tableScroll == nil || event == nil {
+	if event == nil || event.Modifiers() != tcell.ModNone {
+		return false
+	}
+	switch event.Rune() {
+	case 'g':
+		wl.jumpWorkflowListEdge(false)
+		return true
+	case 'G':
+		wl.jumpWorkflowListEdge(true)
+		return true
+	}
+	if wl.tableScroll == nil {
 		return false
 	}
 	switch event.Key() {
@@ -523,7 +615,6 @@ func (wl *WorkflowList) Stop() {
 	if wl.workers != nil {
 		wl.workers.Stop()
 	}
-	wl.app.ClearWorkflowStats()
 }
 
 // Hints returns keybinding hints for this view.
@@ -577,7 +668,7 @@ func (wl *WorkflowList) Hints() []KeyHint {
 		}
 	}
 
-	if wl.selectionMode {
+	if wl.selectionMode && wl.focusPane == focusWorkflows {
 		hints := []KeyHint{
 			{Key: "space", Description: "Select"},
 			{Key: "a", Description: "Select All"},
@@ -611,11 +702,11 @@ func (wl *WorkflowList) previewIOHint() []KeyHint {
 }
 
 func (wl *WorkflowList) previewShowsSidePane() bool {
-	return wl.previewKind == previewActivities || wl.previewKind == previewEvents
+	return wl.previewKind == previewActivities || wl.previewKind == previewEvents || wl.previewKind == previewDetails
 }
 
 func (wl *WorkflowList) previewShowsIO() bool {
-	return wl.previewShowsSidePane()
+	return wl.previewKind == previewActivities || wl.previewKind == previewEvents
 }
 
 func (wl *WorkflowList) previewListHints() []KeyHint {
@@ -627,20 +718,19 @@ func (wl *WorkflowList) previewListHints() []KeyHint {
 		}
 	}
 	hints := wl.previewIOHint()
-	if wl.previewKind == previewEvents {
+	if wl.previewKind == previewDetails && wl.focusPane == focusEvents {
+		hints = append(hints, KeyHint{Key: "y", Description: "Yank"})
+	}
+	if wl.previewKind == previewEvents || wl.previewKind == previewActivities {
 		hints = append(hints, KeyHint{Key: "/", Description: "Search"})
+	}
+	if wl.previewKind == previewEvents {
 		if wl.eventTreeMode {
 			hints = append(hints, KeyHint{Key: "space", Description: "Collapse/Expand"})
 		}
 		hints = append(hints, KeyHint{Key: "b", Description: treeModeHint(wl.eventTreeMode)})
 		if ev, ok := wl.selectedPreviewEvent(); ok && ev.ChildWorkflowID != "" && ev.ChildRunID != "" {
 			hints = append(hints, KeyHint{Key: "g", Description: "Go to Child"})
-		}
-	}
-	if w, ok := wl.selectedWorkflow(); ok {
-		hints = append(hints, wl.actionHints(w)...)
-		if workflowIsRunning(w.Status) {
-			hints = append(hints, KeyHint{Key: "s", Description: "Signal"})
 		}
 	}
 	return append(hints,
@@ -654,15 +744,11 @@ func (wl *WorkflowList) previewSideHints() []KeyHint {
 		hints := []KeyHint{{Key: "y", Description: "Yank"}}
 		return append(hints, wl.previewListHints()...)
 	}
-	if wl.previewKind == previewDetails || wl.activityDetailTableFocused() {
-		hints := []KeyHint{{Key: "y", Description: "Yank"}}
-		if w, ok := wl.selectedWorkflow(); ok {
-			hints = append(hints, wl.actionHints(w)...)
-			if workflowIsRunning(w.Status) {
-				hints = append(hints, KeyHint{Key: "s", Description: "Signal"})
-			}
-		}
-		return append(hints,
+	if wl.activityDetailTableFocused() {
+		return append([]KeyHint{
+			{Key: "y", Description: "Yank"},
+			{Key: "/", Description: "Search"},
+		},
 			KeyHint{Key: "r", Description: "Refresh"},
 			KeyHint{Key: "p", Description: "Preview"},
 		)
@@ -673,6 +759,13 @@ func (wl *WorkflowList) previewSideHints() []KeyHint {
 			{Key: "+/-", Description: "Depth"},
 			{Key: "p", Description: "Preview"},
 		}
+	}
+	if wl.previewIOViewFocused() {
+		hints := []KeyHint{
+			{Key: "e", Description: "Editor"},
+			{Key: "y", Description: "Yank"},
+		}
+		return append(hints, wl.previewListHints()...)
 	}
 	return wl.previewListHints()
 }
@@ -701,6 +794,12 @@ func (wl *WorkflowList) workflowPaneHints() []KeyHint {
 			KeyHint{Key: "p", Description: "Preview"},
 			KeyHint{Key: "z", Description: "Timeline"},
 			KeyHint{Key: "b", Description: treeModeHint(wl.workflowTreeMode)},
+		)
+	}
+	if wl.workflowTreeMode {
+		hints = append(hints,
+			KeyHint{Key: "space", Description: "Fold/Unfold"},
+			KeyHint{Key: "Ctrl+Space", Description: workflowTreeFoldAllHint(wl.anyWorkflowFolded())},
 		)
 	}
 	hints = append(hints,
@@ -804,8 +903,8 @@ func (wl *WorkflowList) Focus(delegate func(p tview.Primitive)) {
 		}
 		delegate(wl.eventTable)
 	case focusEventDetail:
-		if wl.previewKind == previewDetails && wl.workflowDetail != nil {
-			delegate(wl.workflowDetail)
+		if wl.previewKind == previewDetails && wl.workflowIOView != nil {
+			delegate(wl.workflowIOView)
 			return
 		}
 		if wl.previewKind == previewHierarchy && wl.hierarchyView != nil && wl.hierarchyView.graph != nil {
@@ -844,6 +943,10 @@ func (wl *WorkflowList) Draw(screen tcell.Screen) {
 	if wl.eventDetail != nil {
 		wl.eventDetail.SetBackgroundColor(bg)
 		wl.eventDetail.SetTextColor(theme.Fg())
+	}
+	if wl.workflowIOView != nil {
+		wl.workflowIOView.SetBackgroundColor(bg)
+		wl.workflowIOView.SetTextColor(theme.Fg())
 	}
 	if wl.activityDetail != nil {
 		wl.activityDetail.SetBackgroundColor(bg)

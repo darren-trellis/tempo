@@ -29,9 +29,6 @@ func (wl *WorkflowList) columnLayout() []workflowColumn {
 
 	cols := make([]workflowColumn, 0, len(raw))
 	for _, col := range raw {
-		if wl.workflowTreeMode && col.ID == config.WorkflowColumnParentID {
-			continue
-		}
 		header, ok := workflowColumnHeader(col.ID)
 		if !ok {
 			continue
@@ -44,9 +41,6 @@ func (wl *WorkflowList) columnLayout() []workflowColumn {
 	}
 	if len(cols) == 0 {
 		for _, col := range config.DefaultWorkflowColumns() {
-			if wl.workflowTreeMode && col.ID == config.WorkflowColumnParentID {
-				continue
-			}
 			header, _ := workflowColumnHeader(col.ID)
 			cols = append(cols, workflowColumn{id: col.ID, header: header, width: col.Width})
 		}
@@ -79,13 +73,15 @@ func workflowColumnHeader(id string) (string, bool) {
 	}
 }
 
-func (c workflowColumn) cell(now time.Time, w temporal.Workflow, depth int) components.TableCell {
+func (c workflowColumn) cell(now time.Time, w temporal.Workflow, prefix string) components.TableCell {
 	text, status := workflowColumnValue(c.id, now, w)
-	if c.id == config.WorkflowColumnWorkflowID && depth > 0 {
-		text = workflowTreePrefix(depth) + text
+	if c.id == config.WorkflowColumnWorkflowID && prefix != "" {
+		text = colorizeWorkflowTreePrefix(fitWidth(prefix+text, c.width), prefix)
+	} else {
+		text = fitWidth(text, c.width)
 	}
 	return components.TableCell{
-		Text:       fitWidth(text, c.width),
+		Text:       text,
 		Status:     status,
 		Expansion:  0,
 		MaxWidth:   c.width,
@@ -103,10 +99,13 @@ func workflowColumnValue(id string, now time.Time, w temporal.Workflow) (string,
 		}
 		return "", nil
 	case config.WorkflowColumnStatus:
-		status := temporal.GetWorkflowStatus(w.Status)
-		text := w.Status
+		label, status := temporal.WorkflowDisplayStatus(w)
+		if w.HasTaskFailure() {
+			label = "Unhandled"
+		}
+		text := label
 		if icon := status.Icon(); icon != "" {
-			text = icon + " " + w.Status
+			text = icon + " " + label
 		}
 		return text, status
 	case config.WorkflowColumnType:
@@ -152,11 +151,12 @@ func fitWidth(s string, width int) string {
 	if width <= 0 {
 		return s
 	}
-	if len(s) > width {
+	n := len([]rune(s))
+	if n > width {
 		return truncateIfNeeded(s, width)
 	}
-	if len(s) < width {
-		return s + padSpaces(width-len(s))
+	if n < width {
+		return s + padSpaces(width-n)
 	}
 	return s
 }

@@ -31,10 +31,16 @@ const (
 
 // App is the main application controller.
 type App struct {
-	app           *layout.App
-	statusBar     *layout.StatusBar
-	menu          *layout.Menu
-	namespaceList *NamespaceList
+	app              *layout.App
+	menu             *layout.Menu
+	hintPrompt       *hintPrompt
+	chromeProfile    string
+	chromeCodecIcon  string
+	chromeCodecColor func() tcell.Color
+	chromeStats      WorkflowStats
+	chromeStatsOn    bool
+	connectionLabel  string
+	namespaceList    *NamespaceList
 
 	statusMu    sync.Mutex
 	statusText  string
@@ -69,6 +75,11 @@ type App struct {
 	loadingViews map[string]bool
 	loadingFrame int
 	loadingStop  chan struct{}
+
+	catalog namespaceCatalogStore
+
+	filterDebounce     *time.Timer
+	filterDebounceText string
 }
 
 // NewApp creates a new application controller with no provider (uses mock data).
@@ -99,35 +110,28 @@ func NewAppWithProvider(provider temporal.Provider, defaultNamespace string, cfg
 	if provider != nil {
 		a.setConnected(provider.IsConnected())
 	}
+	a.refreshNamespaceCatalog()
 	return a
 }
 
 func (a *App) buildApp() {
-	// Create status bar with left-aligned title and content
-	a.statusBar = layout.NewStatusBar()
-	a.statusBar.SetTitle("tempo")
-	a.statusBar.SetTitleAlign(components.AlignLeft)
-	a.statusBar.SetContentAlign(components.AlignLeft)
-
-	// Create menu
 	a.menu = layout.NewMenu()
+	a.hintPrompt = newHintPrompt()
 
-	// Create app with jig layout
 	a.app = layout.NewApp(layout.AppConfig{
-		TopBar:       a.statusBar,
-		TopBarHeight: 3,
-		ShowCrumbs:   true,
-		BottomBar:    a.menu,
+		ShowCrumbs: true,
+		BottomBar:  a.menu,
 		OnComponentChange: func(c nav.Component) {
 			if c != nil {
 				a.menu.SetHints(c.Hints())
 			}
 			a.updateCrumbs()
+			a.syncWorkflowStats(c)
 		},
 	})
 
 	tviewApp := a.app.GetApplication()
-	enableAppMouse(tviewApp, a.menu, a.statusBar, a.app.Crumbs())
+	enableAppMouse(tviewApp, a.menu, a.app.Crumbs())
 	a.mouseEnabled = true
 	bindModalMouse(tviewApp, func() tview.Primitive {
 		if a.app == nil || a.app.Pages() == nil {
@@ -136,30 +140,28 @@ func (a *App) buildApp() {
 		return a.app.Pages().Current()
 	})
 	tviewApp.SetAfterDrawFunc(func(screen tcell.Screen) {
+		a.drawCrumbStats(screen)
 		a.drawHintStatus(screen)
+		a.drawHintLoading(screen)
+		a.drawHintPrompt(screen)
 	})
 }
 
 func (a *App) setup() {
-	// Set up command bar callbacks
-	a.statusBar.SetOnCommandSubmit(func(text string) {
-		a.statusBar.ExitCommandMode()
-		a.handleCommandInput(text)
-	})
-
-	a.statusBar.SetOnCommandCancel(func() {
-		a.statusBar.ExitCommandMode()
-		// Restore focus to current view
-		if current := a.app.Pages().Current(); current != nil {
-			a.app.SetFocus(current)
-		}
-	})
+	a.restoreDefaultCommandCallbacks()
 
 	// Global key handler
 	a.app.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
-		// Skip global handling when command bar is active
-		if a.statusBar.IsCommandMode() {
-			return event
+		if a.handlePromptKey(event) {
+			return nil
+		}
+
+		if event != nil && event.Key() == tcell.KeyEscape {
+			if current := a.app.Pages().Current(); current != nil {
+				if interceptor, ok := current.(interface{ InterceptEscape() bool }); ok && interceptor.InterceptEscape() {
+					return nil
+				}
+			}
 		}
 
 		// Mouse toggle (ctrl+o) - works everywhere, modals included, so the
@@ -265,8 +267,31 @@ func (a *App) setup() {
 	}
 }
 
+func (a *App) currentContent() nav.Component {
+	if a == nil || a.app == nil || a.app.Pages() == nil {
+		return nil
+	}
+	stack := a.app.Pages().GetStack()
+	for i := len(stack) - 1; i >= 0; i-- {
+		if !nav.IsModal(stack[i]) {
+			return stack[i]
+		}
+	}
+	return a.app.Pages().Current()
+}
+
+func (a *App) syncWorkflowStats(c nav.Component) {
+	if a == nil || c == nil || nav.IsModal(c) {
+		return
+	}
+	if _, ok := c.(*WorkflowList); ok {
+		return
+	}
+	a.ClearWorkflowStats()
+}
+
 func (a *App) updateCrumbs() {
-	current := a.app.Pages().Current()
+	current := a.currentContent()
 	if current == nil || a.app.Crumbs() == nil {
 		return
 	}
@@ -293,8 +318,7 @@ func (a *App) updateCrumbs() {
 	a.app.Crumbs().SetPath(path)
 }
 
-// Status bar helpers
-// Section layout: [0] profile, [1] namespace, [2] connection status, [3] codec status
+// Status chrome helpers.
 
 func (a *App) setConnected(connected bool) {
 	if a != nil {
@@ -304,33 +328,12 @@ func (a *App) setConnected(connected bool) {
 	a.refreshCodecStatus()
 }
 
-func (a *App) connectedStatusSection() layout.StatusSection {
-	icon := theme.IconDisconnected
-	text := "disconnected"
-	colorFunc := theme.Error
-	if a != nil && a.connected {
-		icon = theme.IconConnected
-		text = "connected"
-		colorFunc = theme.Success
+func (a *App) setCodecStatus(icon string, colorFunc func() tcell.Color) {
+	if a == nil {
+		return
 	}
-	return layout.StatusSection{
-		Icon:      icon,
-		Text:      text,
-		ColorFunc: colorFunc,
-	}
-}
-
-func (a *App) setCodecStatus(text string, colorFunc func() tcell.Color, icon string) {
-	section := layout.StatusSection{
-		Icon:      icon,
-		Text:      text,
-		ColorFunc: colorFunc,
-	}
-	if a.statusBar.SectionCount() >= 4 {
-		a.statusBar.UpdateSection(3, section)
-	} else {
-		a.statusBar.AddSection(section)
-	}
+	a.chromeCodecIcon = icon
+	a.chromeCodecColor = colorFunc
 }
 
 func (a *App) refreshCodecStatus() {
@@ -344,80 +347,74 @@ func (a *App) refreshCodecStatus() {
 		namespace = a.currentNS
 	}
 	if endpoint == "" {
-		a.setCodecStatus("no codec", theme.FgDim, "")
+		a.setCodecStatus("", theme.FgDim)
 		return
 	}
-	if a.statusBar.SectionCount() < 4 {
-		a.setCodecStatus("codec…", theme.FgDim, theme.IconCloud)
+	if a.chromeCodecIcon == "" {
+		a.setCodecStatus(theme.IconCloud, theme.FgDim)
 	}
 	go func() {
 		err := temporal.ProbeCodec(endpoint, namespace)
 		a.app.QueueUpdateDraw(func() {
 			if err != nil {
-				a.setCodecStatus("codec down", theme.Error, theme.IconDisconnected)
+				a.setCodecStatus(theme.IconCloud, theme.Error)
 				return
 			}
-			a.setCodecStatus("codec", theme.Success, theme.IconCloud)
+			a.setCodecStatus(theme.IconCloud, theme.Success)
 		})
 	}()
 }
 
+func (a *App) profileTitle() string {
+	if a == nil {
+		return ""
+	}
+	if a.chromeProfile != "" {
+		return a.chromeProfile
+	}
+	return a.activeProfile
+}
+
 func (a *App) setProfile(name string) {
-	a.statusBar.ClearSections()
-	// Section 0: profile (accent color, no icon)
-	a.statusBar.AddSection(layout.StatusSection{
-		Text:      name,
-		ColorFunc: theme.Accent,
-	})
-	// Section 1: namespace (no icon)
-	a.statusBar.AddSection(layout.StatusSection{
-		Text: a.currentNS,
-	})
-	// Section 2: connection status (will be set by setConnected)
+	if a == nil {
+		return
+	}
+	a.chromeProfile = name
+	if wl, ok := a.currentContent().(*WorkflowList); ok {
+		wl.applyProfileTitle()
+	}
 }
 
 func (a *App) setNamespace(ns string) {
-	// Namespace is section 1 (no icon)
-	a.statusBar.UpdateSection(1, layout.StatusSection{
-		Text: ns,
-	})
 }
 
 // WorkflowStats holds workflow count statistics.
 type WorkflowStats struct {
-	Running    int
-	Completed  int
-	Failed     int
-	Canceled   int
-	Terminated int
+	Running        int
+	Completed      int
+	Failed         int
+	Canceled       int
+	Terminated     int
+	TimedOut       int
+	ContinuedAsNew int
 }
 
-// SetWorkflowStats updates the workflow statistics in the status bar (right-aligned).
+// SetWorkflowStats updates the workflow count badges on the breadcrumb bar.
 func (a *App) SetWorkflowStats(stats WorkflowStats) {
-	// Clear existing right sections and add new stats
-	a.statusBar.ClearRightSections()
-
-	dimTag := theme.TagFgDim()
-	a.statusBar.AddRightSection(layout.StatusSection{
-		Text: fmt.Sprintf("[%s]Running:[-] [%s]%d[-]", dimTag, theme.TagInfo(), stats.Running),
-	})
-	a.statusBar.AddRightSection(layout.StatusSection{
-		Text: fmt.Sprintf("[%s]Completed:[-] [%s]%d[-]", dimTag, theme.TagSuccess(), stats.Completed),
-	})
-	a.statusBar.AddRightSection(layout.StatusSection{
-		Text: fmt.Sprintf("[%s]Failed:[-] [%s]%d[-]", dimTag, theme.TagError(), stats.Failed),
-	})
-	a.statusBar.AddRightSection(layout.StatusSection{
-		Text: fmt.Sprintf("[%s]Canceled:[-] [%s]%d[-]", dimTag, theme.TagWarning(), stats.Canceled),
-	})
-	a.statusBar.AddRightSection(layout.StatusSection{
-		Text: fmt.Sprintf("[%s]Terminated:[-] [%s]%d[-]", dimTag, theme.TagError(), stats.Terminated),
-	})
+	if a == nil {
+		return
+	}
+	a.chromeStats = stats
+	a.chromeStatsOn = true
 }
 
-// ClearWorkflowStats removes workflow statistics from the status bar.
+// ClearWorkflowStats removes workflow count badges from the breadcrumb bar.
 func (a *App) ClearWorkflowStats() {
-	a.statusBar.ClearRightSections()
+	if a == nil {
+		return
+	}
+	a.chromeStats = WorkflowStats{}
+	a.chromeStatsOn = false
 }
 
 // App returns the underlying jig layout.App.
@@ -437,9 +434,13 @@ func (a *App) Provider() temporal.Provider {
 // Thread-safe: can be called from any goroutine.
 func (a *App) SetNamespace(ns string) {
 	a.mu.Lock()
+	prev := a.currentNS
 	a.currentNS = ns
 	a.mu.Unlock()
 	a.setNamespace(ns)
+	if ns != prev || !a.catalog.has(ns) {
+		a.refreshNamespaceCatalogFor(ns)
+	}
 }
 
 // CurrentNamespace returns the current namespace.
@@ -601,6 +602,35 @@ func (a *App) setStatusMessage(message string) {
 }
 
 func (a *App) paintHintStatus() {}
+
+func (a *App) drawHintLoading(screen tcell.Screen) {
+	if a == nil || a.menu == nil || screen == nil || a.promptActive() {
+		return
+	}
+	if a.hintBarMessage() != "" {
+		return
+	}
+	label := a.connectionLabel
+	if label == "" {
+		return
+	}
+	x, y, width, height := a.menu.GetInnerRect()
+	if width < 1 || height < 1 {
+		return
+	}
+	style := tcell.StyleDefault.Background(theme.Bg()).Foreground(theme.Fg())
+	for col := x; col < x+width; col++ {
+		screen.SetContent(col, y, ' ', nil, style)
+	}
+	col := x + 1
+	for _, r := range label {
+		if col >= x+width-1 {
+			break
+		}
+		screen.SetContent(col, y, r, nil, style)
+		col++
+	}
+}
 
 func (a *App) drawHintStatus(screen tcell.Screen) {
 	if a == nil || a.menu == nil || screen == nil {
@@ -772,6 +802,7 @@ func (a *App) attemptReconnect(backoff time.Duration) {
 	a.app.QueueUpdateDraw(func() {
 		if err == nil {
 			a.setConnected(true)
+			a.refreshNamespaceCatalog()
 		}
 	})
 }
@@ -1014,18 +1045,14 @@ func (a *App) showDebugScreen() {
 }
 
 func (a *App) showCommandBar() {
-	a.statusBar.SetCommandPrompt(": ")
-	a.statusBar.SetCommandPlaceholder("command...")
-
-	// Set up tab completion with built-in + user commands
-	a.statusBar.SetOnComplete(func(input string) []string {
+	p := a.prompt()
+	p.onComplete = func(input string) []string {
 		builtins := []string{"profile"}
 		var userCmds []string
 		if a.config != nil {
 			userCmds = a.config.ListCommandNames(a.activeProfile)
 		}
 		all := append(builtins, userCmds...)
-
 		if input == "" {
 			return all
 		}
@@ -1036,10 +1063,8 @@ func (a *App) showCommandBar() {
 			}
 		}
 		return matches
-	})
-
-	a.statusBar.EnterCommandMode()
-	a.app.SetFocus(a.statusBar.GetCommandInput())
+	}
+	a.enterPrompt(": ", "command...")
 }
 
 // applyTheme switches the live theme, remembers it in the running config and
@@ -1406,6 +1431,10 @@ func (a *App) applyProfile(name string, persist bool) {
 	if !ok {
 		return
 	}
+	if err := profileCfg.CloudAPIKeyError(); err != nil {
+		a.ToastError(err.Error())
+		return
+	}
 	profileCfg = profileCfg.ExpandEnv()
 
 	connConfig := temporal.ConnectionConfig{
@@ -1457,6 +1486,7 @@ func (a *App) applyProfile(name string, persist bool) {
 			a.setProfile(name)
 			a.setConnected(true)
 			a.setNamespace(connConfig.Namespace)
+			a.resetNamespaceCatalog()
 
 			a.reinitializeViews()
 		})
@@ -1590,102 +1620,116 @@ type FilterModeCallbacks struct {
 var filterModeCallbacks *FilterModeCallbacks
 
 // ShowFilterMode enters filter mode with custom callbacks.
-// The filter input replaces the status bar content with a "/" prompt.
+// The filter input replaces the hint bar with a "/" prompt.
 func (a *App) ShowFilterMode(initialText string, callbacks FilterModeCallbacks) {
+	if a == nil {
+		return
+	}
 	filterModeCallbacks = &callbacks
-
-	a.statusBar.SetCommandPrompt("/ ")
-	a.statusBar.SetCommandPlaceholder("Filter workflows...")
-
-	// Set up the callbacks
-	a.statusBar.SetOnCommandSubmit(func(text string) {
-		a.statusBar.ExitCommandMode()
+	p := a.prompt()
+	p.onComplete = nil
+	p.onSubmit = func(text string) {
+		a.stopFilterDebounce()
+		p.input.SetChangedFunc(nil)
 		filterModeCallbacks = nil
-		// Restore default callbacks
 		a.restoreDefaultCommandCallbacks()
+		a.exitPrompt()
 		if callbacks.OnSubmit != nil {
 			callbacks.OnSubmit(text)
 		}
-		// Restore focus to current view
-		if current := a.app.Pages().Current(); current != nil {
-			a.app.SetFocus(current)
-		}
-	})
-
-	a.statusBar.SetOnCommandCancel(func() {
-		a.statusBar.ExitCommandMode()
+	}
+	p.onCancel = func() {
+		a.stopFilterDebounce()
 		filterModeCallbacks = nil
-		// Restore default callbacks
 		a.restoreDefaultCommandCallbacks()
+		a.exitPrompt()
 		if callbacks.OnCancel != nil {
 			callbacks.OnCancel()
 		}
-		// Restore focus to current view
-		if current := a.app.Pages().Current(); current != nil {
-			a.app.SetFocus(current)
-		}
-	})
-
-	a.statusBar.EnterCommandMode()
-
-	// Set initial text if provided
-	if initialText != "" {
-		a.statusBar.GetCommandInput().SetText(initialText)
 	}
-
-	a.app.SetFocus(a.statusBar.GetCommandInput())
-
-	// Set up change handler via input field's changed func
+	a.enterPrompt("/ ", "Filter...")
+	if initialText != "" {
+		p.input.SetText(initialText)
+	}
 	if callbacks.OnChange != nil {
-		a.statusBar.GetCommandInput().SetChangedFunc(func(text string) {
-			callbacks.OnChange(text)
+		p.input.SetChangedFunc(func(text string) {
+			a.scheduleFilterChange(text, callbacks.OnChange)
 		})
 	}
 }
 
 // ExitFilterMode exits filter mode and restores default command bar behavior.
 func (a *App) ExitFilterMode() {
-	if a.statusBar.IsCommandMode() {
-		a.statusBar.ClearSuggestion()
-		a.statusBar.ExitCommandMode()
-	}
+	a.stopFilterDebounce()
 	filterModeCallbacks = nil
 	a.restoreDefaultCommandCallbacks()
-	// Restore focus to current view
-	if current := a.app.Pages().Current(); current != nil {
-		a.app.SetFocus(current)
+	a.exitPrompt()
+}
+
+const defaultFilterChangeDelay = 80 * time.Millisecond
+
+var filterChangeDelay = defaultFilterChangeDelay
+
+func (a *App) stopFilterDebounce() {
+	if a == nil || a.filterDebounce == nil {
+		return
 	}
+	a.filterDebounce.Stop()
+	a.filterDebounce = nil
+}
+
+func (a *App) scheduleFilterChange(text string, onChange func(string)) {
+	if a == nil || onChange == nil {
+		return
+	}
+	a.stopFilterDebounce()
+	if text == "" || filterChangeDelay <= 0 {
+		onChange(text)
+		return
+	}
+	a.filterDebounceText = text
+	a.filterDebounce = time.AfterFunc(filterChangeDelay, func() {
+		apply := func() {
+			if !a.IsFilterMode() || a.filterDebounceText != text {
+				return
+			}
+			a.filterDebounce = nil
+			onChange(text)
+		}
+		if a.app == nil {
+			apply()
+			return
+		}
+		a.app.QueueUpdateDraw(apply)
+	})
 }
 
 // SetFilterSuggestion sets the inline ghost text suggestion for the filter input.
 // The suggestion should be the full text (what the user typed + completion).
 func (a *App) SetFilterSuggestion(suggestion string) {
-	a.statusBar.SetSuggestion(suggestion)
+	if a == nil {
+		return
+	}
+	a.prompt().suggestion = suggestion
 }
 
 // IsFilterMode returns whether filter mode is active.
 func (a *App) IsFilterMode() bool {
-	return filterModeCallbacks != nil && a.statusBar.IsCommandMode()
+	return filterModeCallbacks != nil && a.promptActive()
 }
 
 // restoreDefaultCommandCallbacks restores the default command bar callbacks.
 func (a *App) restoreDefaultCommandCallbacks() {
-	a.statusBar.SetCommandPrompt(": ")
-	a.statusBar.SetCommandPlaceholder("command...")
-	a.statusBar.GetCommandInput().SetChangedFunc(nil)
-
-	a.statusBar.SetOnCommandSubmit(func(text string) {
-		a.statusBar.ExitCommandMode()
+	p := a.prompt()
+	p.input.SetChangedFunc(nil)
+	p.onComplete = nil
+	p.onSubmit = func(text string) {
+		a.exitPrompt()
 		a.handleCommandInput(text)
-	})
-
-	a.statusBar.SetOnCommandCancel(func() {
-		a.statusBar.ExitCommandMode()
-		// Restore focus to current view
-		if current := a.app.Pages().Current(); current != nil {
-			a.app.SetFocus(current)
-		}
-	})
+	}
+	p.onCancel = func() {
+		a.exitPrompt()
+	}
 }
 
 // CommandContextProvider is implemented by views that can provide workflow context for commands.
@@ -1840,7 +1884,7 @@ func (a *App) showCommandConfirm(name string, cfg config.CommandConfig, expanded
 	})
 	modal.SetContent(contentFlex)
 	modal.SetHints([]components.KeyHint{
-		{Key: "Ctrl+S", Description: "Confirm"},
+		{Key: "Enter", Description: "Confirm"},
 		{Key: "Esc", Description: "Cancel"},
 	})
 

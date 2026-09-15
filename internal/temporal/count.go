@@ -54,7 +54,7 @@ func (c *Client) CountWorkflows(ctx context.Context, namespace, query string) (W
 }
 
 func (c *Client) countWorkflowsByStatus(ctx context.Context, svc workflowservice.WorkflowServiceClient, namespace, query string) (WorkflowCounts, error) {
-	statuses := []string{"Running", "Completed", "Failed", "Canceled", "Terminated"}
+	statuses := []string{"Running", "Completed", "Failed", "Canceled", "Terminated", "TimedOut", "ContinuedAsNew"}
 	counts := make([]int, len(statuses))
 	errs := make([]error, len(statuses))
 	var wg sync.WaitGroup
@@ -84,13 +84,62 @@ func (c *Client) countWorkflowsByStatus(ctx context.Context, svc workflowservice
 		total += n
 	}
 	return WorkflowCounts{
-		Running:    counts[0],
-		Completed:  counts[1],
-		Failed:     counts[2],
-		Canceled:   counts[3],
-		Terminated: counts[4],
-		Total:      total,
+		Running:        counts[0],
+		Completed:      counts[1],
+		Failed:         counts[2],
+		Canceled:       counts[3],
+		Terminated:     counts[4],
+		TimedOut:       counts[5],
+		ContinuedAsNew: counts[6],
+		Total:          total,
 	}, nil
+}
+
+func visibilityGroupByQuery(field string) string {
+	return "GROUP BY " + field
+}
+
+func visibilityGroupValues(resp *workflowservice.CountWorkflowExecutionsResponse) []string {
+	if resp == nil {
+		return nil
+	}
+	out := make([]string, 0, len(resp.GetGroups()))
+	for _, group := range resp.GetGroups() {
+		if name := decodeCountGroupString(group.GetGroupValues()); name != "" {
+			out = append(out, name)
+		}
+	}
+	return out
+}
+
+func decodeCountGroupString(values []*commonpb.Payload) string {
+	if len(values) == 0 {
+		return ""
+	}
+	payload := values[0]
+	var text string
+	if err := converter.GetDefaultDataConverter().FromPayload(payload, &text); err == nil {
+		return strings.TrimSpace(text)
+	}
+	if payload != nil {
+		return strings.Trim(string(payload.GetData()), `"`)
+	}
+	return ""
+}
+
+func (c *Client) listVisibilityDistinct(ctx context.Context, namespace, field string) ([]string, error) {
+	cl, err := c.conn()
+	if err != nil {
+		return nil, err
+	}
+	resp, err := cl.WorkflowService().CountWorkflowExecutions(ctx, &workflowservice.CountWorkflowExecutionsRequest{
+		Namespace: namespace,
+		Query:     visibilityGroupByQuery(field),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to list %s values: %w", field, err)
+	}
+	return visibilityGroupValues(resp), nil
 }
 
 func countGroupByUnsupported(err error) bool {
@@ -120,6 +169,10 @@ func workflowCountsFromGroups(resp *workflowservice.CountWorkflowExecutionsRespo
 			counts.Canceled += n
 		case "Terminated":
 			counts.Terminated += n
+		case "TimedOut":
+			counts.TimedOut += n
+		case "ContinuedAsNew":
+			counts.ContinuedAsNew += n
 		}
 		counts.Total += n
 	}
@@ -142,7 +195,7 @@ func decodeCountGroupStatus(values []*commonpb.Payload) string {
 	}
 	var number int64
 	if err := converter.GetDefaultDataConverter().FromPayload(payload, &number); err == nil {
-		return MapWorkflowStatus(enums.WorkflowExecutionStatus(number))
+		return mapCountStatus(enums.WorkflowExecutionStatus(number))
 	}
 	if payload != nil {
 		return normalizeCountStatus(strings.Trim(string(payload.GetData()), `"`))
@@ -156,7 +209,7 @@ func normalizeCountStatus(raw string) string {
 		return ""
 	}
 	if n, err := strconv.ParseInt(s, 10, 64); err == nil {
-		return MapWorkflowStatus(enums.WorkflowExecutionStatus(n))
+		return mapCountStatus(enums.WorkflowExecutionStatus(n))
 	}
 	switch strings.ToLower(s) {
 	case "running":
@@ -172,8 +225,15 @@ func normalizeCountStatus(raw string) string {
 	case "timedout", "timed_out", "timed out":
 		return "TimedOut"
 	case "continuedasnew", "continued_as_new", "continued as new":
-		return "Completed"
+		return "ContinuedAsNew"
 	default:
 		return ""
 	}
+}
+
+func mapCountStatus(status enums.WorkflowExecutionStatus) string {
+	if status == enums.WORKFLOW_EXECUTION_STATUS_CONTINUED_AS_NEW {
+		return "ContinuedAsNew"
+	}
+	return MapWorkflowStatus(status)
 }

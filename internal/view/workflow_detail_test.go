@@ -50,6 +50,25 @@ func TestWorkflowInfoRowsIncludeFullValues(t *testing.T) {
 	}
 }
 
+func TestWorkflowInfoRowsMarkUnhandledFailure(t *testing.T) {
+	rows := workflowInfoRows(time.Now(), temporal.Workflow{
+		ID:          "wf",
+		Status:      "Running",
+		TaskFailure: true,
+		StartTime:   time.Now(),
+	})
+	idx := workflowInfoRowIndex(rows, workflowInfoStatus)
+	if idx < 0 {
+		t.Fatal("missing status row")
+	}
+	if rows[idx].Value != "Unhandled Failure" {
+		t.Fatalf("value=%q", rows[idx].Value)
+	}
+	if !strings.Contains(rows[idx].Display, "Unhandled Failure") {
+		t.Fatalf("display=%q", rows[idx].Display)
+	}
+}
+
 func TestFormatWorkflowInfoOmitsMissingParent(t *testing.T) {
 	got := formatWorkflowInfo(temporal.Workflow{
 		ID:        "solo-workflow",

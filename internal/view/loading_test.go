@@ -1,19 +1,14 @@
 package view
 
 import (
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/atterpac/jig/layout"
+	"github.com/atterpac/jig/theme"
+	"github.com/gdamore/tcell/v2"
 )
-
-func statusBarWithFixedSections() *layout.StatusBar {
-	bar := layout.NewStatusBar()
-	bar.AddSection(layout.StatusSection{Text: "profile"})
-	bar.AddSection(layout.StatusSection{Text: "namespace"})
-	bar.AddSection(layout.StatusSection{Text: "connected"})
-	return bar
-}
 
 func TestLoadingLabelCyclesFrames(t *testing.T) {
 	first := loadingLabel(0)
@@ -23,44 +18,47 @@ func TestLoadingLabelCyclesFrames(t *testing.T) {
 	if loadingLabel(len(loadingFrames)) != first {
 		t.Fatal("frames should wrap around")
 	}
+	if !strings.Contains(first, "Loading") {
+		t.Fatalf("hint bar label should say Loading, got %q", first)
+	}
 }
 
-func TestRenderLoadingReplacesConnected(t *testing.T) {
-	a := &App{statusBar: statusBarWithFixedSections(), connected: true}
+func TestRenderLoadingStaysOnHintBar(t *testing.T) {
+	a := &App{connected: true, menu: layout.NewMenu()}
+	a.menu.SetRect(0, 0, 40, 1)
+	a.menu.SetHints([]KeyHint{{Key: "r", Description: "Refresh"}})
 
 	a.renderLoading(loadingLabel(0))
-	if a.statusBar.SectionCount() != 3 {
-		t.Fatalf("spinner should reuse the connected slot, got %d sections", a.statusBar.SectionCount())
+	if a.connectionChromeText() != theme.IconConnected {
+		t.Fatalf("loading should not replace the connection glyph, got %q", a.connectionChromeText())
 	}
-	if a.statusBar.GetSection(connectionSectionIndex).Text != loadingLabel(0) {
-		t.Fatalf("connected slot should show the spinner, got %q", a.statusBar.GetSection(connectionSectionIndex).Text)
+	if a.connectionLabel != loadingLabel(0) {
+		t.Fatalf("loading should live on the hint bar, got %q", a.connectionLabel)
 	}
 
-	a.renderLoading(loadingLabel(1))
-	if a.statusBar.SectionCount() != 3 {
-		t.Fatal("next frame should update the connected slot, not add a section")
+	screen := tcell.NewSimulationScreen("UTF-8")
+	if err := screen.Init(); err != nil {
+		t.Fatal(err)
 	}
-	if a.statusBar.GetSection(connectionSectionIndex).Text != loadingLabel(1) {
-		t.Fatal("connected slot should hold the current frame")
+	screen.SetSize(40, 1)
+	a.menu.Draw(screen)
+	a.drawHintLoading(screen)
+	got := rowText(screen, 0, 40)
+	if !strings.HasPrefix(strings.TrimLeft(got, " "), loadingLabel(0)) {
+		t.Fatalf("Loading should cover the hint bar on the left, got %q", got)
+	}
+	if main, _, style, _ := screen.GetContent(1, 0); main == 'r' {
+		t.Fatal("Loading should draw over key hints")
+	} else if fg, _, _ := style.Decompose(); fg != theme.Fg() {
+		t.Fatalf("Loading should use the app foreground, got %v", fg)
 	}
 
 	a.renderLoading("")
-	if a.statusBar.SectionCount() != 3 {
-		t.Fatalf("restoring connected should keep three sections, got %d", a.statusBar.SectionCount())
+	if a.connectionLabel != "" {
+		t.Fatal("clearing should remove the hint bar spinner")
 	}
-	if a.statusBar.GetSection(connectionSectionIndex).Text != "connected" {
-		t.Fatalf("spinner should restore connected, got %q", a.statusBar.GetSection(connectionSectionIndex).Text)
-	}
-	if a.statusBar.GetSection(0).Text != "profile" {
-		t.Fatal("spinner should leave the profile section alone")
-	}
-}
-
-func TestRenderLoadingWaitsForFixedSections(t *testing.T) {
-	a := &App{statusBar: layout.NewStatusBar()}
-	a.renderLoading(loadingLabel(0))
-	if a.statusBar.SectionCount() != 0 {
-		t.Fatal("spinner should not claim a profile or namespace slot")
+	if a.connectionChromeText() != theme.IconConnected {
+		t.Fatal("connection glyph should still be connected")
 	}
 }
 
@@ -85,22 +83,25 @@ func TestSetViewLoadingTracksViewsIndependently(t *testing.T) {
 }
 
 func TestSetConnectedKeepsSpinnerThenRestores(t *testing.T) {
-	a := &App{statusBar: statusBarWithFixedSections(), connected: true}
+	a := &App{connected: true}
 	a.SetViewLoading("workflows", true)
 	a.renderLoading(a.loadingText())
-	if a.statusBar.GetSection(connectionSectionIndex).Text == "connected" {
-		t.Fatal("loading should replace connected")
+	if a.connectionLabel == "" {
+		t.Fatal("loading should show on the hint bar")
+	}
+	if a.connectionChromeText() != theme.IconConnected {
+		t.Fatal("a connection update should keep the server glyph")
 	}
 
 	a.setConnected(true)
-	if a.statusBar.GetSection(connectionSectionIndex).Text == "connected" {
+	if a.connectionLabel == "" {
 		t.Fatal("a connection update should not hide the spinner")
 	}
 
 	a.SetViewLoading("workflows", false)
 	a.renderLoading(a.loadingText())
-	if a.statusBar.GetSection(connectionSectionIndex).Text != "connected" {
-		t.Fatalf("finished load should restore connected, got %q", a.statusBar.GetSection(connectionSectionIndex).Text)
+	if a.connectionLabel != "" {
+		t.Fatal("finished load should clear the hint bar spinner")
 	}
 }
 
@@ -115,7 +116,7 @@ func TestSetViewLoadingIsIdempotent(t *testing.T) {
 }
 
 func TestSetViewLoadingDoesNotBlockBeforeRun(t *testing.T) {
-	a := &App{app: layout.NewApp(layout.AppConfig{}), statusBar: statusBarWithFixedSections()}
+	a := &App{app: layout.NewApp(layout.AppConfig{})}
 	done := make(chan struct{})
 	go func() {
 		a.SetViewLoading("workflows", true)
@@ -126,4 +127,15 @@ func TestSetViewLoadingDoesNotBlockBeforeRun(t *testing.T) {
 	case <-time.After(time.Second):
 		t.Fatal("SetViewLoading should not wait for the UI loop")
 	}
+}
+
+func rowText(screen tcell.SimulationScreen, y, width int) string {
+	var b strings.Builder
+	for x := 0; x < width; x++ {
+		ch, _, _, _ := screen.GetContent(x, y)
+		if ch != 0 {
+			b.WriteRune(ch)
+		}
+	}
+	return b.String()
 }

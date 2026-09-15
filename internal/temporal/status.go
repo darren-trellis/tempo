@@ -7,14 +7,15 @@ import (
 
 // Typed workflow status handles - use these for compile-time safe color/icon access.
 var (
-	StatusRunning    = theme.DefineStatus("Running", theme.Info, theme.IconRunning)
-	StatusCompleted  = theme.DefineStatus("Completed", theme.Success, theme.IconCompleted)
-	StatusFailed     = theme.DefineStatus("Failed", theme.Error, theme.IconFailed)
-	StatusCanceled   = theme.DefineStatus("Canceled", theme.Warning, theme.IconCanceled)
-	StatusTerminated = theme.DefineStatus("Terminated", theme.Error, theme.IconStop)
-	StatusTimedOut   = theme.DefineStatus("TimedOut", theme.Warning, theme.IconTimedOut)
-	StatusUnknown    = theme.DefineStatus("Unknown", theme.FgDim, theme.IconPending)
-	StatusScheduled  = theme.DefineStatus("Scheduled", theme.FgDim, theme.IconPending)
+	StatusRunning          = theme.DefineStatus("Running", theme.Info, theme.IconRunning)
+	StatusCompleted        = theme.DefineStatus("Completed", theme.Success, theme.IconCompleted)
+	StatusFailed           = theme.DefineStatus("Failed", theme.Error, theme.IconFailed)
+	StatusCanceled         = theme.DefineStatus("Canceled", theme.Warning, theme.IconCanceled)
+	StatusTerminated       = theme.DefineStatus("Terminated", theme.Error, theme.IconStop)
+	StatusTimedOut         = theme.DefineStatus("TimedOut", theme.Warning, theme.IconTimedOut)
+	StatusUnknown          = theme.DefineStatus("Unknown", theme.FgDim, theme.IconPending)
+	StatusScheduled        = theme.DefineStatus("Scheduled", theme.FgDim, theme.IconPending)
+	StatusUnhandledFailure = theme.DefineStatus("Unhandled Failure", theme.Error, theme.IconWarning)
 )
 
 // GetActivityStatus returns the typed Status for an activity status string.

@@ -12,6 +12,7 @@ import (
 
 	commonpb "go.temporal.io/api/common/v1"
 	historypb "go.temporal.io/api/history/v1"
+	workflowpb "go.temporal.io/api/workflow/v1"
 	"go.temporal.io/sdk/converter"
 )
 
@@ -70,6 +71,38 @@ func TestDecodePayloadsInMessages(t *testing.T) {
 	}
 	if formatted := formatPayloads(event.GetWorkflowExecutionStartedEventAttributes().GetInput()); formatted != `{"orderId":"123"}` {
 		t.Fatalf("formatPayloads = %q", formatted)
+	}
+}
+
+func TestDecodePayloadsSkipsSearchAttributes(t *testing.T) {
+	srv := httptest.NewServer(converter.NewPayloadCodecHTTPHandler(prefixCodec{}))
+	t.Cleanup(srv.Close)
+
+	raw := []byte(`["category=WorkflowTaskFailed"]`)
+	info := &workflowpb.WorkflowExecutionInfo{
+		SearchAttributes: &commonpb.SearchAttributes{
+			IndexedFields: map[string]*commonpb.Payload{
+				temporalReportedProblemsAttr: {
+					Metadata: map[string][]byte{"encoding": []byte("json/plain"), "type": []byte("KeywordList")},
+					Data:     raw,
+				},
+			},
+		},
+		Memo: &commonpb.Memo{
+			Fields: map[string]*commonpb.Payload{
+				"note": {Metadata: map[string][]byte{"encoding": []byte("json/plain")}, Data: []byte("ENC:ok")},
+			},
+		},
+	}
+
+	decodePayloadsInMessages(newRemotePayloadCodec(srv.URL, "test-ns"), info)
+
+	got := info.GetSearchAttributes().GetIndexedFields()[temporalReportedProblemsAttr].GetData()
+	if string(got) != string(raw) {
+		t.Fatalf("search attribute mutated by codec: %q", got)
+	}
+	if string(info.GetMemo().GetFields()["note"].GetData()) != "ok" {
+		t.Fatalf("memo should still decode: %q", info.GetMemo().GetFields()["note"].GetData())
 	}
 }
 

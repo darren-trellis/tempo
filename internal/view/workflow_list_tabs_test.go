@@ -1,24 +1,86 @@
 package view
 
 import (
+	"strings"
 	"testing"
 
+	"github.com/galaxy-io/tempo/internal/temporal"
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 )
 
+func TestPrimaryPaneTitleIsProfile(t *testing.T) {
+	a := &App{chromeProfile: "prod"}
+	wl := NewWorkflowList(a, "default")
+	if got := wl.primaryPaneTitle(); got != "prod (0)" {
+		t.Fatalf("pane title=%q", got)
+	}
+	a.app = nil
+	a.setProfile("staging")
+	wl.applyProfileTitle()
+	if got := wl.primaryPaneTitle(); got != "staging (0)" {
+		t.Fatalf("updated pane title=%q", got)
+	}
+}
+
+func TestPrimaryPaneTitleUsesDisplayedCountAndFilter(t *testing.T) {
+	a := &App{chromeProfile: "prod"}
+	wl := NewWorkflowList(a, "default")
+	wl.allWorkflows = []temporal.Workflow{
+		{ID: "wf-1", RunID: "run-1", Status: "Running"},
+		{ID: "wf-2", RunID: "run-2", Status: "Completed"},
+		{ID: "wf-3", RunID: "run-3", Status: "Running"},
+	}
+	wl.workflows = wl.allWorkflows[:1]
+	wl.populateTable()
+	if got := wl.primaryPaneTitle(); got != "prod (1)" {
+		t.Fatalf("displayed count title=%q", got)
+	}
+	wl.filterText = "wf-1"
+	wl.applyProfileTitle()
+	if got := wl.primaryPaneTitle(); got != "prod (/wf-1) (1)" {
+		t.Fatalf("filter title=%q", got)
+	}
+	if wl.workflowTab != nil && strings.Contains(wl.workflowTab.Name, "wf-1") {
+		t.Fatalf("filter should not live on the workflows tab, got %q", wl.workflowTab.Name)
+	}
+}
+
+func paneTitle(panel interface{ Draw(tcell.Screen) }) string {
+	if panel == nil {
+		return ""
+	}
+	screen := tcell.NewSimulationScreen("UTF-8")
+	if err := screen.Init(); err != nil {
+		return ""
+	}
+	screen.SetSize(40, 8)
+	if setter, ok := panel.(interface{ SetRect(int, int, int, int) }); ok {
+		setter.SetRect(0, 0, 40, 8)
+	}
+	panel.Draw(screen)
+	var b strings.Builder
+	for x := 0; x < 40; x++ {
+		ch, _, _, _ := screen.GetContent(x, 0)
+		if ch != 0 && ch != ' ' && ch != '─' && ch != '╭' && ch != '╮' && ch != '┌' && ch != '┐' {
+			b.WriteRune(ch)
+		}
+	}
+	return strings.TrimSpace(b.String())
+}
+
 func TestWorkflowListTitleListMode(t *testing.T) {
 	wl := NewWorkflowList(&App{}, "default")
-	if wl.workflowTab == nil || wl.workflowTab.Name != "Workflows (List)" {
-		t.Fatalf("list title: %+v", wl.workflowTab)
-	}
-	wl.toggleWorkflowTree()
-	if wl.workflowTab.Name != "Workflows (Tree)" {
-		t.Fatalf("tree title: %q", wl.workflowTab.Name)
+	if wl.workflowTab == nil || wl.workflowTab.Name != "Workflows (Tree)" {
+		t.Fatalf("tree title: %+v", wl.workflowTab)
 	}
 	wl.toggleWorkflowTree()
 	if wl.workflowTab.Name != "Workflows (List)" {
-		t.Fatalf("restored list title: %q", wl.workflowTab.Name)
+		t.Fatalf("list title: %q", wl.workflowTab.Name)
+	}
+	wl.toggleWorkflowTree()
+	if wl.workflowTab.Name != "Workflows (Tree)" {
+		t.Fatalf("restored tree title: %q", wl.workflowTab.Name)
 	}
 }
 

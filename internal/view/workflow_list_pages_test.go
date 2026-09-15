@@ -1,11 +1,13 @@
 package view
 
 import (
+	"context"
 	"fmt"
 	"testing"
 
 	"github.com/galaxy-io/tempo/internal/config"
 	"github.com/galaxy-io/tempo/internal/temporal"
+	"gopkg.in/yaml.v3"
 )
 
 func TestWorkflowPagerWindowsAndDeloads(t *testing.T) {
@@ -71,6 +73,93 @@ func TestWorkflowListPageSizeUsesConfig(t *testing.T) {
 	}
 }
 
+func TestWorkflowListPreviewLoadDelayUsesConfig(t *testing.T) {
+	wl := NewWorkflowList(&App{}, "default")
+	if wl.previewLoadDelay() != config.DefaultPreviewLoadDelay {
+		t.Fatalf("default preview load delay=%s", wl.previewLoadDelay())
+	}
+	var cfg config.Config
+	if err := yaml.Unmarshal([]byte("preview_load_delay: 0\n"), &cfg); err != nil {
+		t.Fatal(err)
+	}
+	wl.app.config = &cfg
+	if wl.previewLoadDelay() != 0 {
+		t.Fatalf("configured preview load delay=%s", wl.previewLoadDelay())
+	}
+}
+
+func TestAdjacentPageNeedSkipsExactEdges(t *testing.T) {
+	wl := NewWorkflowList(&App{}, "default")
+	items := make([]temporal.Workflow, 400)
+	for i := range items {
+		items[i] = temporal.Workflow{ID: fmt.Sprintf("wf-%d", i), RunID: "r"}
+	}
+	wl.workflows = items
+	wl.allWorkflows = items
+	wl.pager.reset("")
+	for i := 0; i < workflowMaxPages; i++ {
+		token := ""
+		if i > 0 {
+			token = fmt.Sprintf("p%d", i)
+		}
+		wl.pager.accept(i, token, fmt.Sprintf("p%d", i+1), items[i*100:(i+1)*100])
+	}
+	wl.populateTable()
+	wl.table.SetRect(0, 0, 80, 12)
+
+	wl.table.SelectRow(399)
+	wl.rememberHighlightedWorkflow()
+	if got := wl.adjacentPageNeed(); got != 0 {
+		t.Fatalf("last row should not slide a full window, need=%d", got)
+	}
+
+	wl.table.SelectRow(0)
+	wl.rememberHighlightedWorkflow()
+	if got := wl.adjacentPageNeed(); got != 0 {
+		t.Fatalf("first row should not slide a full window, need=%d", got)
+	}
+
+	wl.table.SelectRow(390)
+	wl.rememberHighlightedWorkflow()
+	if got := wl.adjacentPageNeed(); got != 1 {
+		t.Fatalf("near the end should still prefetch, need=%d", got)
+	}
+}
+
+func TestFetchAdjacentPageShowsStatusLoading(t *testing.T) {
+	started := make(chan struct{})
+	release := make(chan struct{})
+	provider := &pageListProvider{
+		list: func(context.Context, string, temporal.ListOptions) ([]temporal.Workflow, string, error) {
+			close(started)
+			<-release
+			return []temporal.Workflow{{ID: "wf-next"}}, "", nil
+		},
+	}
+	wl := NewWorkflowList(&App{provider: provider}, "default")
+	wl.pager.reset("")
+	wl.pager.accept(0, "", "next", []temporal.Workflow{{ID: "wf-0"}})
+
+	wl.fetchAdjacentPage(false)
+	<-started
+	if wl.app.loadingText() == "" {
+		t.Fatal("status bar should show loading while the next page is fetched")
+	}
+	if !wl.loading {
+		t.Fatal("workflow list should be marked loading")
+	}
+	close(release)
+}
+
+type pageListProvider struct {
+	temporal.Provider
+	list func(context.Context, string, temporal.ListOptions) ([]temporal.Workflow, string, error)
+}
+
+func (p *pageListProvider) ListWorkflows(ctx context.Context, namespace string, opts temporal.ListOptions) ([]temporal.Workflow, string, error) {
+	return p.list(ctx, namespace, opts)
+}
+
 func TestMaybeFetchPagesSkipsLocalFilter(t *testing.T) {
 	wl := NewWorkflowList(&App{}, "default")
 	wl.filterText = "pay"
@@ -86,13 +175,13 @@ func TestMaybeFetchPagesSkipsLocalFilter(t *testing.T) {
 
 func TestDisplayedStatsUsesServerCounts(t *testing.T) {
 	wl := NewWorkflowList(&App{}, "default")
-	wl.workflows = []temporal.Workflow{{Status: "Running"}, {Status: "Running"}}
-	if got := wl.displayedStats(); got.Running != 2 {
+	wl.workflows = []temporal.Workflow{{Status: "Running"}, {Status: "Running"}, {Status: "TimedOut"}, {Status: "ContinuedAsNew"}}
+	if got := wl.displayedStats(); got.Running != 2 || got.TimedOut != 1 || got.ContinuedAsNew != 1 {
 		t.Fatalf("local stats=%+v", got)
 	}
-	wl.serverStats = WorkflowStats{Running: 40, Completed: 120, Failed: 7, Canceled: 3, Terminated: 2}
+	wl.serverStats = WorkflowStats{Running: 40, Completed: 120, Failed: 7, Canceled: 3, Terminated: 2, TimedOut: 5, ContinuedAsNew: 9}
 	wl.serverStatsOK = true
-	if got := wl.displayedStats(); got != (WorkflowStats{Running: 40, Completed: 120, Failed: 7, Canceled: 3, Terminated: 2}) {
+	if got := wl.displayedStats(); got != (WorkflowStats{Running: 40, Completed: 120, Failed: 7, Canceled: 3, Terminated: 2, TimedOut: 5, ContinuedAsNew: 9}) {
 		t.Fatalf("server stats=%+v", got)
 	}
 }

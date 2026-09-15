@@ -25,6 +25,13 @@ func workflowIsRunning(status string) bool {
 	return status == "Running"
 }
 
+func terminateUnavailableMessage(status string) string {
+	if status == "" {
+		return "Cannot terminate this workflow"
+	}
+	return "Cannot terminate a " + strings.ToLower(status) + " workflow"
+}
+
 func workflowCanReset(status string) bool {
 	switch status {
 	case "Completed", "Failed", "Terminated", "Canceled":
@@ -72,6 +79,34 @@ func eventMatchesSearch(ev temporal.EnhancedHistoryEvent, query string) bool {
 		strings.Contains(strings.ToLower(ev.Details), q)
 }
 
+func activityMatchesSearch(a previewActivity, query string) bool {
+	if query == "" {
+		return true
+	}
+	q := strings.ToLower(query)
+	return strings.Contains(strings.ToLower(a.Type), q) ||
+		strings.Contains(strings.ToLower(a.Status), q) ||
+		strings.Contains(strings.ToLower(a.ActivityID), q) ||
+		strings.Contains(strings.ToLower(a.TaskQueue), q) ||
+		strings.Contains(strings.ToLower(a.Identity), q) ||
+		strings.Contains(strings.ToLower(a.Input), q) ||
+		strings.Contains(strings.ToLower(a.Result), q) ||
+		strings.Contains(strings.ToLower(a.Failure), q)
+}
+
+func filterPreviewActivities(activities []previewActivity, query string) []previewActivity {
+	if query == "" {
+		return activities
+	}
+	out := make([]previewActivity, 0, len(activities))
+	for _, a := range activities {
+		if activityMatchesSearch(a, query) {
+			out = append(out, a)
+		}
+	}
+	return out
+}
+
 func filterHistoryEvents(events []temporal.EnhancedHistoryEvent, query string) []temporal.EnhancedHistoryEvent {
 	if query == "" {
 		return events
@@ -107,7 +142,7 @@ func showCancelWorkflowModal(app *App, t workflowActionTarget, onDone func()) {
 	})
 	modal.SetContent(form)
 	modal.SetHints([]components.KeyHint{
-		{Key: "Ctrl+S", Description: "Confirm"},
+		{Key: "Enter", Description: "Confirm"},
 		{Key: "Esc", Description: "Cancel"},
 	})
 	app.PushModal(modal)
@@ -136,6 +171,12 @@ func executeCancelWorkflow(app *App, t workflowActionTarget, reason string, onDo
 }
 
 func showTerminateWorkflowModal(app *App, t workflowActionTarget, onDone func()) {
+	if !workflowIsRunning(t.Status) {
+		if app != nil {
+			app.ToastError(terminateUnavailableMessage(t.Status))
+		}
+		return
+	}
 	form := components.NewFormBuilder().
 		Text("reason", "Reason (required)").
 		Value("Terminated via tempo").
@@ -168,7 +209,7 @@ func showTerminateWorkflowModal(app *App, t workflowActionTarget, onDone func())
 	})
 	modal.SetContent(contentFlex)
 	modal.SetHints([]components.KeyHint{
-		{Key: "Ctrl+S", Description: "Terminate"},
+		{Key: "Enter", Description: "Terminate"},
 		{Key: "Esc", Description: "Cancel"},
 	})
 	app.PushModal(modal)
@@ -243,7 +284,7 @@ This action cannot be undone.[-]
 	})
 	modal.SetContent(contentFlex)
 	modal.SetHints([]components.KeyHint{
-		{Key: "Ctrl+S", Description: "Delete"},
+		{Key: "Enter", Description: "Delete"},
 		{Key: "Esc", Description: "Cancel"},
 	})
 	app.PushModal(modal)
@@ -298,7 +339,7 @@ func showSignalWorkflowModal(app *App, t workflowActionTarget, onDone func()) {
 	modal.SetContent(form)
 	modal.SetHints([]components.KeyHint{
 		{Key: "Tab", Description: "Next field"},
-		{Key: "Ctrl+S", Description: "Send signal"},
+		{Key: "Enter", Description: "Send signal"},
 		{Key: "Esc", Description: "Cancel"},
 	})
 	app.PushModal(modal)
@@ -365,7 +406,7 @@ func showQueryWorkflowModal(app *App, t workflowActionTarget) {
 	modal.SetContent(form)
 	modal.SetHints([]components.KeyHint{
 		{Key: "Tab", Description: "Next field"},
-		{Key: "Ctrl+S", Description: "Execute query"},
+		{Key: "Enter", Description: "Execute query"},
 		{Key: "Esc", Description: "Cancel"},
 	})
 	app.PushModal(modal)
@@ -591,7 +632,7 @@ func showResetConfirmModal(app *App, t workflowActionTarget, resetPoint temporal
 	})
 	modal.SetContent(contentFlex)
 	modal.SetHints([]components.KeyHint{
-		{Key: "Ctrl+S", Description: "Reset"},
+		{Key: "Enter", Description: "Reset"},
 		{Key: "Esc", Description: "Cancel"},
 	})
 	app.PushModal(modal)

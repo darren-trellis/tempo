@@ -244,7 +244,7 @@ func attachTableCharScroll(table *components.Table, app *App) *charScrollView {
 // handleCharScrollKeys scrolls a view horizontally: one char for left/right and
 // h/l, one column for Home/End.
 func handleCharScrollKeys(view *charScrollView, event *tcell.EventKey, cols func() []workflowColumn) bool {
-	if view == nil || event == nil {
+	if view == nil || event == nil || event.Modifiers() != tcell.ModNone {
 		return false
 	}
 	switch event.Key() {

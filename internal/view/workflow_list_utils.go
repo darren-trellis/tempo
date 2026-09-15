@@ -43,13 +43,17 @@ func truncate(s string, maxLen int) string {
 // truncateIfNeeded only truncates if the string exceeds maxLen.
 // If maxLen is 0 or negative, returns the string unchanged.
 func truncateIfNeeded(s string, maxLen int) string {
-	if maxLen <= 0 || len(s) <= maxLen {
+	if maxLen <= 0 {
+		return s
+	}
+	runes := []rune(s)
+	if len(runes) <= maxLen {
 		return s
 	}
 	if maxLen <= 3 {
-		return s[:maxLen]
+		return string(runes[:maxLen])
 	}
-	return s[:maxLen-3] + "..."
+	return string(runes[:maxLen-3]) + "..."
 }
 
 // copyToClipboard copies text to the system clipboard.

@@ -294,6 +294,9 @@ func (nl *NamespaceList) toggleAutoRefresh() {
 	} else {
 		nl.stopAutoRefresh()
 	}
+	if nl.app != nil {
+		nl.app.ToastSuccess(autoRefreshMessage(nl.autoRefresh))
+	}
 }
 
 func (nl *NamespaceList) startAutoRefresh() {

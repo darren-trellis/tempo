@@ -1,6 +1,9 @@
 package view
 
 import (
+	"time"
+
+	"github.com/atterpac/jig/components"
 	"github.com/galaxy-io/tempo/internal/temporal"
 )
 
@@ -41,7 +44,7 @@ func (wl *WorkflowList) showCancelSelected() {
 
 func (wl *WorkflowList) showTerminateSelected() {
 	t, ok := wl.actionTarget()
-	if !ok || !workflowIsRunning(t.Status) {
+	if !ok {
 		return
 	}
 	showTerminateWorkflowModal(wl.app, t, func() {
@@ -112,7 +115,7 @@ func (wl *WorkflowList) refreshSelectedPreview() {
 }
 
 func (wl *WorkflowList) showPreviewEventSearch() {
-	if !wl.previewModeEnabled() || wl.previewKind != previewEvents {
+	if !wl.previewModeEnabled() || wl.previewKind != previewEvents || wl.app == nil {
 		return
 	}
 	wl.app.ShowFilterMode(wl.previewEventSearch, FilterModeCallbacks{
@@ -124,6 +127,34 @@ func (wl *WorkflowList) showPreviewEventSearch() {
 		},
 		OnCancel: func() {},
 	})
+}
+
+func (wl *WorkflowList) showPreviewActivitySearch() {
+	if !wl.previewModeEnabled() || wl.previewKind != previewActivities || wl.app == nil {
+		return
+	}
+	wl.app.ShowFilterMode(wl.previewActivitySearch, FilterModeCallbacks{
+		OnChange: func(text string) {
+			wl.applyPreviewActivitySearch(text)
+		},
+		OnSubmit: func(text string) {
+			wl.applyPreviewActivitySearch(text)
+		},
+		OnCancel: func() {},
+	})
+}
+
+func (wl *WorkflowList) applyPreviewActivitySearch(query string) {
+	wl.previewActivitySearch = query
+	if w, ok := wl.currentPreviewWorkflow(); ok {
+		wl.renderPreviewActivities(w)
+		return
+	}
+	wl.renderPreviewActivities(temporal.Workflow{})
+}
+
+func (wl *WorkflowList) visiblePreviewActivities() []previewActivity {
+	return filterPreviewActivities(wl.previewActivities, wl.previewActivitySearch)
 }
 
 func (wl *WorkflowList) applyPreviewEventSearch(query string) {
@@ -193,6 +224,27 @@ func (wl *WorkflowList) mergeWorkflow(fresh temporal.Workflow) {
 	}
 	merge(wl.workflows)
 	merge(wl.allWorkflows)
+	wl.refreshWorkflowRow(fresh)
+}
+
+func (wl *WorkflowList) refreshWorkflowRow(w temporal.Workflow) {
+	if wl == nil || wl.table == nil {
+		return
+	}
+	idx := workflowIndexByIdentity(wl.workflows, w.ID, w.RunID)
+	if idx < 0 || idx >= wl.table.GetDataRowCount() {
+		return
+	}
+	cols := wl.columnLayout()
+	if got := wl.table.GetColumnCount(); got > 0 && got < len(cols) {
+		return
+	}
+	now := time.Now()
+	cells := make([]components.TableCell, len(cols))
+	for j, col := range cols {
+		cells[j] = col.cell(now, w, wl.workflowRowPrefix(idx))
+	}
+	_ = wl.table.UpdateStyledRow(idx, cells)
 }
 
 func (wl *WorkflowList) actionHints(w temporal.Workflow) []KeyHint {
@@ -201,6 +253,7 @@ func (wl *WorkflowList) actionHints(w temporal.Workflow) []KeyHint {
 		hints = append(hints,
 			KeyHint{Key: "c", Description: "Cancel"},
 			KeyHint{Key: "X", Description: "Terminate"},
+			KeyHint{Key: "s", Description: "Signal"},
 			KeyHint{Key: "Q", Description: "Query"},
 		)
 	}

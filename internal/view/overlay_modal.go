@@ -9,8 +9,8 @@ import (
 
 type overlayModal struct {
 	*resizableModal
-	background tview.Primitive
-	hints      []components.KeyHint
+	background      tview.Primitive
+	interceptEscape func() bool
 }
 
 func newOverlayModal(cfg components.ModalConfig, background tview.Primitive) *overlayModal {
@@ -24,23 +24,42 @@ func newOverlayModal(cfg components.ModalConfig, background tview.Primitive) *ov
 }
 
 func (m *overlayModal) SetHints(hints []components.KeyHint) *overlayModal {
-	m.hints = hints
-	return m
-}
-
-func (m *overlayModal) SetContent(content tview.Primitive) *overlayModal {
-	m.Modal.SetContent(content)
-	if panel := m.GetPanel(); panel != nil {
-		panel.SetContent(content)
+	if m != nil && m.resizableModal != nil {
+		m.resizableModal.SetHints(hints)
 	}
 	return m
 }
 
 func (m *overlayModal) Hints() []components.KeyHint {
-	if len(m.hints) > 0 {
-		return m.hints
+	if m == nil || m.resizableModal == nil {
+		return nil
 	}
-	return m.Modal.Hints()
+	return m.resizableModal.Hints()
+}
+
+func (m *overlayModal) SetContent(content tview.Primitive) *overlayModal {
+	if m != nil && m.resizableModal != nil {
+		m.resizableModal.SetContent(content)
+	}
+	return m
+}
+
+func (m *overlayModal) InterceptEscape() bool {
+	return m != nil && m.interceptEscape != nil && m.interceptEscape()
+}
+
+func (m *overlayModal) InputHandler() func(*tcell.EventKey, func(tview.Primitive)) {
+	return func(event *tcell.EventKey, setFocus func(tview.Primitive)) {
+		if event != nil && event.Key() == tcell.KeyEscape && m.InterceptEscape() {
+			return
+		}
+		if m.Modal == nil {
+			return
+		}
+		if handler := m.Modal.InputHandler(); handler != nil {
+			handler(event, setFocus)
+		}
+	}
 }
 
 func (a *App) PushModal(modal nav.Component) {
@@ -48,6 +67,9 @@ func (a *App) PushModal(modal nav.Component) {
 		return
 	}
 	pushOverlayModal(a.app.Pages(), modal)
+	if a.app.Menu() != nil && modal != nil {
+		a.app.Menu().SetHints(modal.Hints())
+	}
 }
 
 func pushOverlayModal(pages *nav.Pages, modal nav.Component) {

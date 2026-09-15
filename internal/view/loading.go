@@ -2,15 +2,7 @@ package view
 
 import (
 	"time"
-
-	"github.com/atterpac/jig/layout"
-	"github.com/atterpac/jig/theme"
 )
-
-// connectionSectionIndex is the status-bar slot that normally says "connected".
-// Refresh reuses that slot for the spinner so the indicator stays where people
-// already look.
-const connectionSectionIndex = 2
 
 const loadingFrameInterval = 120 * time.Millisecond
 
@@ -21,11 +13,11 @@ func loadingLabel(frame int) string {
 	if frame < 0 {
 		frame = -frame
 	}
-	return loadingFrames[frame%len(loadingFrames)] + " loading"
+	return loadingFrames[frame%len(loadingFrames)] + " Loading"
 }
 
 // SetViewLoading records whether a view has a fetch in flight. Keys are per
-// view so one view's flag cannot pin the spinner on for another, and the status
+// view so one view's flag cannot pin the spinner on for another, and the hint
 // bar shows the spinner for as long as any view is still loading.
 func (a *App) SetViewLoading(key string, loading bool) {
 	if a == nil {
@@ -107,25 +99,14 @@ func (a *App) loadingText() string {
 	return loadingLabel(a.loadingFrame)
 }
 
-// renderLoading puts the spinner in the Connected slot. An empty label restores
-// connected / disconnected.
+// renderLoading puts the spinner on the hint bar. An empty label clears it.
 func (a *App) renderLoading(label string) {
 	a.paintConnectionSection(label)
 }
 
 func (a *App) paintConnectionSection(label string) {
-	if a == nil || a.statusBar == nil {
+	if a == nil {
 		return
 	}
-	count := a.statusBar.SectionCount()
-	section := a.connectedStatusSection()
-	if label != "" {
-		section = layout.StatusSection{Text: label, ColorFunc: theme.Accent}
-	}
-	switch {
-	case count > connectionSectionIndex:
-		a.statusBar.UpdateSection(connectionSectionIndex, section)
-	case count == connectionSectionIndex:
-		a.statusBar.AddSection(section)
-	}
+	a.connectionLabel = label
 }

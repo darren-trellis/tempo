@@ -30,6 +30,15 @@ const (
 
 var activityDetailTabOrder = []activityDetailKind{activityDetailDetails, activityDetailInput, activityDetailOutput}
 
+type workflowIOKind int
+
+const (
+	workflowIOInput workflowIOKind = iota
+	workflowIOOutput
+)
+
+var workflowIOTabOrder = []workflowIOKind{workflowIOInput, workflowIOOutput}
+
 type previewActivity struct {
 	ScheduledID int64
 	ActivityID  string
@@ -184,6 +193,20 @@ func (k activityDetailKind) title() string {
 	default:
 		return "Details"
 	}
+}
+
+func (k workflowIOKind) title() string {
+	if k == workflowIOOutput {
+		return "Output"
+	}
+	return "Input"
+}
+
+func (k workflowIOKind) icon() string {
+	if k == workflowIOOutput {
+		return theme.IconArrowLeft
+	}
+	return theme.IconArrowRight
 }
 
 func (k activityDetailKind) icon() string {

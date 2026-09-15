@@ -48,7 +48,7 @@ func (wl *WorkflowList) showVisibilityQuery() {
 	})
 	modal.SetContent(content)
 	modal.SetHints([]components.KeyHint{
-		{Key: "Ctrl+S", Description: "Apply"},
+		{Key: "Enter", Description: "Apply"},
 		{Key: "Esc", Description: "Cancel"},
 	})
 
@@ -85,6 +85,7 @@ func (wl *WorkflowList) showQueryTemplates() {
 	}{
 		// Status filters
 		{"Running Workflows", "ExecutionStatus = 'Running'"},
+		{"Unhandled Failures", "`ExecutionStatus`=\"Running\" AND `TemporalReportedProblems` IN (\"category=WorkflowTaskFailed\", \"category=WorkflowTaskTimedOut\")"},
 		{"Failed Workflows", "ExecutionStatus = 'Failed'"},
 		{"Completed Workflows", "ExecutionStatus = 'Completed'"},
 		{"Cancelled Workflows", "ExecutionStatus = 'Canceled'"},
@@ -169,7 +170,7 @@ func (wl *WorkflowList) showDateRangePicker() {
 	})
 	modal.SetContent(form)
 	modal.SetHints([]components.KeyHint{
-		{Key: "Ctrl+S", Description: "Apply"},
+		{Key: "Enter", Description: "Apply"},
 		{Key: "Esc", Description: "Cancel"},
 	})
 
@@ -319,7 +320,7 @@ func (wl *WorkflowList) showSaveFilter() {
 	})
 	modal.SetContent(content)
 	modal.SetHints([]components.KeyHint{
-		{Key: "Ctrl+S", Description: "Save"},
+		{Key: "Enter", Description: "Save"},
 		{Key: "Esc", Description: "Cancel"},
 	})
 
@@ -335,22 +336,10 @@ func (wl *WorkflowList) clearVisibilityQuery() {
 }
 
 func (wl *WorkflowList) updatePanelTitle() {
-	title := fmt.Sprintf("%s Workflows (List)", theme.IconWorkflow)
-	if wl.visibilityQuery != "" {
-		q := wl.visibilityQuery
-		if len(q) > 40 {
-			q = q[:37] + "..."
-		}
-		title = fmt.Sprintf("%s Workflows (%s)", theme.IconWorkflow, q)
-	} else if wl.filterText != "" {
-		title = fmt.Sprintf("%s Workflows (/%s)", theme.IconWorkflow, wl.filterText)
-	} else if wl.workflowTreeMode {
-		title = fmt.Sprintf("%s Workflows (Tree)", theme.IconWorkflow)
+	if wl.workflowTab != nil {
+		wl.workflowTab.Name = workflowListTabName(wl.workflowTreeMode)
 	}
-	if wl.workflowTreeMode && (wl.visibilityQuery != "" || wl.filterText != "") {
-		title += " · Tree"
-	}
-	wl.SetMasterTitle(title)
+	wl.applyProfileTitle()
 }
 
 // resolveTimePlaceholders resolves time-based placeholders in Temporal visibility queries.

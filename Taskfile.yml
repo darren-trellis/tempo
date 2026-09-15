@@ -124,3 +124,12 @@ tasks:
     desc: Install tempo to GOPATH/bin
     cmds:
       - go install -ldflags "{{.LDFLAGS}}" ./cmd/tempo
+      - |
+        dest="$HOME/.local/bin/tempo"
+        if [ -e "$dest" ] || [ -d "$(dirname "$dest")" ]; then
+          mkdir -p "$(dirname "$dest")"
+          tmp="$(mktemp "${TMPDIR:-/tmp}/tempo.XXXXXX")"
+          cp "$(go env GOPATH)/bin/tempo" "$tmp"
+          chmod 755 "$tmp"
+          mv -f "$tmp" "$dest"
+        fi

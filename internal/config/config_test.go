@@ -22,6 +22,28 @@ func TestExpandEnvCodecEndpoint(t *testing.T) {
 	}
 }
 
+func TestCloudAPIKeyError(t *testing.T) {
+	t.Setenv("TEMPORAL_TS_API_KEY_BETA", "")
+	cfg := ConnectionConfig{
+		Address: "us-west-2.aws.api.temporal.io:7233",
+		APIKey:  "${TEMPORAL_TS_API_KEY_BETA}",
+	}
+	err := cfg.CloudAPIKeyError()
+	if err == nil || !strings.Contains(err.Error(), "TEMPORAL_TS_API_KEY_BETA") {
+		t.Fatalf("want unset env named, got %v", err)
+	}
+
+	t.Setenv("TEMPORAL_TS_API_KEY_BETA", "k")
+	if err := cfg.CloudAPIKeyError(); err != nil {
+		t.Fatalf("set key should pass: %v", err)
+	}
+
+	local := ConnectionConfig{Address: "localhost:7233"}
+	if err := local.CloudAPIKeyError(); err != nil {
+		t.Fatalf("local should not require a cloud key: %v", err)
+	}
+}
+
 func TestExpandEnvUIURL(t *testing.T) {
 	t.Setenv("TEMPORAL_UI_URL", "https://ui.example.com")
 	cfg := ConnectionConfig{
@@ -317,6 +339,53 @@ func TestRefreshRate(t *testing.T) {
 	}
 	if got := cfg.RefreshRate(); got != 2*time.Second {
 		t.Fatalf("bare seconds refresh_rate = %s", got)
+	}
+}
+
+func TestPreviewLoadDelay(t *testing.T) {
+	if got := DefaultConfig().PreviewLoadDelay(); got != DefaultPreviewLoadDelay {
+		t.Fatalf("default preview load delay = %s", got)
+	}
+	var nilCfg *Config
+	if got := nilCfg.PreviewLoadDelay(); got != DefaultPreviewLoadDelay {
+		t.Fatalf("nil config preview load delay = %s", got)
+	}
+
+	zero := Setting{text: "0"}
+	if got := (&Config{PreviewLoadWait: &zero}).PreviewLoadDelay(); got != 0 {
+		t.Fatalf("0 should load immediately, got %s", got)
+	}
+	ms := Setting{text: "50ms"}
+	if got := (&Config{PreviewLoadWait: &ms}).PreviewLoadDelay(); got != 50*time.Millisecond {
+		t.Fatalf("configured delay = %s", got)
+	}
+	for _, bad := range []string{"", "   ", "soon"} {
+		value := Setting{text: bad}
+		if got := (&Config{PreviewLoadWait: &value}).PreviewLoadDelay(); got != DefaultPreviewLoadDelay {
+			t.Fatalf("%q should fall back, got %s", bad, got)
+		}
+	}
+	neg, huge := Setting{text: "-1s"}, Setting{text: "1h"}
+	if got := (&Config{PreviewLoadWait: &neg}).PreviewLoadDelay(); got != 0 {
+		t.Fatalf("negative delay should be 0, got %s", got)
+	}
+	if got := (&Config{PreviewLoadWait: &huge}).PreviewLoadDelay(); got != MaxPreviewLoadDelay {
+		t.Fatalf("huge delay should clamp, got %s", got)
+	}
+
+	cfg, err := parseConfig([]byte("preview_load_delay: 50ms\n"))
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	if got := cfg.PreviewLoadDelay(); got != 50*time.Millisecond {
+		t.Fatalf("yaml preview_load_delay = %s", got)
+	}
+	cfg, err = parseConfig([]byte("preview_load_delay: 0\n"))
+	if err != nil {
+		t.Fatalf("parse zero: %v", err)
+	}
+	if got := cfg.PreviewLoadDelay(); got != 0 {
+		t.Fatalf("yaml 0 preview_load_delay = %s", got)
 	}
 }
 

@@ -132,8 +132,8 @@ func (m *TimelineLegendModal) setup(statusItems, typeItems []timelineLegendItem)
 	columns.AddItem(left, 0, 1, true)
 	columns.AddItem(right, 0, 1, false)
 
-	m.Modal.SetContent(columns)
-	m.Modal.SetHints([]components.KeyHint{
+	m.SetContent(columns)
+	m.SetHints([]components.KeyHint{
 		{Key: "Esc/?", Description: "Close"},
 	})
 }

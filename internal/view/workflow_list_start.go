@@ -10,12 +10,15 @@ import (
 	"github.com/atterpac/jig/theme"
 	"github.com/atterpac/jig/validators"
 	"github.com/galaxy-io/tempo/internal/temporal"
+	"github.com/gdamore/tcell/v2"
+	"github.com/rivo/tview"
 )
 
 const (
 	startWorkflowFieldCount  = 6
 	startWorkflowFieldHeight = 4
-	startWorkflowModalHeight = 2 + startWorkflowFieldCount*startWorkflowFieldHeight + (startWorkflowFieldCount - 1)
+	startWorkflowInputHeight = 11
+	startWorkflowModalHeight = 2 + (startWorkflowFieldCount-1)*startWorkflowFieldHeight + startWorkflowInputHeight + (startWorkflowFieldCount - 1)
 )
 
 // startWorkflowPrefill holds the pre-fill values for the start workflow modal.
@@ -66,33 +69,40 @@ func (r startWorkflowSubmit) namespace(app *App) string {
 
 func startWorkflowHints() []components.KeyHint {
 	return []components.KeyHint{
-		{Key: "Tab", Description: "Next field"},
+		{Key: "Tab", Description: "Complete / Next"},
 		{Key: "Enter", Description: "Execute"},
 		{Key: "Esc", Description: "Cancel"},
 	}
 }
 
 func showStartWorkflowModal(app *App, prefill startWorkflowPrefill) {
+	namespace := prefill.Namespace
+	if namespace == "" && app != nil {
+		namespace = app.CurrentNamespace()
+	}
+	types, queues := startWorkflowSuggestions(app, namespace)
+	typeField := newTypeaheadField("workflowType", "Workflow Type", types).
+		SetPlaceholder("Enter workflow type").
+		SetValue(prefill.WorkflowType).
+		SetValidator(validators.Required())
+	queueField := newTypeaheadField("taskQueue", "Task Queue", queues).
+		SetPlaceholder("Enter task queue").
+		SetValue(prefill.TaskQueue).
+		SetValidator(validators.Required())
+	inputField := components.NewTextArea("input").
+		SetLabel("Input (JSON, optional)").
+		SetPlaceholder("{}").
+		SetValue(prefill.Input)
+
 	form := components.NewFormBuilder().
 		Text("workflowId", "Workflow ID").
 		Placeholder("Enter workflow ID").
 		Value(prefill.WorkflowID).
 		Validate(validators.Required()).
 		Done().
-		Text("workflowType", "Workflow Type").
-		Placeholder("Enter workflow type").
-		Value(prefill.WorkflowType).
-		Validate(validators.Required()).
-		Done().
-		Text("taskQueue", "Task Queue").
-		Placeholder("Enter task queue").
-		Value(prefill.TaskQueue).
-		Validate(validators.Required()).
-		Done().
-		Text("input", "Input (JSON, optional)").
-		Placeholder("{}").
-		Value(prefill.Input).
-		Done().
+		AddField(typeField).
+		AddField(queueField).
+		AddField(inputField).
 		Text("signalName", "Signal Name (optional)").
 		Placeholder("Leave empty to start without a signal").
 		Value(prefill.SignalName).
@@ -102,11 +112,23 @@ func showStartWorkflowModal(app *App, prefill startWorkflowPrefill) {
 		Value(prefill.SignalInput).
 		Done().
 		OnSubmit(func(values map[string]any) {
+			if err := typeField.Validate(); err != nil {
+				if app != nil {
+					app.ToastError("Workflow Type: " + err.Error())
+				}
+				return
+			}
+			if err := queueField.Validate(); err != nil {
+				if app != nil {
+					app.ToastError("Task Queue: " + err.Error())
+				}
+				return
+			}
 			req := startWorkflowSubmit{
 				Namespace:    prefill.Namespace,
 				WorkflowID:   stringValue(values, "workflowId"),
-				WorkflowType: stringValue(values, "workflowType"),
-				TaskQueue:    stringValue(values, "taskQueue"),
+				WorkflowType: typeField.GetValue(),
+				TaskQueue:    queueField.GetValue(),
 				Input:        stringValue(values, "input"),
 				SignalName:   stringValue(values, "signalName"),
 				SignalInput:  stringValue(values, "signalInput"),
@@ -117,23 +139,44 @@ func showStartWorkflowModal(app *App, prefill startWorkflowPrefill) {
 				}
 				return
 			}
+			stopWatchingStartCatalog(app, namespace)
 			app.JigApp().Pages().DismissModal()
 			executeStartWorkflow(app, req)
 		}).
 		OnCancel(func() {
+			if collapseOpenTypeahead(typeField, queueField) {
+				return
+			}
+			stopWatchingStartCatalog(app, namespace)
 			app.JigApp().Pages().DismissModal()
 		}).
 		Build()
+	form.SetInputCapture(startWorkflowFormCapture(inputField, typeField, queueField))
 
 	modal := newOverlayModal(components.ModalConfig{
 		Title:  fmt.Sprintf("%s Start Workflow", theme.IconInfo),
 		Width:  70,
 		Height: startWorkflowModalHeight,
 	}, nil)
+	modal.SetDismissOnEsc(false)
 	modal.SetContent(form)
 	hints := startWorkflowHints()
 	modal.SetHints(hints)
+	modal.interceptEscape = func() bool {
+		return collapseOpenTypeahead(typeField, queueField)
+	}
+	modal.SetOnDismiss(func() bool {
+		if collapseOpenTypeahead(typeField, queueField) {
+			return false
+		}
+		stopWatchingStartCatalog(app, namespace)
+		return true
+	})
 	modal.SetOnCancel(func() {
+		if collapseOpenTypeahead(typeField, queueField) {
+			return
+		}
+		stopWatchingStartCatalog(app, namespace)
 		app.JigApp().Pages().DismissModal()
 	})
 
@@ -142,6 +185,118 @@ func showStartWorkflowModal(app *App, prefill startWorkflowPrefill) {
 		app.JigApp().Menu().SetHints(hints)
 	}
 	app.JigApp().SetFocus(form)
+	if app != nil {
+		if !app.catalog.has(namespace) {
+			app.refreshNamespaceCatalogFor(namespace)
+		}
+		app.watchStartCatalog(namespace, typeField, queueField)
+	}
+}
+
+func stopWatchingStartCatalog(app *App, namespace string) {
+	if app == nil {
+		return
+	}
+	app.catalog.unlisten(namespace)
+}
+
+func collapseOpenTypeahead(fields ...*typeaheadField) bool {
+	for _, field := range fields {
+		if field != nil && field.collapse() {
+			return true
+		}
+	}
+	return false
+}
+
+func typeaheadFormTabCapture(fields ...*typeaheadField) func(*tcell.EventKey) *tcell.EventKey {
+	return startWorkflowFormCapture(nil, fields...)
+}
+
+func startWorkflowFormCapture(input *components.TextArea, fields ...*typeaheadField) func(*tcell.EventKey) *tcell.EventKey {
+	return func(event *tcell.EventKey) *tcell.EventKey {
+		if event == nil {
+			return event
+		}
+		switch event.Key() {
+		case tcell.KeyEscape:
+			if collapseOpenTypeahead(fields...) {
+				return nil
+			}
+		case tcell.KeyTab:
+			for _, field := range fields {
+				if field != nil && field.HasFocus() && field.acceptSuggestion() {
+					return nil
+				}
+			}
+		case tcell.KeyEnter:
+			if input != nil && input.HasFocus() {
+				if handler := input.InputHandler(); handler != nil {
+					handler(event, func(tview.Primitive) {})
+				}
+				return nil
+			}
+		}
+		return event
+	}
+}
+
+func startWorkflowSuggestions(app *App, namespace string) (types, queues []string) {
+	types, queues, _ = app.catalogSuggestions(namespace)
+	return types, queues
+}
+
+func suggestionsFromWorkflowList(wl *WorkflowList) (types, queues []string) {
+	if wl == nil {
+		return nil, nil
+	}
+	typeSet := map[string]struct{}{}
+	queueSet := map[string]struct{}{}
+	for _, w := range wl.allWorkflows {
+		typeSet[w.Type] = struct{}{}
+		queueSet[w.TaskQueue] = struct{}{}
+	}
+	if wl.taskQueues != nil {
+		for _, q := range wl.taskQueues.allQueues {
+			if q.Name != "" && q.Name != "(no task queues found)" {
+				queueSet[q.Name] = struct{}{}
+			}
+		}
+	}
+	if wl.workers != nil {
+		for _, w := range wl.workers.allWorkers {
+			queueSet[w.TaskQueue] = struct{}{}
+		}
+	}
+	if wl.schedules != nil {
+		for _, s := range wl.schedules.allSchedules {
+			typeSet[s.WorkflowType] = struct{}{}
+			queueSet[s.TaskQueue] = struct{}{}
+		}
+	}
+	return uniqueSortedStrings(keysOf(typeSet)), uniqueSortedStrings(keysOf(queueSet))
+}
+
+func keysOf(set map[string]struct{}) []string {
+	out := make([]string, 0, len(set))
+	for k := range set {
+		out = append(out, k)
+	}
+	return out
+}
+
+func currentWorkflowList(app *App) *WorkflowList {
+	if app == nil || app.JigApp() == nil {
+		return nil
+	}
+	pages := app.JigApp().Pages()
+	if pages == nil {
+		return nil
+	}
+	if wl, ok := pages.Current().(*WorkflowList); ok {
+		return wl
+	}
+	return nil
 }
 
 func stringValue(values map[string]any, key string) string {

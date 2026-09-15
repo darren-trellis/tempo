@@ -1,6 +1,7 @@
 package view
 
 import (
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -54,5 +55,33 @@ func TestTaskQueueViewKeepsListAndPollers(t *testing.T) {
 	}
 	if tq.queues[0].PollerCount != 4 || tq.queues[0].Backlog != 7 {
 		t.Fatalf("queue stats should come from cache, got %+v", tq.queues[0])
+	}
+}
+
+func TestTaskQueuePrefetchFillsPollerCountsWithoutHighlight(t *testing.T) {
+	provider := &fakeWorkerProvider{
+		pollers: map[string][]temporal.Poller{
+			"orders":   {{Identity: "w1"}, {Identity: "w2"}},
+			"payments": {{Identity: "w3"}},
+			"shipping": nil,
+		},
+	}
+	tq := NewTaskQueueView(&App{provider: provider})
+	tq.allQueues = []taskQueueEntry{
+		{Name: "orders", Type: "Combined"},
+		{Name: "payments", Type: "Combined"},
+		{Name: "shipping", Type: "Combined"},
+	}
+	tq.applyFilter("")
+	tq.prefetchQueueStats()
+
+	if got := int(atomic.LoadInt32(&provider.describeCalls)); got != 3 {
+		t.Fatalf("every queue should be described, got %d", got)
+	}
+	if tq.queues[0].PollerCount != 2 || tq.queues[1].PollerCount != 1 || tq.queues[2].PollerCount != 0 {
+		t.Fatalf("poller counts should fill without highlighting a row, got %+v", tq.queues)
+	}
+	if cells := tq.queueTable.GetRowData(1); len(cells) < 3 || cells[2] != "1" {
+		t.Fatalf("payments poller cell should show 1, got %v", cells)
 	}
 }

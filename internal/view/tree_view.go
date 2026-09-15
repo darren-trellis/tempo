@@ -9,6 +9,8 @@ import (
 	"github.com/rivo/tview"
 )
 
+const eventTreeDurationGap = 1
+
 // EventTreeView displays workflow history events in a collapsible tree structure.
 type EventTreeView struct {
 	*tview.TreeView
@@ -78,7 +80,25 @@ func (etv *EventTreeView) Draw(screen tcell.Screen) {
 	etv.SetGraphicsColor(theme.FgDim())
 	etv.root.SetColor(theme.Accent())
 	etv.refreshColors()
+	colW := eventTreeDurationWidth(etv.nodes)
+	if colW > 0 {
+		colW += eventTreeDurationGap
+	}
+	etv.SetDrawFunc(func(_ tcell.Screen, x, y, width, height int) (int, int, int, int) {
+		innerW := width
+		if appShowsScrollbars(etv.app) && treeScrollMetrics(etv.TreeView, height).overflow() {
+			innerW--
+		}
+		if colW > 0 && innerW > colW+2 {
+			innerW -= colW
+		}
+		if innerW < 1 {
+			innerW = 1
+		}
+		return x, y, innerW, height
+	})
 	etv.TreeView.Draw(screen)
+	etv.drawDurationColumn(screen, colW)
 	drawTreeScrollbar(etv.TreeView, screen, etv.app)
 }
 
@@ -130,21 +150,105 @@ func (etv *EventTreeView) formatNodeText(node *temporal.EventTreeNode) string {
 	icon := etv.statusIcon(node.Status)
 	name := node.Name
 
-	// Add duration if completed
 	var suffix string
-	if node.EndTime != nil && node.Duration > 0 {
-		suffix = fmt.Sprintf(" %s", temporal.FormatDuration(node.Duration))
-	}
-
-	// Add attempt count if multiple attempts
 	if node.Attempts > 1 {
 		suffix = fmt.Sprintf(" %d attempts", node.Attempts)
 	}
 
-	// Add status tag
 	statusTag := fmt.Sprintf("[%s]", node.Status)
-
 	return fmt.Sprintf("%s %s %s%s", icon, name, statusTag, suffix)
+}
+
+func eventTreeDurationText(node *temporal.EventTreeNode) string {
+	if node == nil || node.Duration <= 0 {
+		return ""
+	}
+	return temporal.FormatDuration(node.Duration)
+}
+
+func eventTreeDurationWidth(nodes []*temporal.EventTreeNode) int {
+	width := 0
+	var walk func([]*temporal.EventTreeNode)
+	walk = func(list []*temporal.EventTreeNode) {
+		for _, node := range list {
+			if n := len(eventTreeDurationText(node)); n > width {
+				width = n
+			}
+			walk(node.Children)
+		}
+	}
+	walk(nodes)
+	return width
+}
+
+func flattenVisibleTreeNodes(root *tview.TreeNode) []*tview.TreeNode {
+	if root == nil {
+		return nil
+	}
+	var out []*tview.TreeNode
+	var walk func(*tview.TreeNode)
+	walk = func(node *tview.TreeNode) {
+		out = append(out, node)
+		if node.IsExpanded() {
+			for _, child := range node.GetChildren() {
+				walk(child)
+			}
+		}
+	}
+	walk(root)
+	return out
+}
+
+func rightAlignIn(text string, width int) string {
+	if width <= 0 {
+		return ""
+	}
+	runes := []rune(text)
+	if len(runes) > width {
+		return string(runes[len(runes)-width:])
+	}
+	pad := width - len(runes)
+	out := make([]rune, width)
+	for i := 0; i < pad; i++ {
+		out[i] = ' '
+	}
+	copy(out[pad:], runes)
+	return string(out)
+}
+
+func (etv *EventTreeView) drawDurationColumn(screen tcell.Screen, colW int) {
+	if etv == nil || screen == nil || colW <= 0 {
+		return
+	}
+	innerX, y, innerW, height := etv.GetInnerRect()
+	if height < 1 {
+		return
+	}
+	colX := innerX + innerW
+	_, _, width, _ := etv.GetRect()
+	if colX+colW > innerX+width {
+		colX = innerX + innerW - colW
+		if colX < innerX {
+			return
+		}
+	}
+	visible := flattenVisibleTreeNodes(etv.root)
+	offset := etv.GetScrollOffset()
+	style := tcell.StyleDefault.Background(theme.Bg()).Foreground(theme.FgDim())
+	for row := 0; row < height; row++ {
+		idx := offset + row
+		if idx < 0 || idx >= len(visible) {
+			break
+		}
+		text := ""
+		if eventNode, ok := visible[idx].GetReference().(*temporal.EventTreeNode); ok {
+			text = eventTreeDurationText(eventNode)
+		}
+		aligned := rightAlignIn(text, colW)
+		for i, r := range aligned {
+			screen.SetContent(colX+i, y+row, r, nil, style)
+		}
+	}
 }
 
 // statusIcon returns the icon for a node status.

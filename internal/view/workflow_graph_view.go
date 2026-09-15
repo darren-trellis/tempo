@@ -472,6 +472,7 @@ func (wg *WorkflowGraphView) buildGraphData() {
 
 	seen := make(map[string]bool)
 	byWorkflow := make(map[string]string)
+	outgoing := make(map[string][]string)
 	current := wg.relationships.Current
 	currentID := graphExecID(current.ID, current.RunID)
 
@@ -484,11 +485,7 @@ func (wg *WorkflowGraphView) buildGraphData() {
 				Status: parent.Status,
 				Data:   parent,
 			})
-			wg.graphData.AddEdge(&components.GraphEdge{
-				From: parentID,
-				To:   currentID,
-				Type: components.GraphEdgeSolid,
-			})
+			addAcyclicGraphEdge(wg.graphData, outgoing, parentID, currentID, components.GraphEdgeSolid, "")
 			seen[parentID] = true
 			byWorkflow[parent.ID] = parentID
 		}
@@ -505,26 +502,18 @@ func (wg *WorkflowGraphView) buildGraphData() {
 	seen[currentID] = true
 	byWorkflow[current.ID] = currentID
 
-	wg.addChildrenToGraph(currentID, wg.relationships.Children, seen, byWorkflow)
+	wg.addChildrenToGraph(currentID, wg.relationships.Children, seen, byWorkflow, outgoing)
 
 	for _, signal := range wg.relationships.OutgoingSignals {
 		from := byWorkflow[signal.FromWorkflowID]
 		to := byWorkflow[signal.ToWorkflowID]
-		if from == "" || to == "" || from == to {
-			continue
-		}
-		wg.graphData.AddEdge(&components.GraphEdge{
-			From:  from,
-			To:    to,
-			Type:  components.GraphEdgeDashed,
-			Label: signal.SignalName,
-		})
+		addAcyclicGraphEdge(wg.graphData, outgoing, from, to, components.GraphEdgeDashed, signal.SignalName)
 	}
 
 	wg.graph.SetData(wg.graphData)
 }
 
-func (wg *WorkflowGraphView) addChildrenToGraph(parentID string, children []*temporal.WorkflowNode, seen map[string]bool, byWorkflow map[string]string) {
+func (wg *WorkflowGraphView) addChildrenToGraph(parentID string, children []*temporal.WorkflowNode, seen map[string]bool, byWorkflow map[string]string, outgoing map[string][]string) {
 	for _, child := range children {
 		id := graphExecID(child.ID, child.RunID)
 		if id == "" || id == parentID || seen[id] {
@@ -547,17 +536,49 @@ func (wg *WorkflowGraphView) addChildrenToGraph(parentID string, children []*tem
 		} else if child.EdgeType == "continue" {
 			edgeType = components.GraphEdgeDotted
 		}
-
-		wg.graphData.AddEdge(&components.GraphEdge{
-			From: parentID,
-			To:   id,
-			Type: edgeType,
-		})
+		addAcyclicGraphEdge(wg.graphData, outgoing, parentID, id, edgeType, "")
 
 		if len(child.Children) > 0 {
-			wg.addChildrenToGraph(id, child.Children, seen, byWorkflow)
+			wg.addChildrenToGraph(id, child.Children, seen, byWorkflow, outgoing)
 		}
 	}
+}
+
+func addAcyclicGraphEdge(data *components.NodeGraphData, outgoing map[string][]string, from, to string, edgeType components.GraphEdgeType, label string) {
+	if data == nil || from == "" || to == "" || from == to {
+		return
+	}
+	if graphEdgeWouldCycle(outgoing, from, to) {
+		return
+	}
+	data.AddEdge(&components.GraphEdge{From: from, To: to, Type: edgeType, Label: label})
+	if outgoing != nil {
+		outgoing[from] = append(outgoing[from], to)
+	}
+}
+
+func graphEdgeWouldCycle(outgoing map[string][]string, from, to string) bool {
+	if from == to {
+		return true
+	}
+	seen := map[string]bool{}
+	var reach func(string) bool
+	reach = func(id string) bool {
+		if id == from {
+			return true
+		}
+		if seen[id] {
+			return false
+		}
+		seen[id] = true
+		for _, next := range outgoing[id] {
+			if reach(next) {
+				return true
+			}
+		}
+		return false
+	}
+	return reach(to)
 }
 
 func (wg *WorkflowGraphView) onTreeSelectionChange(node *components.GraphTreeNode) {

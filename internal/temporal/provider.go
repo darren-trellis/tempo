@@ -52,8 +52,17 @@ type Provider interface {
 	// ListWorkers returns workers that have recently heartbeated in a namespace.
 	ListWorkers(ctx context.Context, namespace string) ([]Worker, error)
 
-	// ListTaskQueueNames returns task queue names from workers, workflows, and schedules.
+	// ListTaskQueueNames returns distinct task queue names from visibility,
+	// workers, and schedules — not just the current list page.
 	ListTaskQueueNames(ctx context.Context, namespace string) ([]string, error)
+
+	// ListWorkflowTypes returns distinct workflow type names from visibility
+	// and schedules — not just the current list page.
+	ListWorkflowTypes(ctx context.Context, namespace string) ([]string, error)
+
+	// ListStartCatalog returns every distinct workflow type and task queue in
+	// a namespace, paging through visibility rather than the current UI page.
+	ListStartCatalog(ctx context.Context, namespace string) (types, queues []string, err error)
 
 	// Close releases any resources held by the provider.
 	Close() error
@@ -159,12 +168,14 @@ type ListOptions struct {
 
 // WorkflowCounts is the visibility count of executions by status.
 type WorkflowCounts struct {
-	Running    int
-	Completed  int
-	Failed     int
-	Canceled   int
-	Terminated int
-	Total      int
+	Running        int
+	Completed      int
+	Failed         int
+	Canceled       int
+	Terminated     int
+	TimedOut       int
+	ContinuedAsNew int
+	Total          int
 }
 
 // Namespace represents a Temporal namespace.
@@ -207,18 +218,19 @@ type NamespaceDetail struct {
 
 // Workflow represents a workflow execution.
 type Workflow struct {
-	ID        string
-	RunID     string
-	Type      string
-	Status    string // "Running", "Completed", "Failed", "Canceled", "Terminated", "TimedOut"
-	Namespace string
-	TaskQueue string
-	StartTime time.Time
-	EndTime   *time.Time
-	ParentID  *string
-	Memo      map[string]string
-	Input     string // JSON-formatted workflow input
-	Output    string // JSON-formatted workflow result (or failure message)
+	ID          string
+	RunID       string
+	Type        string
+	Status      string // "Running", "Completed", "Failed", "Canceled", "Terminated", "TimedOut"
+	Namespace   string
+	TaskQueue   string
+	StartTime   time.Time
+	EndTime     *time.Time
+	ParentID    *string
+	Memo        map[string]string
+	Input       string // JSON-formatted workflow input
+	Output      string // JSON-formatted workflow result (or failure message)
+	TaskFailure bool   // Running execution has an unhandled workflow task failure
 }
 
 // HistoryEvent represents a workflow history event.
