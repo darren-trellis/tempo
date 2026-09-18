@@ -498,6 +498,7 @@ func (wl *WorkflowList) applySavedFilter(f config.SavedFilter) {
 	wl.activeFilterName = f.Name
 	wl.filterClauses = append([]config.FilterClause(nil), f.Clauses...)
 	wl.applyVisibilityQuery(compiledFilterQueryFor(wl, f))
+	wl.revealActiveFilterChip()
 }
 
 func (wl *WorkflowList) applyFilterClauses(clauses []config.FilterClause) {
@@ -514,6 +515,14 @@ func (wl *WorkflowList) applyAllWorkflowsFilter() {
 		return
 	}
 	wl.clearAllFilters()
+	wl.revealActiveFilterChip()
+}
+
+func (wl *WorkflowList) revealActiveFilterChip() {
+	if wl == nil || wl.filterBar == nil || wl.filtersOnSide() || wl.shouldWrapFilters() {
+		return
+	}
+	wl.filterBar.revealChip(wl.activeFilterName)
 }
 
 func (wl *WorkflowList) closeAllModals() {

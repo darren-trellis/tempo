@@ -8,6 +8,7 @@ import (
 	"github.com/galaxy-io/tempo/internal/config"
 	"github.com/galaxy-io/tempo/internal/temporal"
 	"github.com/gdamore/tcell/v2"
+	"github.com/rivo/tview"
 )
 
 func TestFilterBarItemsAllVsNamed(t *testing.T) {
@@ -33,20 +34,62 @@ func TestFilterBarItemsAllVsNamed(t *testing.T) {
 	}
 }
 
-func TestLayoutFilterBarOverflow(t *testing.T) {
+func TestFilterBarContentWidth(t *testing.T) {
 	items := []filterBarChip{
 		{label: "All"},
 		{label: "Running Workflows"},
 		{label: "Failed Workflows"},
 		{label: "Completed Workflows"},
 	}
-	shown, extra := layoutFilterBar(items, 28)
-	if extra <= 0 || len(shown) == 0 || shown[0].label != "All" {
-		t.Fatalf("shown=%v extra=%d", shown, extra)
+	if got := filterBarContentWidth(items); got != 5+1+19+1+18+1+21 {
+		t.Fatalf("width=%d", got)
 	}
-	shown, extra = layoutFilterBar(items, 80)
-	if extra != 0 || len(shown) != 4 {
-		t.Fatalf("wide shown=%d extra=%d", len(shown), extra)
+}
+
+func TestFilterBarScrollsHorizontally(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.SavedFilters = []config.SavedFilter{
+		{Name: "Running Workflows"},
+		{Name: "Failed Workflows"},
+		{Name: "Completed Workflows"},
+	}
+	wl := NewWorkflowList(&App{config: cfg}, "default")
+	wl.filterBar.SetRect(0, 0, 24, 2)
+	screen := tcell.NewSimulationScreen("UTF-8")
+	if err := screen.Init(); err != nil {
+		t.Fatal(err)
+	}
+	screen.SetSize(24, 2)
+	wl.filterBar.Draw(screen)
+	top := rowText(screen, 0, 24)
+	if !strings.Contains(top, "All") {
+		t.Fatalf("start=%q", top)
+	}
+	if strings.Contains(top, "Completed") {
+		t.Fatalf("narrow bar should not show the last chip yet, got %q", top)
+	}
+
+	handler := wl.filterBar.MouseHandler()
+	event := tcell.NewEventMouse(0, 0, tcell.WheelDown, tcell.ModNone)
+	for i := 0; i < 40; i++ {
+		handler(tview.MouseScrollDown, event, func(tview.Primitive) {})
+	}
+	if wl.filterBar.hOffset <= 0 {
+		t.Fatal("wheel should scroll the chips")
+	}
+	screen.Clear()
+	wl.filterBar.Draw(screen)
+	top = rowText(screen, 0, 24)
+	if strings.Contains(top, "+") {
+		t.Fatalf("overflow +N should be gone, got %q", top)
+	}
+	if !strings.Contains(top, "Completed") {
+		t.Fatalf("scrolled bar should show later chips, got %q", top)
+	}
+
+	wl.filterBar.scrollHoriz(-1000)
+	if wl.filterBar.hOffset != 0 {
+		t.Fatalf("left clamp=%d", wl.filterBar.hOffset)
 	}
 }
 

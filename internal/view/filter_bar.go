@@ -1,7 +1,6 @@
 package view
 
 import (
-	"fmt"
 	"strings"
 	"unicode/utf8"
 
@@ -25,10 +24,11 @@ type filterBarHit struct {
 
 type filterChipBar struct {
 	*tview.Box
-	wl     *WorkflowList
-	hits   []filterBarHit
-	cursor int
-	offset int
+	wl      *WorkflowList
+	hits    []filterBarHit
+	cursor  int
+	offset  int
+	hOffset int
 }
 
 func newFilterChipBar(wl *WorkflowList) *filterChipBar {
@@ -43,6 +43,7 @@ func (b *filterChipBar) MouseHandler() func(tview.MouseAction, *tcell.EventMouse
 			return false, nil
 		}
 		side := b.wl != nil && b.wl.filtersOnSide()
+		wrap := b.wl != nil && b.wl.shouldWrapFilters()
 		switch action {
 		case tview.MouseLeftDown, tview.MouseLeftClick, tview.MouseLeftDoubleClick:
 			if side && b.wl != nil {
@@ -56,15 +57,23 @@ func (b *filterChipBar) MouseHandler() func(tview.MouseAction, *tcell.EventMouse
 				return true, b
 			}
 			return true, nil
-		case tview.MouseScrollUp:
+		case tview.MouseScrollUp, tview.MouseScrollDown, tview.MouseScrollLeft, tview.MouseScrollRight:
 			if side {
-				b.moveCursor(-1)
-				return true, b
+				if action == tview.MouseScrollUp {
+					b.moveCursor(-1)
+					return true, b
+				}
+				if action == tview.MouseScrollDown {
+					b.moveCursor(1)
+					return true, b
+				}
+				return false, nil
 			}
-		case tview.MouseScrollDown:
-			if side {
-				b.moveCursor(1)
-				return true, b
+			if !wrap {
+				if delta := filterBarScrollDelta(action); delta != 0 {
+					b.scrollHoriz(delta * b.horizScrollStep())
+					return true, nil
+				}
 			}
 		}
 		return false, nil
@@ -150,37 +159,28 @@ func filterChipWidth(label string) int {
 	return utf8.RuneCountInString(label) + 2
 }
 
-func filterOverflowWidth(n int) int {
-	if n <= 0 {
+func filterBarContentWidth(items []filterBarChip) int {
+	if len(items) == 0 {
 		return 0
 	}
-	return 1 + utf8.RuneCountInString(fmt.Sprintf("+%d", n))
+	used := 0
+	for i, item := range items {
+		if i > 0 {
+			used++
+		}
+		used += filterChipWidth(item.label)
+	}
+	return used
 }
 
-func layoutFilterBar(items []filterBarChip, width int) ([]filterBarChip, int) {
-	if width <= 0 || len(items) == 0 {
-		return nil, 0
+func filterBarScrollDelta(action tview.MouseAction) int {
+	switch action {
+	case tview.MouseScrollLeft, tview.MouseScrollUp:
+		return -1
+	case tview.MouseScrollRight, tview.MouseScrollDown:
+		return 1
 	}
-	best := 1
-	if best > len(items) {
-		best = len(items)
-	}
-	for n := 1; n <= len(items); n++ {
-		used := 0
-		for i := 0; i < n; i++ {
-			if i > 0 {
-				used++
-			}
-			used += filterChipWidth(items[i].label)
-		}
-		used += filterOverflowWidth(len(items) - n)
-		if used <= width {
-			best = n
-			continue
-		}
-		break
-	}
-	return items[:best], len(items) - best
+	return 0
 }
 
 func layoutFilterBarLines(items []filterBarChip, width int) [][]filterBarChip {
@@ -341,63 +341,130 @@ func (b *filterChipBar) drawTop(screen tcell.Screen) {
 		chipRows = height - 1
 	}
 	items := filterBarItems(b.wl)
-	var lines [][]filterBarChip
-	extra := 0
 	if b.wl != nil && b.wl.shouldWrapFilters() {
-		lines = layoutFilterBarLines(items, width)
+		lines := layoutFilterBarLines(items, width)
+		for row, shown := range lines {
+			if row >= chipRows {
+				break
+			}
+			b.paintChipRow(screen, shown, x, y+row, width, 0)
+		}
 	} else {
-		shown, n := layoutFilterBar(items, width)
-		lines = [][]filterBarChip{shown}
-		extra = n
-	}
-	for row, shown := range lines {
-		if row >= chipRows {
-			break
-		}
-		col := x
-		for _, item := range shown {
-			style := tcell.StyleDefault.Background(theme.Bg()).Foreground(theme.Fg())
-			if item.active {
-				style = tcell.StyleDefault.Background(theme.Accent()).Foreground(theme.Bg())
-			}
-			x0 := col
-			if col < x+width {
-				screen.SetContent(col, y+row, ' ', nil, style)
-				col++
-			}
-			for _, r := range item.label {
-				if col >= x+width {
-					break
-				}
-				screen.SetContent(col, y+row, r, nil, style)
-				col++
-			}
-			if col < x+width {
-				screen.SetContent(col, y+row, ' ', nil, style)
-				col++
-			}
-			b.hits = append(b.hits, filterBarHit{name: item.name, x0: x0, x1: col, y: y + row})
-			if col < x+width {
-				screen.SetContent(col, y+row, ' ', nil, bg)
-				col++
-			}
-		}
-		if extra > 0 && row == len(lines)-1 {
-			dim := tcell.StyleDefault.Background(theme.Bg()).Foreground(theme.FgDim())
-			for _, r := range fmt.Sprintf("+%d", extra) {
-				if col >= x+width {
-					break
-				}
-				screen.SetContent(col, y+row, r, nil, dim)
-				col++
-			}
-		}
+		b.clampHOffset()
+		b.paintChipRow(screen, items, x, y, width, b.hOffset)
 	}
 	if height > 1 {
-		line := tcell.StyleDefault.Background(theme.Bg()).Foreground(theme.Border())
 		row := y + height - 1
-		for col := x; col < x+width; col++ {
-			screen.SetContent(col, row, '─', nil, line)
+		content := filterBarContentWidth(items)
+		metrics := scrollMetrics{offset: b.hOffset, visible: width, total: content}
+		if b.wl != nil && !b.wl.shouldWrapFilters() && appShowsScrollbars(b.wl.app) && metrics.overflow() {
+			drawScrollbar(screen, x, row, width, metrics, false)
+		} else {
+			line := tcell.StyleDefault.Background(theme.Bg()).Foreground(theme.Border())
+			for col := x; col < x+width; col++ {
+				screen.SetContent(col, row, '─', nil, line)
+			}
+		}
+	}
+}
+
+func (b *filterChipBar) paintChipRow(screen tcell.Screen, items []filterBarChip, x, y, width, start int) {
+	col := x - start
+	limit := x + width
+	bg := tcell.StyleDefault.Background(theme.Bg()).Foreground(theme.Fg())
+	for i, item := range items {
+		style := tcell.StyleDefault.Background(theme.Bg()).Foreground(theme.Fg())
+		if item.active {
+			style = tcell.StyleDefault.Background(theme.Accent()).Foreground(theme.Bg())
+		}
+		vis0, vis1 := -1, -1
+		write := func(r rune, st tcell.Style) {
+			if col >= x && col < limit {
+				screen.SetContent(col, y, r, nil, st)
+				if vis0 < 0 {
+					vis0 = col
+				}
+				vis1 = col + 1
+			}
+			col++
+		}
+		write(' ', style)
+		for _, r := range item.label {
+			write(r, style)
+		}
+		write(' ', style)
+		if vis0 >= 0 {
+			b.hits = append(b.hits, filterBarHit{name: item.name, x0: vis0, x1: vis1, y: y})
+		}
+		if i < len(items)-1 {
+			write(' ', bg)
+		}
+	}
+}
+
+func (b *filterChipBar) horizScrollStep() int {
+	if b == nil || b.wl == nil {
+		return 1
+	}
+	return mouseScrollStepFromApp(b.wl.app)
+}
+
+func (b *filterChipBar) maxHOffset() int {
+	if b == nil {
+		return 0
+	}
+	_, _, w, _ := b.GetInnerRect()
+	max := filterBarContentWidth(filterBarItems(b.wl)) - w
+	if max < 0 {
+		return 0
+	}
+	return max
+}
+
+func (b *filterChipBar) clampHOffset() {
+	if b == nil {
+		return
+	}
+	if b.hOffset < 0 {
+		b.hOffset = 0
+	}
+	if max := b.maxHOffset(); b.hOffset > max {
+		b.hOffset = max
+	}
+}
+
+func (b *filterChipBar) scrollHoriz(delta int) {
+	if b == nil {
+		return
+	}
+	b.hOffset += delta
+	b.clampHOffset()
+}
+
+func (b *filterChipBar) revealChip(name string) {
+	if b == nil {
+		return
+	}
+	items := filterBarItems(b.wl)
+	_, _, vw, _ := b.GetInnerRect()
+	if vw < 1 {
+		return
+	}
+	col := 0
+	for i, item := range items {
+		w := filterChipWidth(item.label)
+		if strings.EqualFold(item.name, name) {
+			if col < b.hOffset {
+				b.hOffset = col
+			} else if col+w > b.hOffset+vw {
+				b.hOffset = col + w - vw
+			}
+			b.clampHOffset()
+			return
+		}
+		col += w
+		if i < len(items)-1 {
+			col++
 		}
 	}
 }
