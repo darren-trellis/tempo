@@ -7,9 +7,11 @@ import (
 	"strings"
 	"unicode"
 
+	commonpb "go.temporal.io/api/common/v1"
 	"go.temporal.io/api/enums/v1"
 	"go.temporal.io/api/operatorservice/v1"
 	"go.temporal.io/api/workflowservice/v1"
+	"go.temporal.io/sdk/client"
 )
 
 type SearchAttributeType int
@@ -50,14 +52,94 @@ func (c *Client) ListCustomSearchAttributes(ctx context.Context, namespace strin
 		aliases = nsResp.GetConfig().GetCustomSearchAttributeAliases()
 	}
 	var extra map[string]enums.IndexedValueType
-	if saResp, saErr := cl.WorkflowService().GetSearchAttributes(ctx, &workflowservice.GetSearchAttributesRequest{}); saErr == nil {
+	saResp, saErr := cl.WorkflowService().GetSearchAttributes(ctx, &workflowservice.GetSearchAttributesRequest{})
+	if saErr == nil {
 		extra = saResp.GetKeys()
 	}
 	attrs := customSearchAttributesFromMaps(custom, system, aliases, extra)
-	if len(attrs) == 0 && opErr != nil && nsErr != nil {
-		return nil, fmt.Errorf("failed to list search attributes: %w", opErr)
+	if len(attrs) > 0 {
+		return attrs, nil
 	}
-	return attrs, nil
+
+	// A namespace-scoped Temporal Cloud API key cannot read the registry: both
+	// ListSearchAttributes and GetSearchAttributes answer "Request unauthorized"
+	// and the alias map comes back empty. The attributes still ride along on
+	// visibility records, so recover the names from the executions themselves.
+	observed, obsErr := observedSearchAttributes(ctx, cl, namespace)
+	if len(observed) > 0 {
+		return observed, nil
+	}
+	if err := firstError(opErr, saErr, nsErr, obsErr); err != nil {
+		return nil, fmt.Errorf("failed to list search attributes: %w", err)
+	}
+	return nil, nil
+}
+
+const observedSearchAttributePageSize = 50
+
+// observedSearchAttributes collects custom search attribute names from a page of
+// visibility records.
+func observedSearchAttributes(ctx context.Context, cl client.Client, namespace string) ([]SearchAttribute, error) {
+	resp, err := cl.WorkflowService().ListWorkflowExecutions(ctx, &workflowservice.ListWorkflowExecutionsRequest{
+		Namespace: namespace,
+		PageSize:  observedSearchAttributePageSize,
+	})
+	if err != nil {
+		return nil, err
+	}
+	fields := make([]map[string]*commonpb.Payload, 0, len(resp.GetExecutions()))
+	for _, exec := range resp.GetExecutions() {
+		fields = append(fields, exec.GetSearchAttributes().GetIndexedFields())
+	}
+	return searchAttributesFromIndexedFields(fields...), nil
+}
+
+func searchAttributesFromIndexedFields(fields ...map[string]*commonpb.Payload) []SearchAttribute {
+	byName := map[string]SearchAttribute{}
+	for _, indexed := range fields {
+		for name, payload := range indexed {
+			name = strings.TrimSpace(name)
+			if name == "" || isReservedSearchAttribute(name) {
+				continue
+			}
+			if _, ok := byName[name]; ok {
+				continue
+			}
+			byName[name] = SearchAttribute{
+				Name: name,
+				Type: searchAttributeTypeFromMetadata(string(payload.GetMetadata()["type"])),
+			}
+		}
+	}
+	return sortedSearchAttributes(byName)
+}
+
+func searchAttributeTypeFromMetadata(name string) SearchAttributeType {
+	switch strings.ToLower(strings.TrimSpace(name)) {
+	case "keywordlist":
+		return SearchAttributeKeywordList
+	case "text":
+		return SearchAttributeText
+	case "int":
+		return SearchAttributeInt
+	case "double":
+		return SearchAttributeDouble
+	case "bool":
+		return SearchAttributeBool
+	case "datetime":
+		return SearchAttributeDatetime
+	default:
+		return SearchAttributeKeyword
+	}
+}
+
+func firstError(errs ...error) error {
+	for _, err := range errs {
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func customSearchAttributesFromMaps(
@@ -99,6 +181,10 @@ func customSearchAttributesFromMaps(
 		}
 		add(name, searchAttributeType(typ))
 	}
+	return sortedSearchAttributes(byName)
+}
+
+func sortedSearchAttributes(byName map[string]SearchAttribute) []SearchAttribute {
 	out := make([]SearchAttribute, 0, len(byName))
 	for _, attr := range byName {
 		out = append(out, attr)
@@ -147,15 +233,19 @@ func isReservedSearchAttribute(name string) bool {
 	if isCloudPlaceholderName(name) {
 		return true
 	}
-	switch strings.ToLower(strings.TrimSpace(name)) {
+	lower := strings.ToLower(strings.TrimSpace(name))
+	// The server owns the whole Temporal prefix, so new system attributes stay
+	// out of the custom list without needing to be enumerated here.
+	if strings.HasPrefix(lower, "temporal") {
+		return true
+	}
+	switch lower {
 	case "workflowid", "runid", "workflowtype", "taskqueue", "executionstatus",
 		"starttime", "closetime", "executiontime", "executionduration",
 		"historylength", "historysizebytes", "statetransitioncount",
 		"binarychecksums", "batchernamespace", "batcheruser",
-		"temporalchangeversion", "buildids", "parentworkflowid", "parentrunid",
-		"rootworkflowid", "rootrunid", "temporalscheduledstarttime",
-		"temporalscheduledbyid", "temporalschedulepaused",
-		"temporalnamespacedivision":
+		"buildids", "parentworkflowid", "parentrunid",
+		"rootworkflowid", "rootrunid":
 		return true
 	default:
 		return false

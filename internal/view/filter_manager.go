@@ -69,6 +69,7 @@ func (wl *WorkflowList) showFilterManager() {
 		wl.openFilterBuilder(&filterBuilderState{
 			wl:             wl,
 			persistOnApply: true,
+			onSaved:        refresh,
 		})
 	}
 
@@ -85,6 +86,7 @@ func (wl *WorkflowList) showFilterManager() {
 			name:           f.Name,
 			rawQuery:       f.Query,
 			persistOnApply: true,
+			onSaved:        refresh,
 		})
 	}
 

@@ -17,6 +17,7 @@ type filterBuilderState struct {
 	name           string
 	rawQuery       string
 	persistOnApply bool
+	onSaved        func()
 }
 
 func (wl *WorkflowList) showFilterBuilder() {
@@ -37,6 +38,12 @@ func (wl *WorkflowList) showFilterBuilder() {
 func (wl *WorkflowList) openFilterBuilder(state *filterBuilderState) {
 	if wl == nil || state == nil {
 		return
+	}
+	if len(state.clauses) == 0 {
+		if q := strings.TrimSpace(state.rawQuery); q != "" {
+			state.clauses = filterClausesFromQuery(q)
+			state.rawQuery = ""
+		}
 	}
 	table := components.NewTable()
 	table.SetBorder(false)
@@ -74,8 +81,8 @@ func (wl *WorkflowList) openFilterBuilder(state *filterBuilderState) {
 	}
 
 	addClause := func() {
-		wl.showClauseEditor(config.FilterClause{Key: "WorkflowId", Op: filterOpEq}, func(clause config.FilterClause) {
-			state.clauses = append(state.clauses, clause)
+		wl.showClauseEditor(config.FilterClause{Key: "WorkflowId", Op: filterOpEq}, func(clauses []config.FilterClause) {
+			state.clauses = append(state.clauses, clauses...)
 			refresh()
 		})
 	}
@@ -87,8 +94,12 @@ func (wl *WorkflowList) openFilterBuilder(state *filterBuilderState) {
 			return
 		}
 		current := state.clauses[row]
-		wl.showClauseEditor(current, func(clause config.FilterClause) {
-			state.clauses[row] = clause
+		wl.showClauseEditor(current, func(clauses []config.FilterClause) {
+			replaced := make([]config.FilterClause, 0, len(state.clauses)+len(clauses)-1)
+			replaced = append(replaced, state.clauses[:row]...)
+			replaced = append(replaced, clauses...)
+			replaced = append(replaced, state.clauses[row+1:]...)
+			state.clauses = replaced
 			refresh()
 		})
 	}
@@ -180,6 +191,9 @@ func (s *filterBuilderState) persist(name string) {
 		Clauses: append([]config.FilterClause(nil), s.clauses...),
 		Query:   s.rawQuery,
 	})
+	if s.onSaved != nil {
+		s.onSaved()
+	}
 }
 
 func (s *filterBuilderState) apply() {

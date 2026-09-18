@@ -19,13 +19,14 @@ type catalogFetch struct {
 }
 
 type namespaceCatalogStore struct {
-	mu        sync.RWMutex
-	epoch     uint64
-	items     map[string]startCatalog
-	attrs     map[string][]temporal.SearchAttribute
-	fetch     map[string]uint64
-	pending   map[string]catalogFetch
-	listeners map[string][]func(startCatalog)
+	mu         sync.RWMutex
+	epoch      uint64
+	items      map[string]startCatalog
+	attrs      map[string][]temporal.SearchAttribute
+	attrErrors map[string]bool
+	fetch      map[string]uint64
+	pending    map[string]catalogFetch
+	listeners  map[string][]func(startCatalog)
 }
 
 func (s *namespaceCatalogStore) get(ns string) (startCatalog, bool) {
@@ -158,12 +159,31 @@ func (s *namespaceCatalogStore) putAttrs(ns string, attrs []temporal.SearchAttri
 	s.attrs[ns] = append([]temporal.SearchAttribute(nil), attrs...)
 }
 
+// reportAttrError reports true the first time a namespace fails to hand over its
+// search attributes, so the reason is shown once instead of on every reopen.
+func (s *namespaceCatalogStore) reportAttrError(ns string) bool {
+	if s == nil || ns == "" {
+		return false
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.attrErrors[ns] {
+		return false
+	}
+	if s.attrErrors == nil {
+		s.attrErrors = map[string]bool{}
+	}
+	s.attrErrors[ns] = true
+	return true
+}
+
 func (s *namespaceCatalogStore) clear() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.epoch++
 	s.items = nil
 	s.attrs = nil
+	s.attrErrors = nil
 	s.pending = nil
 	s.listeners = nil
 }

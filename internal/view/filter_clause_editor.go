@@ -13,7 +13,7 @@ import (
 	"github.com/rivo/tview"
 )
 
-func (wl *WorkflowList) showClauseEditor(initial config.FilterClause, onSave func(config.FilterClause)) {
+func (wl *WorkflowList) showClauseEditor(initial config.FilterClause, onSave func([]config.FilterClause)) {
 	var modal *overlayModal
 	var pushed bool
 	activeTab := 0
@@ -148,7 +148,7 @@ func (wl *WorkflowList) showClauseEditor(initial config.FilterClause, onSave fun
 				}
 				wl.closeModal()
 				if onSave != nil {
-					onSave(clause)
+					onSave([]config.FilterClause{clause})
 				}
 			}).
 			OnCancel(func() {
@@ -175,9 +175,10 @@ func (wl *WorkflowList) showClauseEditor(initial config.FilterClause, onSave fun
 					wl.app.ToastWarning("Filter is empty")
 					return
 				}
+				clauses := filterClausesFromQuery(query)
 				wl.closeModal()
 				if onSave != nil {
-					onSave(config.FilterClause{Key: filterOpRaw, Op: filterOpRaw, Value: query})
+					onSave(clauses)
 				}
 			}).
 			OnCancel(func() {
@@ -424,6 +425,9 @@ func (wl *WorkflowList) refreshFilterKeyOptions(keyField *dropdownField) {
 		defer cancel()
 		attrs, err := provider.ListCustomSearchAttributes(ctx, ns)
 		if err != nil {
+			if wl.app.catalog.reportAttrError(ns) {
+				wl.app.ShowToastError("Custom search attributes: " + err.Error())
+			}
 			return
 		}
 		wl.app.catalog.putAttrs(ns, attrs)

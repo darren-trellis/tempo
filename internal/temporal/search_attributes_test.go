@@ -3,6 +3,7 @@ package temporal
 import (
 	"testing"
 
+	commonpb "go.temporal.io/api/common/v1"
 	"go.temporal.io/api/enums/v1"
 )
 
@@ -97,6 +98,57 @@ func TestSearchAttributeTypeFromFieldName(t *testing.T) {
 	for field, want := range cases {
 		if got := searchAttributeTypeFromFieldName(field); got != want {
 			t.Fatalf("%s type=%v want=%v", field, got, want)
+		}
+	}
+}
+
+func TestSearchAttributesFromIndexedFields(t *testing.T) {
+	payload := func(typ string) *commonpb.Payload {
+		return &commonpb.Payload{Metadata: map[string][]byte{"type": []byte(typ)}}
+	}
+	got := searchAttributesFromIndexedFields(
+		map[string]*commonpb.Payload{
+			"CustomerId":              payload("Keyword"),
+			"TemporalChangeVersion":   payload("KeywordList"),
+			"WorkflowId":              payload("Keyword"),
+			"TemporalReportedProblem": payload("KeywordList"),
+		},
+		map[string]*commonpb.Payload{
+			"Attempt":     payload("Int"),
+			"TransformId": payload("Keyword"),
+			"StartedAt":   payload("Datetime"),
+		},
+	)
+	want := []SearchAttribute{
+		{Name: "Attempt", Type: SearchAttributeInt},
+		{Name: "CustomerId", Type: SearchAttributeKeyword},
+		{Name: "StartedAt", Type: SearchAttributeDatetime},
+		{Name: "TransformId", Type: SearchAttributeKeyword},
+	}
+	if len(got) != len(want) {
+		t.Fatalf("got %+v, want %+v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("attr %d = %+v, want %+v", i, got[i], want[i])
+		}
+	}
+}
+
+func TestSearchAttributeTypeFromMetadata(t *testing.T) {
+	cases := map[string]SearchAttributeType{
+		"Keyword":     SearchAttributeKeyword,
+		"KeywordList": SearchAttributeKeywordList,
+		"Text":        SearchAttributeText,
+		"Int":         SearchAttributeInt,
+		"Double":      SearchAttributeDouble,
+		"Bool":        SearchAttributeBool,
+		"Datetime":    SearchAttributeDatetime,
+		"":            SearchAttributeKeyword,
+	}
+	for in, want := range cases {
+		if got := searchAttributeTypeFromMetadata(in); got != want {
+			t.Errorf("searchAttributeTypeFromMetadata(%q) = %v, want %v", in, got, want)
 		}
 	}
 }

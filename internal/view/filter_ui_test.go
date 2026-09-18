@@ -588,3 +588,74 @@ func TestSearchPromptPlaceholder(t *testing.T) {
 		t.Fatalf("placeholder=%q", got)
 	}
 }
+
+func TestFilterManagerRefreshesAfterSave(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	cfg := config.DefaultConfig()
+	cfg.SavedFilters = []config.SavedFilter{{Name: "existing"}}
+	a := NewAppWithProvider(nil, "default", cfg, "local")
+	wl := NewWorkflowList(a, "default")
+	wl.keepDataOnStart = true
+	a.app.Pages().Push(wl)
+	wl.showFilterManager()
+
+	managerTable := func() *components.Table {
+		t.Helper()
+		om, ok := a.app.Pages().Current().(*overlayModal)
+		if !ok {
+			t.Fatalf("current=%T", a.app.Pages().Current())
+		}
+		table, ok := om.body.(*components.Table)
+		if !ok {
+			t.Fatalf("content=%T", om.body)
+		}
+		return table
+	}
+
+	table := managerTable()
+	before := table.RowCount()
+
+	capture := table.GetInputCapture()
+	if capture == nil {
+		t.Fatal("manager table should have keys")
+	}
+	if ev := capture(tcell.NewEventKey(tcell.KeyRune, 'n', tcell.ModNone)); ev != nil {
+		t.Fatal("n should open the builder")
+	}
+
+	builderTable, ok := a.app.Pages().Current().(*overlayModal).body.(*components.Table)
+	if !ok {
+		t.Fatalf("builder body=%T", a.app.Pages().Current().(*overlayModal).body)
+	}
+	builderKeys := builderTable.GetInputCapture()
+	if builderKeys == nil {
+		t.Fatal("builder table should have keys")
+	}
+	if ev := builderKeys(tcell.NewEventKey(tcell.KeyRune, 's', tcell.ModNone)); ev != nil {
+		t.Fatal("s should open the name prompt")
+	}
+
+	prompt, ok := a.app.Pages().Current().(*overlayModal)
+	if !ok {
+		t.Fatalf("prompt current=%T", a.app.Pages().Current())
+	}
+	form, ok := prompt.body.(*components.Form)
+	if !ok {
+		t.Fatalf("prompt body=%T", prompt.body)
+	}
+	nameField, ok := form.GetTextField("name")
+	if !ok {
+		t.Fatal("name prompt should have a name field")
+	}
+	nameField.SetValue("added")
+	form.InputHandler()(tcell.NewEventKey(tcell.KeyEnter, 0, tcell.ModNone), func(tview.Primitive) {})
+
+	if len(cfg.GetSavedFilters()) != 2 {
+		t.Fatalf("filter was not saved: %+v", cfg.GetSavedFilters())
+	}
+
+	wl.closeModal()
+	if got := managerTable().RowCount(); got <= before {
+		t.Fatalf("manager still shows the stale list: %d rows, want more than %d", got, before)
+	}
+}
