@@ -136,8 +136,12 @@ func (b *filterChipBar) InputHandler() func(*tcell.EventKey, func(tview.Primitiv
 }
 
 func filterBarItems(wl *WorkflowList) []filterBarChip {
+	unsaved := wl != nil && wl.adHoc.active()
 	allActive := wl == nil || (wl.activeFilterName == "" && wl.visibilityQuery == "")
-	items := []filterBarChip{{label: "All", active: allActive}}
+	if unsaved && wl.activeFilterName == "" {
+		allActive = true
+	}
+	items := []filterBarChip{{label: filterChipLabel("All", unsaved && allActive), active: allActive}}
 	if wl == nil || wl.app == nil || wl.app.Config() == nil {
 		return items
 	}
@@ -146,13 +150,23 @@ func filterBarItems(wl *WorkflowList) []filterBarChip {
 		if name == "" {
 			continue
 		}
+		active := wl.activeFilterName != "" && strings.EqualFold(wl.activeFilterName, name)
 		items = append(items, filterBarChip{
-			label:  name,
+			label:  filterChipLabel(name, unsaved && active),
 			name:   name,
-			active: wl.activeFilterName != "" && strings.EqualFold(wl.activeFilterName, name),
+			active: active,
 		})
 	}
 	return items
+}
+
+// filterChipLabel marks a chip with an asterisk while ad-hoc clauses are
+// layered on top of it.
+func filterChipLabel(name string, unsaved bool) string {
+	if unsaved {
+		return name + "*"
+	}
+	return name
 }
 
 const filterBarChipSep = "|"

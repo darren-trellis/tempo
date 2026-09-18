@@ -399,6 +399,7 @@ func (wl *WorkflowList) testVisibilityQuery(query string) {
 	wl.filterTestSavedName = wl.activeFilterName
 	wl.filterTestSavedQuery = wl.visibilityQuery
 	wl.filterTestSavedClauses = append([]config.FilterClause(nil), wl.filterClauses...)
+	wl.filterTestSavedAdHoc = wl.adHoc.clone()
 	wl.activeFilterName = ""
 	wl.filterClauses = nil
 	wl.filterText = ""
@@ -415,6 +416,7 @@ func (wl *WorkflowList) restoreFilterTest() {
 	wl.activeFilterName = wl.filterTestSavedName
 	wl.visibilityQuery = wl.filterTestSavedQuery
 	wl.filterClauses = append([]config.FilterClause(nil), wl.filterTestSavedClauses...)
+	wl.adHoc = wl.filterTestSavedAdHoc.clone()
 	wl.revealActiveFilterChip()
 }
 

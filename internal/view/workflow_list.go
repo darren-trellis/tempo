@@ -109,10 +109,12 @@ type WorkflowList struct {
 	visibilityQuery        string // Temporal visibility query
 	activeFilterName       string
 	filterClauses          []config.FilterClause
+	adHoc                  adHocFilter
 	filterTestPending      bool
 	filterTestSavedName    string
 	filterTestSavedQuery   string
 	filterTestSavedClauses []config.FilterClause
+	filterTestSavedAdHoc   adHocFilter
 	pager                  workflowPager
 	pageBusy               bool
 	pageGen                uint64
@@ -448,6 +450,10 @@ func (wl *WorkflowList) Start() {
 			return true
 		}).
 		OnRune('f', func(e *tcell.EventKey) bool {
+			wl.showAdHocClauseEditor()
+			return true
+		}).
+		OnRune('F', func(e *tcell.EventKey) bool {
 			wl.showFilterManager()
 			return true
 		}).
@@ -861,7 +867,8 @@ func (wl *WorkflowList) workflowPaneHints() []KeyHint {
 	hints = append(hints,
 		KeyHint{Key: "|", Description: "Columns"},
 		KeyHint{Key: "/", Description: "Search"},
-		KeyHint{Key: "f", Description: "Filters"},
+		KeyHint{Key: "f", Description: "Add Filter"},
+		KeyHint{Key: "F", Description: "Filters"},
 	)
 	hints = append(hints,
 		KeyHint{Key: "v", Description: "Select Mode"},

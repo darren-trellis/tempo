@@ -66,14 +66,45 @@ func TestTypeaheadEscapeClosesDropdownNotForm(t *testing.T) {
 	}
 }
 
-func TestTypeaheadFormTabCapture(t *testing.T) {
+func TestTypeaheadFormTabWalksSeveralOptions(t *testing.T) {
 	field := newDropdownField("taskQueue", "Task Queue", []string{"orders", "payments"})
 	field.Focus(func(tview.Primitive) {})
-	field.SetValue("ord")
 	field.openList()
 	capture := dropdownFormCapture(field)
 	if ev := capture(tcell.NewEventKey(tcell.KeyTab, 0, tcell.ModNone)); ev != nil {
-		t.Fatal("tab should complete the suggestion")
+		t.Fatal("tab should walk the open list, not reach the form")
+	}
+	if field.selected != 1 {
+		t.Fatalf("tab should move the highlight, selected %d", field.selected)
+	}
+	if field.GetValue() != "" {
+		t.Fatalf("tab should not autocomplete with several options, got %q", field.GetValue())
+	}
+	if ev := capture(tcell.NewEventKey(tcell.KeyTab, 0, tcell.ModNone)); ev != nil {
+		t.Fatal("tab should keep walking the open list")
+	}
+	if field.selected != 0 {
+		t.Fatalf("tab should wrap around, selected %d", field.selected)
+	}
+	if ev := capture(tcell.NewEventKey(tcell.KeyEnter, 0, tcell.ModNone)); ev != nil {
+		t.Fatal("enter should be consumed by the open list")
+	}
+	if field.GetValue() != "orders" {
+		t.Fatalf("enter should complete the highlighted option, got %q", field.GetValue())
+	}
+}
+
+func TestTypeaheadFormTabCompletesTheOnlyOption(t *testing.T) {
+	field := newDropdownField("taskQueue", "Task Queue", []string{"orders", "payments"})
+	field.Focus(func(tview.Primitive) {})
+	field.SetValue("ord")
+	capture := dropdownFormCapture(field)
+	if len(field.matches) != 1 {
+		t.Fatalf("expected a single match, got %v", field.matches)
+	}
+	field.expanded = true
+	if ev := capture(tcell.NewEventKey(tcell.KeyTab, 0, tcell.ModNone)); ev != nil {
+		t.Fatal("tab should complete the only option")
 	}
 	if field.GetValue() != "orders" {
 		t.Fatalf("completed %q", field.GetValue())

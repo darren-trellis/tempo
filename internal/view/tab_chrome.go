@@ -48,6 +48,9 @@ func (a *App) statusBarSegments() []chromeSeg {
 		if term := strings.TrimSpace(wl.searchFilterTerm()); term != "" {
 			add(theme.IconSearch+" "+term, theme.Fg())
 		}
+		if extra := strings.TrimSpace(wl.adHocSummary()); extra != "" {
+			add(theme.IconFilter+" "+extra, theme.Fg())
+		}
 	}
 	add(a.profileTitle(), theme.Fg())
 	return segs

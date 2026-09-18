@@ -7,7 +7,14 @@ import (
 	"time"
 )
 
+// applyVisibilityQuery runs a query on its own, dropping any ad-hoc clauses
+// since the new query replaces whatever they were layered on.
 func (wl *WorkflowList) applyVisibilityQuery(query string) {
+	wl.clearAdHocFilter()
+	wl.runVisibilityQuery(query)
+}
+
+func (wl *WorkflowList) runVisibilityQuery(query string) {
 	if query != "" && query != wl.visibilityQuery && !wl.filterTestPending {
 		wl.addToHistory(query)
 	}
@@ -31,6 +38,7 @@ func (wl *WorkflowList) addToHistory(query string) {
 func (wl *WorkflowList) clearVisibilityQuery() {
 	wl.activeFilterName = ""
 	wl.filterClauses = nil
+	wl.clearAdHocFilter()
 	wl.visibilityQuery = ""
 	wl.updatePanelTitle()
 	wl.loadData()
