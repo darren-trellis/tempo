@@ -29,103 +29,107 @@ const (
 // WorkflowList displays a list of workflows.
 type WorkflowList struct {
 	*tview.Flex
-	mainFlex              *tview.Flex
-	primaryStack          *tview.Flex
-	primaryWidth          int
-	tertiaryHeight        int
-	timelineHeight        int
-	app                   *App
-	namespace             string
-	table                 *components.Table
-	tableScroll           *charScrollView
-	listTabs              *components.Tabs
-	workflowTab           *components.Tab
-	taskQueues            *TaskQueueView
-	schedules             *ScheduleList
-	workers               *WorkerView
-	listKind              listKind
-	pollersVisible        bool
-	scheduleDetailVisible bool
-	workerDetailVisible   bool
-	filterBar             *filterChipBar
-	workflowStack         *tview.Flex
-	workflowBody          tview.Primitive
-	filterBarRows         int
-	filterBarSide         bool
-	workflowsPanel        *chromePanel
-	previewPanel          *components.Panel
-	previewTabs           *components.Tabs
-	rightFlex             *tview.Flex
-	eventTable            *components.Table
-	eventTableScroll      *charScrollView
-	eventTreeView         *EventTreeView
-	eventTreeMode         bool
-	eventTab              *components.Tab
-	eventDetail           *tview.TextView
-	eventDetailPanel      *components.Panel
-	eventsPanel           *components.Panel
-	workflowDetail        *components.Table
-	workflowDetailScroll  *charScrollView
-	previewDetailRows     []workflowInfoRow
-	timelineView          *TimelineView
-	timelinePanel         *timelineFrame
-	timelineVisible       bool
-	timelineNarrow        bool
-	highlightedActivityID int64
-	highlightedWorkflowID string
-	highlightedRunID      string
-	timelineSyncing       bool
-	workflowTreeMode      bool
-	workflowDepths        []int
-	workflowTreePrefixes  []string
-	workflowHasChildren   []bool
-	workflowCollapsed     map[string]bool
-	focusPane             workflowFocusPane
-	previewKind           previewKind
-	activityDetailKind    activityDetailKind
-	activityDetailTabs    *components.Tabs
-	activityDetail        *components.Table
-	activityDetailScroll  *charScrollView
-	activityDetailRows    []workflowInfoRow
-	workflowIOKind        workflowIOKind
-	workflowIOTabs        *components.Tabs
-	workflowIOView        *tview.TextView
-	hierarchyView         *WorkflowGraphView
-	hierarchyGraphPanel   *components.Panel
-	previewEvents         []temporal.EnhancedHistoryEvent
-	previewEventSearch    string
-	previewActivities     []previewActivity
-	previewActivitySearch string
-	previewWorkflowID     string
-	previewRunID          string
-	previewGen            uint64
-	previewTimer          *time.Timer
-	previewPending        bool
-	previewMode           bool
-	previewCache          *previewCache
-	allWorkflows          []temporal.Workflow // Full unfiltered list
-	workflows             []temporal.Workflow // Filtered list for display
-	filterText            string
-	visibilityQuery       string // Temporal visibility query
-	activeFilterName      string
-	filterClauses         []config.FilterClause
-	pager                 workflowPager
-	pageBusy              bool
-	pageGen               uint64
-	listAnchorIndex       int
-	hasListAnchor         bool
-	listEdgePin           listEdgePin
-	serverStats           WorkflowStats
-	serverStatsOK         bool
-	loading               bool
-	autoRefresh           bool
-	liveBusy              bool
-	refreshTicker         *time.Ticker
-	stopRefresh           chan struct{}
-	selectionMode         bool     // Multi-select mode active
-	searchHistory         []string // History of visibility queries
-	historyIndex          int      // Current position in history (-1 = not browsing)
-	maxHistorySize        int      // Maximum number of history entries
+	mainFlex               *tview.Flex
+	primaryStack           *tview.Flex
+	primaryWidth           int
+	tertiaryHeight         int
+	timelineHeight         int
+	app                    *App
+	namespace              string
+	table                  *components.Table
+	tableScroll            *charScrollView
+	listTabs               *components.Tabs
+	workflowTab            *components.Tab
+	taskQueues             *TaskQueueView
+	schedules              *ScheduleList
+	workers                *WorkerView
+	listKind               listKind
+	pollersVisible         bool
+	scheduleDetailVisible  bool
+	workerDetailVisible    bool
+	filterBar              *filterChipBar
+	workflowStack          *tview.Flex
+	workflowBody           tview.Primitive
+	filterBarRows          int
+	filterBarSide          bool
+	workflowsPanel         *chromePanel
+	previewPanel           *components.Panel
+	previewTabs            *components.Tabs
+	rightFlex              *tview.Flex
+	eventTable             *components.Table
+	eventTableScroll       *charScrollView
+	eventTreeView          *EventTreeView
+	eventTreeMode          bool
+	eventTab               *components.Tab
+	eventDetail            *tview.TextView
+	eventDetailPanel       *components.Panel
+	eventsPanel            *components.Panel
+	workflowDetail         *components.Table
+	workflowDetailScroll   *charScrollView
+	previewDetailRows      []workflowInfoRow
+	timelineView           *TimelineView
+	timelinePanel          *timelineFrame
+	timelineVisible        bool
+	timelineNarrow         bool
+	highlightedActivityID  int64
+	highlightedWorkflowID  string
+	highlightedRunID       string
+	timelineSyncing        bool
+	workflowTreeMode       bool
+	workflowDepths         []int
+	workflowTreePrefixes   []string
+	workflowHasChildren    []bool
+	workflowCollapsed      map[string]bool
+	focusPane              workflowFocusPane
+	previewKind            previewKind
+	activityDetailKind     activityDetailKind
+	activityDetailTabs     *components.Tabs
+	activityDetail         *components.Table
+	activityDetailScroll   *charScrollView
+	activityDetailRows     []workflowInfoRow
+	workflowIOKind         workflowIOKind
+	workflowIOTabs         *components.Tabs
+	workflowIOView         *tview.TextView
+	hierarchyView          *WorkflowGraphView
+	hierarchyGraphPanel    *components.Panel
+	previewEvents          []temporal.EnhancedHistoryEvent
+	previewEventSearch     string
+	previewActivities      []previewActivity
+	previewActivitySearch  string
+	previewWorkflowID      string
+	previewRunID           string
+	previewGen             uint64
+	previewTimer           *time.Timer
+	previewPending         bool
+	previewMode            bool
+	previewCache           *previewCache
+	allWorkflows           []temporal.Workflow // Full unfiltered list
+	workflows              []temporal.Workflow // Filtered list for display
+	filterText             string
+	visibilityQuery        string // Temporal visibility query
+	activeFilterName       string
+	filterClauses          []config.FilterClause
+	filterTestPending      bool
+	filterTestSavedName    string
+	filterTestSavedQuery   string
+	filterTestSavedClauses []config.FilterClause
+	pager                  workflowPager
+	pageBusy               bool
+	pageGen                uint64
+	listAnchorIndex        int
+	hasListAnchor          bool
+	listEdgePin            listEdgePin
+	serverStats            WorkflowStats
+	serverStatsOK          bool
+	loading                bool
+	autoRefresh            bool
+	liveBusy               bool
+	refreshTicker          *time.Ticker
+	stopRefresh            chan struct{}
+	selectionMode          bool     // Multi-select mode active
+	searchHistory          []string // History of visibility queries
+	historyIndex           int      // Current position in history (-1 = not browsing)
+	maxHistorySize         int      // Maximum number of history entries
 	// Server-side completion support
 	serverCompletions   []string            // Cached completions from server query
 	lastCompletionQuery string              // Last query sent to server (to avoid duplicates)

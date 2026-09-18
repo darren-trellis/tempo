@@ -8,7 +8,7 @@ import (
 )
 
 func (wl *WorkflowList) applyVisibilityQuery(query string) {
-	if query != "" && query != wl.visibilityQuery {
+	if query != "" && query != wl.visibilityQuery && !wl.filterTestPending {
 		wl.addToHistory(query)
 	}
 	wl.visibilityQuery = query

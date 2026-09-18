@@ -15,6 +15,7 @@ const (
 	filterOpStartsWith = "starts_with"
 	filterOpAfter      = "after"
 	filterOpBefore     = "before"
+	filterOpRaw        = "raw"
 
 	filterTimeCustom = "Custom"
 )
@@ -116,7 +117,13 @@ func customFilterSpecs(wl *WorkflowList) []filterKeySpec {
 	if wl == nil || wl.app == nil {
 		return nil
 	}
-	attrs := wl.app.catalog.getAttrs(wl.namespace)
+	ns := wl.namespace
+	attrs := wl.app.catalog.getAttrs(ns)
+	if len(attrs) == 0 {
+		if alt := wl.app.catalogNamespace(); alt != "" && alt != ns {
+			attrs = wl.app.catalog.getAttrs(alt)
+		}
+	}
 	out := make([]filterKeySpec, 0, len(attrs))
 	for _, attr := range attrs {
 		out = append(out, specFromSearchAttribute(attr))
@@ -282,10 +289,18 @@ func compileFilterClause(clause config.FilterClause) string {
 	return compileFilterClauseWith(clause, resolveFilterKey(nil, clause.Key))
 }
 
+func isRawFilterClause(clause config.FilterClause) bool {
+	return strings.EqualFold(strings.TrimSpace(clause.Op), filterOpRaw) ||
+		strings.EqualFold(strings.TrimSpace(clause.Key), filterOpRaw)
+}
+
 func compileFilterClauseWith(clause config.FilterClause, spec filterKeySpec) string {
 	key := strings.TrimSpace(clause.Key)
 	op := strings.TrimSpace(clause.Op)
 	value := strings.TrimSpace(clause.Value)
+	if isRawFilterClause(clause) {
+		return value
+	}
 	if key == "" || op == "" || value == "" {
 		return ""
 	}

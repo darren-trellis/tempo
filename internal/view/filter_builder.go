@@ -1,10 +1,8 @@
 package view
 
 import (
-	"context"
 	"fmt"
 	"strings"
-	"time"
 
 	"github.com/atterpac/jig/components"
 	"github.com/atterpac/jig/input"
@@ -53,6 +51,10 @@ func (wl *WorkflowList) openFilterBuilder(state *filterBuilderState) {
 			}
 		} else {
 			for _, clause := range state.clauses {
+				if isRawFilterClause(clause) {
+					table.AddRow("(raw)", "", truncate(clause.Value, 52))
+					continue
+				}
 				table.AddRow(clause.Key, filterOpLabel(clause.Op), filterClauseValueLabel(clause))
 			}
 		}
@@ -212,174 +214,6 @@ func (s *filterBuilderState) apply() {
 	s.wl.filterClauses = append([]config.FilterClause(nil), s.clauses...)
 	s.wl.applyVisibilityQuery(compiledFilterQueryFor(s.wl, f))
 	s.wl.closeModal()
-}
-
-func (wl *WorkflowList) showClauseEditor(initial config.FilterClause, onSave func(config.FilterClause)) {
-	var modal *overlayModal
-	var pushed bool
-	var rebuild func(config.FilterClause)
-	rebuild = func(current config.FilterClause) {
-		key := strings.TrimSpace(current.Key)
-		if key == "" {
-			key = filterKeySpecs[0].key
-		}
-		spec := resolveFilterKey(wl, key)
-		current.Key = key
-		if current.Op == "" || !filterOpAllowedFor(wl, key, current.Op) {
-			current.Op = defaultFilterOpFor(wl, key)
-		}
-
-		keyField := newOrderedDropdownField("key", "Key", filterKeyNamesFor(wl)).SetValue(key)
-		wl.refreshFilterKeyOptions(keyField)
-		opField := newOrderedDropdownField("op", "Operator", filterOpLabelsForKeyFor(wl, key)).SetValue(filterOpLabel(current.Op))
-		keyField.SetChangedFunc(func(v string) {
-			if strings.EqualFold(v, current.Key) {
-				return
-			}
-			current.Key = v
-			current.Op = defaultFilterOpFor(wl, v)
-			current.Value = ""
-			rebuild(current)
-		})
-		opField.SetChangedFunc(func(v string) {
-			current.Op = filterOpFromLabel(v)
-		})
-
-		fields := []*dropdownField{keyField, opField}
-		builder := components.NewFormBuilder().AddField(keyField).AddField(opField)
-		var valueField *dropdownField
-		var presetField *dropdownField
-
-		switch spec.kind {
-		case filterKeyCatalog:
-			valueField = newDropdownField("value", "Value", catalogOptionsForFilterKey(wl, key)).
-				SetPlaceholder("Value").
-				SetValue(current.Value)
-			builder.AddField(valueField)
-			fields = append(fields, valueField)
-		case filterKeyStatus:
-			status := current.Value
-			if status == "" {
-				status = filterStatusValues[0]
-			}
-			valueField = newOrderedDropdownField("value", "Value", filterStatusValues).SetValue(status)
-			builder.AddField(valueField)
-			fields = append(fields, valueField)
-		case filterKeyBool:
-			status := current.Value
-			if status == "" {
-				status = filterBoolValues[0]
-			}
-			valueField = newOrderedDropdownField("value", "Value", filterBoolValues).SetValue(status)
-			builder.AddField(valueField)
-			fields = append(fields, valueField)
-		case filterKeyTime:
-			presetLabel := filterTimePresetLabel(current.Value)
-			presetField = newOrderedDropdownField("preset", "Value", filterTimePresetLabels()).SetValue(presetLabel)
-			presetField.SetChangedFunc(func(v string) {
-				wasCustom := filterTimePresetLabel(current.Value) == filterTimeCustom
-				nowCustom := v == filterTimeCustom
-				if nowCustom {
-					if strings.HasPrefix(strings.TrimSpace(current.Value), "$") {
-						current.Value = ""
-					}
-				} else {
-					current.Value = filterTimePresetValue(v)
-				}
-				if wasCustom != nowCustom {
-					rebuild(current)
-				}
-			})
-			builder.AddField(presetField)
-			fields = append(fields, presetField)
-			if presetLabel == filterTimeCustom {
-				builder.Text("custom", "Custom (YYYY-MM-DD HH:MM)").
-					Placeholder("2024-01-02 15:04").
-					Value(displayFilterDateTime(current.Value)).
-					Done()
-			}
-		default:
-			builder.Text("value", "Value").
-				Placeholder("Value").
-				Value(current.Value).
-				Done()
-		}
-
-		form := builder.
-			OnSubmit(func(values map[string]any) {
-				clause, err := readFilterClauseForm(spec.kind, keyField, opField, valueField, presetField, values)
-				if err != nil {
-					wl.app.ToastWarning(err.Error())
-					return
-				}
-				wl.closeModal()
-				if onSave != nil {
-					onSave(clause)
-				}
-			}).
-			OnCancel(func() {
-				if collapseOpenDropdowns(fields...) {
-					return
-				}
-				wl.closeModal()
-			}).
-			Build()
-
-		if modal == nil {
-			modal = newOverlayModal(components.ModalConfig{
-				Title:  fmt.Sprintf("%s Clause", theme.IconFilter),
-				Width:  62,
-				Height: 22,
-			}, wl)
-			modal.SetHints([]components.KeyHint{
-				{Key: "Enter", Description: "Save"},
-				{Key: "Esc", Description: "Cancel"},
-			})
-			modal.SetOnCancel(func() {
-				if collapseOpenDropdowns(fields...) {
-					return
-				}
-				wl.closeModal()
-			})
-		}
-		modal.bindDropdowns(form, fields...)
-		modal.SetContent(form)
-		if !pushed {
-			pushed = true
-			wl.app.PushModal(modal)
-		}
-		wl.app.JigApp().SetFocus(form)
-	}
-	rebuild(initial)
-}
-
-func (wl *WorkflowList) refreshFilterKeyOptions(keyField *dropdownField) {
-	if wl == nil || keyField == nil {
-		return
-	}
-	keyField.SetOptionsOrdered(filterKeyNamesFor(wl))
-	if wl.app == nil {
-		return
-	}
-	provider := wl.app.Provider()
-	ns := wl.namespace
-	if provider == nil || ns == "" {
-		return
-	}
-	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
-		defer cancel()
-		attrs, err := provider.ListCustomSearchAttributes(ctx, ns)
-		if err != nil {
-			return
-		}
-		wl.app.catalog.putAttrs(ns, attrs)
-		if jig := wl.app.JigApp(); jig != nil {
-			jig.QueueUpdateDraw(func() {
-				keyField.SetOptionsOrdered(filterKeyNamesFor(wl))
-			})
-		}
-	}()
 }
 
 func catalogOptionsForFilterKey(wl *WorkflowList, key string) []string {

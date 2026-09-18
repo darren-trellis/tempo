@@ -96,6 +96,10 @@ func (wl *WorkflowList) fetchWorkflows(live bool) {
 	provider := wl.app.Provider()
 	if provider == nil {
 		wl.liveBusy = false
+		if wl.filterTestPending {
+			wl.addToHistory(wl.visibilityQuery)
+			wl.filterTestPending = false
+		}
 		wl.loadMockData()
 		return
 	}
@@ -179,10 +183,19 @@ func (wl *WorkflowList) startWindow(live bool) {
 			}
 			if listErr != nil {
 				if !live {
+					if wl.filterTestPending {
+						wl.restoreFilterTest()
+						wl.app.ToastError(listErr.Error())
+						return
+					}
 					wl.showError(listErr)
 				}
 				return
 			}
+			if wl.filterTestPending {
+				wl.addToHistory(wl.visibilityQuery)
+			}
+			wl.filterTestPending = false
 			if !live {
 				wl.previewWorkflowID = ""
 				wl.previewRunID = ""

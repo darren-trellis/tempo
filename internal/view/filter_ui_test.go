@@ -316,6 +316,93 @@ func TestFilterKeyNamesIncludeCustomSearchAttributes(t *testing.T) {
 	}
 }
 
+func TestCompileRawFilterClause(t *testing.T) {
+	got := compileFilterClause(config.FilterClause{Key: "raw", Op: filterOpRaw, Value: "CustomerId = 'abc'"})
+	if got != "CustomerId = 'abc'" {
+		t.Fatalf("raw compile=%q", got)
+	}
+}
+
+func TestDropdownExactValueShowsAllOptions(t *testing.T) {
+	opts := []string{"WorkflowId", "CustomerId", "StartTime"}
+	got := filterDropdownOptions(opts, "Work")
+	if len(got) == 0 || got[0] != "WorkflowId" {
+		t.Fatalf("prefix should still match keys, got %v", got)
+	}
+}
+
+func TestFilterKeyDropdownShowsCustomSearchAttributes(t *testing.T) {
+	names := append(filterKeyNames(), "AssetNames", "CustomerId", "EntityId", "EventIds", "ProjectId", "RowId", "TransformId")
+	field := newOrderedDropdownField("key", "Key", names)
+	field.openList()
+	start, end := field.visibleMatches()
+	window := field.matches[start:end]
+	if !containsString(window, "CustomerId") {
+		t.Fatalf("CustomerId should be visible without scrolling, window=%v", window)
+	}
+}
+
+func TestClauseEditorHasFormAndRawTabs(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	a := NewAppWithProvider(nil, "default", config.DefaultConfig(), "local")
+	wl := NewWorkflowList(a, "default")
+	wl.keepDataOnStart = true
+	a.app.Pages().Push(wl)
+	wl.showClauseEditor(config.FilterClause{Key: "WorkflowId", Op: filterOpEq}, nil)
+	om, ok := a.app.Pages().Current().(*overlayModal)
+	if !ok {
+		t.Fatalf("current=%T", a.app.Pages().Current())
+	}
+	om.SetRect(0, 0, 80, 24)
+	screen := tcell.NewSimulationScreen("UTF-8")
+	if err := screen.Init(); err != nil {
+		t.Fatal(err)
+	}
+	screen.SetSize(80, 24)
+	om.Draw(screen)
+	foundForm, foundRaw := false, false
+	for y := 0; y < 24; y++ {
+		line := rowText(screen, y, 80)
+		if strings.Contains(line, "Form") {
+			foundForm = true
+		}
+		if strings.Contains(line, "Raw") {
+			foundRaw = true
+		}
+	}
+	if !foundForm || !foundRaw {
+		t.Fatal("clause editor should show Form and Raw tabs")
+	}
+}
+
+func TestTestVisibilityQueryClearsActiveFilter(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	a := NewAppWithProvider(nil, "default", config.DefaultConfig(), "local")
+	wl := NewWorkflowList(a, "default")
+	wl.keepDataOnStart = true
+	wl.activeFilterName = "Running"
+	wl.filterClauses = []config.FilterClause{{Key: "ExecutionStatus", Op: filterOpEq, Value: "Running"}}
+	wl.testVisibilityQuery("CustomerId = 'abc'")
+	if wl.activeFilterName != "" {
+		t.Fatalf("test should unselect the saved filter, got %q", wl.activeFilterName)
+	}
+	if wl.visibilityQuery != "CustomerId = 'abc'" {
+		t.Fatalf("query=%q", wl.visibilityQuery)
+	}
+}
+
+func TestFilterTestKey(t *testing.T) {
+	if !isFilterTestKey(tcell.NewEventKey(tcell.KeyRune, 't', tcell.ModNone)) {
+		t.Fatal("t should test the raw filter")
+	}
+	if !isFilterTestKey(tcell.NewEventKey(tcell.KeyCtrlT, 0, tcell.ModCtrl)) {
+		t.Fatal("Ctrl+T should also test the raw filter")
+	}
+	if isFilterTestKey(tcell.NewEventKey(tcell.KeyRune, 'T', tcell.ModNone)) {
+		t.Fatal("uppercase T should still type into RFC3339 timestamps")
+	}
+}
+
 func containsString(items []string, want string) bool {
 	for _, item := range items {
 		if item == want {

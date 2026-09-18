@@ -1,0 +1,368 @@
+package view
+
+import (
+	"context"
+	"fmt"
+	"strings"
+	"time"
+
+	"github.com/atterpac/jig/components"
+	"github.com/atterpac/jig/theme"
+	"github.com/galaxy-io/tempo/internal/config"
+	"github.com/gdamore/tcell/v2"
+)
+
+func (wl *WorkflowList) showClauseEditor(initial config.FilterClause, onSave func(config.FilterClause)) {
+	var modal *overlayModal
+	var pushed bool
+	activeTab := 0
+	if isRawFilterClause(initial) {
+		activeTab = 1
+	}
+	rawText := strings.TrimSpace(initial.Value)
+	if !isRawFilterClause(initial) {
+		if q := compileFilterClauseFor(wl, initial); q != "" {
+			rawText = q
+		}
+	}
+
+	clauseHints := func() []components.KeyHint {
+		hints := []components.KeyHint{
+			{Key: "Enter", Description: "Save"},
+			{Key: "Esc", Description: "Cancel"},
+		}
+		if activeTab == 1 {
+			hints = append([]components.KeyHint{{Key: "t", Description: "Test"}}, hints...)
+		}
+		return hints
+	}
+
+	var rebuild func(config.FilterClause)
+	rebuild = func(current config.FilterClause) {
+		key := strings.TrimSpace(current.Key)
+		if key == "" || isRawFilterClause(current) {
+			key = filterKeySpecs[0].key
+			current.Key = key
+			if isRawFilterClause(initial) && current.Op == filterOpRaw {
+				current.Op = defaultFilterOpFor(wl, key)
+				current.Value = ""
+			}
+		}
+		spec := resolveFilterKey(wl, key)
+		current.Key = key
+		if current.Op == "" || current.Op == filterOpRaw || !filterOpAllowedFor(wl, key, current.Op) {
+			current.Op = defaultFilterOpFor(wl, key)
+		}
+
+		keyField := newOrderedDropdownField("key", "Key", filterKeyNamesFor(wl)).SetValue(key)
+		wl.refreshFilterKeyOptions(keyField)
+		opField := newOrderedDropdownField("op", "Operator", filterOpLabelsForKeyFor(wl, key)).SetValue(filterOpLabel(current.Op))
+		keyField.SetChangedFunc(func(v string) {
+			if strings.EqualFold(v, current.Key) {
+				return
+			}
+			current.Key = v
+			current.Op = defaultFilterOpFor(wl, v)
+			current.Value = ""
+			rebuild(current)
+		})
+		opField.SetChangedFunc(func(v string) {
+			current.Op = filterOpFromLabel(v)
+		})
+
+		fields := []*dropdownField{keyField, opField}
+		builder := components.NewFormBuilder().AddField(keyField).AddField(opField)
+		var valueField *dropdownField
+		var presetField *dropdownField
+
+		switch spec.kind {
+		case filterKeyCatalog:
+			valueField = newDropdownField("value", "Value", catalogOptionsForFilterKey(wl, key)).
+				SetPlaceholder("Value").
+				SetValue(current.Value)
+			builder.AddField(valueField)
+			fields = append(fields, valueField)
+		case filterKeyStatus:
+			status := current.Value
+			if status == "" {
+				status = filterStatusValues[0]
+			}
+			valueField = newOrderedDropdownField("value", "Value", filterStatusValues).SetValue(status)
+			builder.AddField(valueField)
+			fields = append(fields, valueField)
+		case filterKeyBool:
+			status := current.Value
+			if status == "" {
+				status = filterBoolValues[0]
+			}
+			valueField = newOrderedDropdownField("value", "Value", filterBoolValues).SetValue(status)
+			builder.AddField(valueField)
+			fields = append(fields, valueField)
+		case filterKeyTime:
+			presetLabel := filterTimePresetLabel(current.Value)
+			presetField = newOrderedDropdownField("preset", "Value", filterTimePresetLabels()).SetValue(presetLabel)
+			presetField.SetChangedFunc(func(v string) {
+				wasCustom := filterTimePresetLabel(current.Value) == filterTimeCustom
+				nowCustom := v == filterTimeCustom
+				if nowCustom {
+					if strings.HasPrefix(strings.TrimSpace(current.Value), "$") {
+						current.Value = ""
+					}
+				} else {
+					current.Value = filterTimePresetValue(v)
+				}
+				if wasCustom != nowCustom {
+					rebuild(current)
+				}
+			})
+			builder.AddField(presetField)
+			fields = append(fields, presetField)
+			if presetLabel == filterTimeCustom {
+				builder.Text("custom", "Custom (YYYY-MM-DD HH:MM)").
+					Placeholder("2024-01-02 15:04").
+					Value(displayFilterDateTime(current.Value)).
+					Done()
+			}
+		default:
+			builder.Text("value", "Value").
+				Placeholder("Value").
+				Value(current.Value).
+				Done()
+		}
+
+		form := builder.
+			OnSubmit(func(values map[string]any) {
+				clause, err := readFilterClauseForm(spec.kind, keyField, opField, valueField, presetField, values)
+				if err != nil {
+					wl.app.ToastWarning(err.Error())
+					return
+				}
+				wl.closeModal()
+				if onSave != nil {
+					onSave(clause)
+				}
+			}).
+			OnCancel(func() {
+				if collapseOpenDropdowns(fields...) {
+					return
+				}
+				wl.closeModal()
+			}).
+			Build()
+
+		rawForm := components.NewFormBuilder().
+			Text("raw", "Filter").
+			Placeholder("CustomerId = 'abc'").
+			Value(rawText).
+			OnChange(func(event *components.ChangeEvent[string]) {
+				if event != nil {
+					rawText = event.NewValue
+				}
+			}).
+			Done().
+			OnSubmit(func(values map[string]any) {
+				query := strings.TrimSpace(stringValue(values, "raw"))
+				if query == "" {
+					wl.app.ToastWarning("Filter is empty")
+					return
+				}
+				wl.closeModal()
+				if onSave != nil {
+					onSave(config.FilterClause{Key: filterOpRaw, Op: filterOpRaw, Value: query})
+				}
+			}).
+			OnCancel(func() {
+				wl.closeModal()
+			}).
+			Build()
+
+		testRaw := func() {
+			wl.testVisibilityQuery(formString(rawForm, "raw"))
+		}
+
+		tabs := components.NewTabs().
+			SetShowIcons(false).
+			SetShowBadges(false).
+			AddTab("Form", form).
+			AddTab("Raw", rawForm).
+			SetActive(activeTab).
+			SetOnChange(func(index int, _ string) {
+				activeTab = index
+				if index == 1 {
+					if q := compileFilterClauseFor(wl, current); q != "" {
+						if field, ok := rawForm.GetTextField("raw"); ok && strings.TrimSpace(field.GetValue()) == "" {
+							field.SetValue(q)
+							rawText = q
+						}
+					}
+				}
+				if modal != nil {
+					modal.SetHints(clauseHints())
+				}
+				if wl.app != nil && wl.app.JigApp() != nil {
+					if index == 1 {
+						wl.app.JigApp().SetFocus(rawForm)
+						return
+					}
+					wl.app.JigApp().SetFocus(form)
+				}
+			})
+
+		if modal == nil {
+			modal = newOverlayModal(components.ModalConfig{
+				Title:  fmt.Sprintf("%s Clause", theme.IconFilter),
+				Width:  72,
+				Height: 24,
+			}, wl)
+			modal.SetOnCancel(func() {
+				if collapseOpenDropdowns(fields...) {
+					return
+				}
+				wl.closeModal()
+			})
+		}
+		modal.SetHints(clauseHints())
+		modal.bindDropdowns(form, fields...)
+		form.SetInputCapture(dropdownFormCapture(fields...))
+		rawForm.SetInputCapture(withFilterTestKey(testRaw, nil))
+		tabs.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+			if activeTab == 1 && isFilterTestKey(event) {
+				testRaw()
+				return nil
+			}
+			return event
+		})
+		modal.SetContent(tabs)
+		if !pushed {
+			pushed = true
+			wl.app.PushModal(modal)
+		}
+		if wl.app != nil && wl.app.JigApp() != nil {
+			if activeTab == 1 {
+				wl.app.JigApp().SetFocus(rawForm)
+			} else {
+				wl.app.JigApp().SetFocus(form)
+			}
+		}
+	}
+	rebuild(initial)
+}
+
+func compileFilterClauseFor(wl *WorkflowList, clause config.FilterClause) string {
+	return compileFilterClauseWith(clause, resolveFilterKey(wl, clause.Key))
+}
+
+func withFilterTestKey(test func(), next func(*tcell.EventKey) *tcell.EventKey) func(*tcell.EventKey) *tcell.EventKey {
+	return func(event *tcell.EventKey) *tcell.EventKey {
+		if isFilterTestKey(event) {
+			if test != nil {
+				test()
+			}
+			return nil
+		}
+		if next != nil {
+			return next(event)
+		}
+		return event
+	}
+}
+
+func isFilterTestKey(event *tcell.EventKey) bool {
+	if event == nil {
+		return false
+	}
+	if event.Key() == tcell.KeyCtrlT {
+		return true
+	}
+	if event.Key() != tcell.KeyRune {
+		return false
+	}
+	if event.Modifiers()&tcell.ModCtrl != 0 && (event.Rune() == 't' || event.Rune() == 'T') {
+		return true
+	}
+	return event.Modifiers() == tcell.ModNone && event.Rune() == 't'
+}
+
+func formString(form *components.Form, name string) string {
+	if form == nil {
+		return ""
+	}
+	if tf, ok := form.GetTextField(name); ok {
+		return strings.TrimSpace(tf.GetValue())
+	}
+	if v, ok := form.GetField(name).(interface{ GetValue() string }); ok {
+		return strings.TrimSpace(v.GetValue())
+	}
+	return ""
+}
+
+func (wl *WorkflowList) testVisibilityQuery(query string) {
+	if wl == nil {
+		return
+	}
+	query = strings.TrimSpace(query)
+	if query == "" {
+		if wl.app != nil {
+			wl.app.ToastWarning("Filter is empty")
+		}
+		return
+	}
+	if _, err := resolveTimePlaceholders(query); err != nil {
+		if wl.app != nil {
+			wl.app.ToastError(err.Error())
+		}
+		return
+	}
+	wl.filterTestSavedName = wl.activeFilterName
+	wl.filterTestSavedQuery = wl.visibilityQuery
+	wl.filterTestSavedClauses = append([]config.FilterClause(nil), wl.filterClauses...)
+	wl.activeFilterName = ""
+	wl.filterClauses = nil
+	wl.filterText = ""
+	wl.filterTestPending = true
+	wl.applyVisibilityQuery(query)
+	wl.revealActiveFilterChip()
+}
+
+func (wl *WorkflowList) restoreFilterTest() {
+	if wl == nil {
+		return
+	}
+	wl.filterTestPending = false
+	wl.activeFilterName = wl.filterTestSavedName
+	wl.visibilityQuery = wl.filterTestSavedQuery
+	wl.filterClauses = append([]config.FilterClause(nil), wl.filterTestSavedClauses...)
+	wl.revealActiveFilterChip()
+}
+
+func (wl *WorkflowList) refreshFilterKeyOptions(keyField *dropdownField) {
+	if wl == nil || keyField == nil {
+		return
+	}
+	keyField.SetOptionsOrdered(filterKeyNamesFor(wl))
+	if wl.app == nil {
+		return
+	}
+	provider := wl.app.Provider()
+	ns := wl.namespace
+	if ns == "" {
+		ns = wl.app.CurrentNamespace()
+	}
+	if provider == nil || ns == "" {
+		return
+	}
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
+		defer cancel()
+		attrs, err := provider.ListCustomSearchAttributes(ctx, ns)
+		if err != nil {
+			return
+		}
+		wl.app.catalog.putAttrs(ns, attrs)
+		if jig := wl.app.JigApp(); jig != nil {
+			jig.QueueUpdateDraw(func() {
+				keyField.SetOptionsOrdered(filterKeyNamesFor(wl))
+			})
+		}
+	}()
+}

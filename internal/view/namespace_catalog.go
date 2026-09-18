@@ -147,7 +147,7 @@ func (s *namespaceCatalogStore) getAttrs(ns string) []temporal.SearchAttribute {
 }
 
 func (s *namespaceCatalogStore) putAttrs(ns string, attrs []temporal.SearchAttribute) {
-	if s == nil || ns == "" {
+	if s == nil || ns == "" || len(attrs) == 0 {
 		return
 	}
 	s.mu.Lock()
@@ -211,6 +211,13 @@ func (a *App) refreshNamespaceCatalogFor(ns string) {
 	if provider == nil {
 		return
 	}
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
+		defer cancel()
+		if attrs, err := listCustomSearchAttributes(ctx, provider, ns); err == nil {
+			a.catalog.putAttrs(ns, attrs)
+		}
+	}()
 	gen, started := a.catalog.tryBeginFetch(ns)
 	if !started {
 		return
@@ -224,9 +231,6 @@ func (a *App) refreshNamespaceCatalogFor(ns string) {
 			return
 		}
 		a.catalog.putIfCurrent(ns, gen, startCatalog{types: types, queues: queues})
-		if attrs, attrErr := listCustomSearchAttributes(ctx, provider, ns); attrErr == nil {
-			a.catalog.putAttrs(ns, attrs)
-		}
 	}()
 }
 

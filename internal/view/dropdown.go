@@ -10,7 +10,7 @@ import (
 	"github.com/rivo/tview"
 )
 
-const dropdownMaxSuggestions = 8
+const dropdownMaxSuggestions = 12
 
 type dropdownField struct {
 	*tview.Box

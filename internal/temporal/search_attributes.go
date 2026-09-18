@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"unicode"
 
 	"go.temporal.io/api/enums/v1"
 	"go.temporal.io/api/operatorservice/v1"
@@ -48,7 +49,11 @@ func (c *Client) ListCustomSearchAttributes(ctx context.Context, namespace strin
 	if nsErr == nil {
 		aliases = nsResp.GetConfig().GetCustomSearchAttributeAliases()
 	}
-	attrs := customSearchAttributesFromMaps(custom, system, aliases)
+	var extra map[string]enums.IndexedValueType
+	if saResp, saErr := cl.WorkflowService().GetSearchAttributes(ctx, &workflowservice.GetSearchAttributesRequest{}); saErr == nil {
+		extra = saResp.GetKeys()
+	}
+	attrs := customSearchAttributesFromMaps(custom, system, aliases, extra)
 	if len(attrs) == 0 && opErr != nil && nsErr != nil {
 		return nil, fmt.Errorf("failed to list search attributes: %w", opErr)
 	}
@@ -59,11 +64,12 @@ func customSearchAttributesFromMaps(
 	custom map[string]enums.IndexedValueType,
 	system map[string]enums.IndexedValueType,
 	aliases map[string]string,
+	extra map[string]enums.IndexedValueType,
 ) []SearchAttribute {
 	byName := map[string]SearchAttribute{}
 	add := func(name string, typ SearchAttributeType) {
 		name = strings.TrimSpace(name)
-		if name == "" {
+		if name == "" || isReservedSearchAttribute(name) {
 			return
 		}
 		byName[name] = SearchAttribute{Name: name, Type: typ}
@@ -71,22 +77,27 @@ func customSearchAttributesFromMaps(
 	for name, typ := range custom {
 		add(name, searchAttributeType(typ))
 	}
-	for field, alias := range aliases {
-		field = strings.TrimSpace(field)
-		alias = strings.TrimSpace(alias)
-		if alias == "" {
-			continue
-		}
+	for left, right := range aliases {
+		field, name := aliasFieldAndName(left, right)
 		typ := searchAttributeTypeFromFieldName(field)
 		if t, ok := system[field]; ok {
 			typ = searchAttributeType(t)
 		} else if t, ok := custom[field]; ok {
 			typ = searchAttributeType(t)
-		} else if t, ok := custom[alias]; ok {
+		} else if t, ok := custom[name]; ok {
 			typ = searchAttributeType(t)
 		}
 		delete(byName, field)
-		add(alias, typ)
+		add(name, typ)
+	}
+	for name, typ := range extra {
+		if isReservedSearchAttribute(name) {
+			continue
+		}
+		if _, ok := byName[name]; ok {
+			continue
+		}
+		add(name, searchAttributeType(typ))
 	}
 	out := make([]SearchAttribute, 0, len(byName))
 	for _, attr := range byName {
@@ -96,6 +107,59 @@ func customSearchAttributesFromMaps(
 		return out[i].Name < out[j].Name
 	})
 	return out
+}
+
+func aliasFieldAndName(a, b string) (field, name string) {
+	a, b = strings.TrimSpace(a), strings.TrimSpace(b)
+	aCloud, bCloud := isCloudPlaceholderName(a), isCloudPlaceholderName(b)
+	switch {
+	case aCloud && !bCloud:
+		return a, b
+	case bCloud && !aCloud:
+		return b, a
+	default:
+		return a, b
+	}
+}
+
+func isCloudPlaceholderName(name string) bool {
+	f := strings.ToLower(strings.TrimSpace(name))
+	prefixes := []string{"keywordlist", "keyword", "datetime", "double", "text", "bool", "int"}
+	for _, p := range prefixes {
+		if !strings.HasPrefix(f, p) {
+			continue
+		}
+		rest := f[len(p):]
+		if rest == "" {
+			return false
+		}
+		for _, r := range rest {
+			if !unicode.IsDigit(r) {
+				return false
+			}
+		}
+		return true
+	}
+	return false
+}
+
+func isReservedSearchAttribute(name string) bool {
+	if isCloudPlaceholderName(name) {
+		return true
+	}
+	switch strings.ToLower(strings.TrimSpace(name)) {
+	case "workflowid", "runid", "workflowtype", "taskqueue", "executionstatus",
+		"starttime", "closetime", "executiontime", "executionduration",
+		"historylength", "historysizebytes", "statetransitioncount",
+		"binarychecksums", "batchernamespace", "batcheruser",
+		"temporalchangeversion", "buildids", "parentworkflowid", "parentrunid",
+		"rootworkflowid", "rootrunid", "temporalscheduledstarttime",
+		"temporalscheduledbyid", "temporalschedulepaused",
+		"temporalnamespacedivision":
+		return true
+	default:
+		return false
+	}
 }
 
 func searchAttributeTypeFromFieldName(field string) SearchAttributeType {
