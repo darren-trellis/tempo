@@ -224,6 +224,28 @@ func TestShouldWrapFilters(t *testing.T) {
 	}
 }
 
+func TestResolvedSavedFiltersPosition(t *testing.T) {
+	if DefaultConfig().ResolvedSavedFiltersPosition() != SavedFiltersPositionTop {
+		t.Fatal("saved_filters_position should default to top")
+	}
+	if (*Config)(nil).ResolvedSavedFiltersPosition() != SavedFiltersPositionTop {
+		t.Fatal("nil config should default to top")
+	}
+	if (&Config{SavedFiltersPosition: "side"}).ResolvedSavedFiltersPosition() != SavedFiltersPositionSide {
+		t.Fatal("saved_filters_position: side should use the sidebar")
+	}
+	if (&Config{SavedFiltersPosition: "TOP"}).ResolvedSavedFiltersPosition() != SavedFiltersPositionTop {
+		t.Fatal("saved_filters_position: TOP should use the top bar")
+	}
+	parsed, err := ParseConfigFile([]byte("saved_filters_position: side\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if parsed.ResolvedSavedFiltersPosition() != SavedFiltersPositionSide {
+		t.Fatal("yaml saved_filters_position: side should use the sidebar")
+	}
+}
+
 func TestMouseScrollStepSize(t *testing.T) {
 	if DefaultConfig().MouseScrollStepSize() != DefaultMouseScrollStep {
 		t.Fatalf("default mouse scroll step = %d", DefaultConfig().MouseScrollStepSize())

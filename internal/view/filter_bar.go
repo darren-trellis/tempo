@@ -6,6 +6,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/atterpac/jig/theme"
+	"github.com/galaxy-io/tempo/internal/config"
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 )
@@ -24,8 +25,10 @@ type filterBarHit struct {
 
 type filterChipBar struct {
 	*tview.Box
-	wl   *WorkflowList
-	hits []filterBarHit
+	wl     *WorkflowList
+	hits   []filterBarHit
+	cursor int
+	offset int
 }
 
 func newFilterChipBar(wl *WorkflowList) *filterChipBar {
@@ -39,15 +42,87 @@ func (b *filterChipBar) MouseHandler() func(tview.MouseAction, *tcell.EventMouse
 		if b == nil || event == nil || !b.InRect(event.Position()) {
 			return false, nil
 		}
+		side := b.wl != nil && b.wl.filtersOnSide()
 		switch action {
 		case tview.MouseLeftDown, tview.MouseLeftClick, tview.MouseLeftDoubleClick:
+			if side && b.wl != nil {
+				b.wl.setFocusPane(focusFilters)
+			}
 			if action == tview.MouseLeftClick || action == tview.MouseLeftDoubleClick {
 				px, py := event.Position()
 				b.handleClick(px, py)
 			}
+			if side {
+				return true, b
+			}
 			return true, nil
+		case tview.MouseScrollUp:
+			if side {
+				b.moveCursor(-1)
+				return true, b
+			}
+		case tview.MouseScrollDown:
+			if side {
+				b.moveCursor(1)
+				return true, b
+			}
 		}
 		return false, nil
+	})
+}
+
+func (b *filterChipBar) InputHandler() func(*tcell.EventKey, func(tview.Primitive)) {
+	return b.WrapInputHandler(func(event *tcell.EventKey, setFocus func(tview.Primitive)) {
+		if b == nil || event == nil || b.wl == nil || !b.wl.filtersOnSide() {
+			return
+		}
+		if b.wl.handlePaneResizeKey(event) || b.wl.handleListTabKey(event) {
+			return
+		}
+		switch event.Key() {
+		case tcell.KeyTab:
+			b.wl.cycleFocus(1)
+			return
+		case tcell.KeyBacktab:
+			b.wl.cycleFocus(-1)
+			return
+		case tcell.KeyEscape:
+			b.wl.setFocusPane(focusWorkflows)
+			return
+		case tcell.KeyUp, tcell.KeyCtrlP:
+			b.moveCursor(-1)
+			return
+		case tcell.KeyDown, tcell.KeyCtrlN:
+			b.moveCursor(1)
+			return
+		case tcell.KeyEnter:
+			b.applyCursor()
+			return
+		case tcell.KeyHome:
+			b.setCursor(0)
+			return
+		case tcell.KeyEnd:
+			b.setCursor(b.itemCount() - 1)
+			return
+		case tcell.KeyPgUp:
+			b.moveCursor(-b.pageSize())
+			return
+		case tcell.KeyPgDn:
+			b.moveCursor(b.pageSize())
+			return
+		}
+		switch event.Rune() {
+		case 'k':
+			b.moveCursor(-1)
+		case 'j':
+			b.moveCursor(1)
+		case 'g':
+			b.setCursor(0)
+		case 'G':
+			b.setCursor(b.itemCount() - 1)
+		case 'l':
+			b.applyCursor()
+		}
 	})
 }
 
@@ -139,8 +214,15 @@ func layoutFilterBarLines(items []filterBarChip, width int) [][]filterBarChip {
 	return lines
 }
 
-func (wl *WorkflowList) shouldWrapFilters() bool {
+func (wl *WorkflowList) filtersOnSide() bool {
 	if wl == nil || wl.app == nil {
+		return false
+	}
+	return wl.app.Config().ResolvedSavedFiltersPosition() == config.SavedFiltersPositionSide
+}
+
+func (wl *WorkflowList) shouldWrapFilters() bool {
+	if wl == nil || wl.app == nil || wl.filtersOnSide() {
 		return false
 	}
 	return wl.app.Config().ShouldWrapFilters()
@@ -171,6 +253,23 @@ func (wl *WorkflowList) filterBarWidth() int {
 	return 0
 }
 
+func (wl *WorkflowList) filterSidebarWidth() int {
+	max := utf8.RuneCountInString("All")
+	for _, item := range filterBarItems(wl) {
+		if n := utf8.RuneCountInString(item.label); n > max {
+			max = n
+		}
+	}
+	w := max + 3
+	if w < 14 {
+		w = 14
+	}
+	if w > 36 {
+		w = 36
+	}
+	return w
+}
+
 func (wl *WorkflowList) filterBarChipRows() int {
 	if wl == nil || !wl.shouldWrapFilters() {
 		return 1
@@ -183,19 +282,33 @@ func (wl *WorkflowList) filterBarChipRows() int {
 }
 
 func (wl *WorkflowList) filterBarHeight() int {
+	if wl != nil && wl.filtersOnSide() {
+		return 0
+	}
 	return wl.filterBarChipRows() + 1
 }
 
-func (wl *WorkflowList) syncFilterBarHeight() {
+func (wl *WorkflowList) syncFilterBarLayout() {
 	if wl == nil || wl.workflowStack == nil || wl.filterBar == nil {
 		return
 	}
-	rows := wl.filterBarHeight()
-	if rows == wl.filterBarRows {
+	side := wl.filtersOnSide()
+	if side != wl.filterBarSide {
+		if !side && wl.focusPane == focusFilters {
+			wl.focusPane = focusWorkflows
+		}
+		wl.mountWorkflowContent()
 		return
 	}
-	wl.filterBarRows = rows
-	wl.workflowStack.ResizeItem(wl.filterBar, rows, 0)
+	size := wl.filterSidebarWidth()
+	if !side {
+		size = wl.filterBarHeight()
+	}
+	if size == wl.filterBarRows {
+		return
+	}
+	wl.filterBarRows = size
+	wl.workflowStack.ResizeItem(wl.filterBar, size, 0)
 }
 
 func (b *filterChipBar) Draw(screen tcell.Screen) {
@@ -205,6 +318,14 @@ func (b *filterChipBar) Draw(screen tcell.Screen) {
 	b.Box.SetBackgroundColor(theme.Bg())
 	b.Box.DrawForSubclass(screen, b)
 	b.hits = nil
+	if b.wl != nil && b.wl.filtersOnSide() {
+		b.drawSide(screen)
+		return
+	}
+	b.drawTop(screen)
+}
+
+func (b *filterChipBar) drawTop(screen tcell.Screen) {
 	x, y, width, height := b.GetInnerRect()
 	if width < 1 || height < 1 {
 		return
@@ -281,8 +402,163 @@ func (b *filterChipBar) Draw(screen tcell.Screen) {
 	}
 }
 
+func (b *filterChipBar) drawSide(screen tcell.Screen) {
+	x, y, width, height := b.GetInnerRect()
+	if width < 1 || height < 1 {
+		return
+	}
+	bg := tcell.StyleDefault.Background(theme.Bg()).Foreground(theme.Fg())
+	for row := 0; row < height; row++ {
+		for col := x; col < x+width; col++ {
+			screen.SetContent(col, y+row, ' ', nil, bg)
+		}
+	}
+	items := filterBarItems(b.wl)
+	b.clampCursor(len(items))
+	inner := width - 1
+	if inner < 1 {
+		inner = width
+	}
+	b.ensureCursorVisible()
+	focused := b.HasFocus() || (b.wl != nil && b.wl.focusPane == focusFilters)
+	for row := 0; row < height; row++ {
+		idx := b.offset + row
+		if idx >= 0 && idx < len(items) {
+			item := items[idx]
+			style := tcell.StyleDefault.Background(theme.Bg()).Foreground(theme.Fg())
+			switch {
+			case item.active:
+				style = tcell.StyleDefault.Background(theme.Accent()).Foreground(theme.Bg())
+			case focused && idx == b.cursor:
+				style = tcell.StyleDefault.Background(theme.BgLight()).Foreground(theme.Fg())
+			}
+			label := truncateIfNeeded(item.label, inner-2)
+			col := x
+			if col < x+inner {
+				screen.SetContent(col, y+row, ' ', nil, style)
+				col++
+			}
+			for _, r := range label {
+				if col >= x+inner {
+					break
+				}
+				screen.SetContent(col, y+row, r, nil, style)
+				col++
+			}
+			for col < x+inner {
+				screen.SetContent(col, y+row, ' ', nil, style)
+				col++
+			}
+			b.hits = append(b.hits, filterBarHit{name: item.name, x0: x, x1: x + inner, y: y + row})
+		}
+		if inner < width {
+			line := tcell.StyleDefault.Background(theme.Bg()).Foreground(theme.Border())
+			if focused {
+				line = tcell.StyleDefault.Background(theme.Bg()).Foreground(theme.Accent())
+			}
+			screen.SetContent(x+width-1, y+row, '│', nil, line)
+		}
+	}
+}
+
+func (b *filterChipBar) itemCount() int {
+	return len(filterBarItems(b.wl))
+}
+
+func (b *filterChipBar) pageSize() int {
+	if b == nil {
+		return 1
+	}
+	_, _, _, h := b.GetInnerRect()
+	if h < 1 {
+		return 1
+	}
+	return h
+}
+
+func (b *filterChipBar) clampCursor(n int) {
+	if n <= 0 {
+		b.cursor = 0
+		b.offset = 0
+		return
+	}
+	if b.cursor < 0 {
+		b.cursor = 0
+	}
+	if b.cursor >= n {
+		b.cursor = n - 1
+	}
+	if b.offset < 0 {
+		b.offset = 0
+	}
+}
+
+func (b *filterChipBar) setCursor(i int) {
+	b.cursor = i
+	b.clampCursor(b.itemCount())
+	b.ensureCursorVisible()
+}
+
+func (b *filterChipBar) moveCursor(delta int) {
+	b.setCursor(b.cursor + delta)
+}
+
+func (b *filterChipBar) ensureCursorVisible() {
+	if b == nil {
+		return
+	}
+	_, _, _, h := b.GetInnerRect()
+	if h < 1 {
+		return
+	}
+	if b.cursor < b.offset {
+		b.offset = b.cursor
+	}
+	if b.cursor >= b.offset+h {
+		b.offset = b.cursor - h + 1
+	}
+	if b.offset < 0 {
+		b.offset = 0
+	}
+}
+
+func (b *filterChipBar) applyCursor() {
+	items := filterBarItems(b.wl)
+	if b.cursor < 0 || b.cursor >= len(items) {
+		return
+	}
+	b.applyItem(items[b.cursor])
+}
+
+func (b *filterChipBar) applyItem(item filterBarChip) {
+	if b == nil || b.wl == nil {
+		return
+	}
+	a := b.wl.app
+	if a != nil && a.app != nil && a.app.Pages() != nil && a.app.Pages().CurrentIsModal() {
+		return
+	}
+	if item.name == "" {
+		b.wl.applyAllWorkflowsFilter()
+		return
+	}
+	if a != nil {
+		a.loadSavedFilter(b.wl, item.name)
+	}
+}
+
 func (b *filterChipBar) handleClick(x, y int) {
 	if b == nil || b.wl == nil {
+		return
+	}
+	if b.wl.filtersOnSide() {
+		_, iy, _, _ := b.GetInnerRect()
+		idx := b.offset + (y - iy)
+		items := filterBarItems(b.wl)
+		if idx >= 0 && idx < len(items) {
+			b.cursor = idx
+			b.applyItem(items[idx])
+		}
 		return
 	}
 	a := b.wl.app

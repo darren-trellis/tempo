@@ -425,7 +425,7 @@ func (wl *WorkflowList) handleListTabKey(event *tcell.EventKey) bool {
 	if event == nil {
 		return false
 	}
-	if wl.focusPane != focusWorkflows {
+	if wl.focusPane != focusWorkflows && wl.focusPane != focusFilters {
 		return false
 	}
 	switch event.Rune() {

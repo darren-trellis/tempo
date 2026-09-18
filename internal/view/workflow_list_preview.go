@@ -362,6 +362,9 @@ func (wl *WorkflowList) paneAt(x, y int) (workflowFocusPane, bool) {
 	if wl.timelineVisible && wl.timelinePanel != nil && wl.timelinePanel.InRect(x, y) {
 		return focusTimeline, true
 	}
+	if wl.filtersOnSide() && wl.workflowsActive() && wl.filterBar != nil && wl.filterBar.InRect(x, y) {
+		return focusFilters, true
+	}
 	if !wl.workflowsActive() {
 		if wl.taskQueuesActive() && wl.pollersVisible && wl.taskQueues != nil && wl.taskQueues.pollerPanel != nil && wl.taskQueues.pollerPanel.InRect(x, y) {
 			return focusPollers, true
@@ -1122,7 +1125,11 @@ func (wl *WorkflowList) previewFocusOrder() []workflowFocusPane {
 		}
 		return []workflowFocusPane{focusWorkflows}
 	}
-	order := []workflowFocusPane{focusWorkflows}
+	order := []workflowFocusPane{}
+	if wl.filtersOnSide() {
+		order = append(order, focusFilters)
+	}
+	order = append(order, focusWorkflows)
 	if wl.previewModeEnabled() {
 		if wl.previewShowsSidePane() || wl.previewKind == previewHierarchy {
 			order = append(order, focusEvents, focusEventDetail)
@@ -1199,6 +1206,12 @@ func (wl *WorkflowList) setFocusPane(pane workflowFocusPane) {
 		}
 	case focusTimeline:
 		wl.app.JigApp().SetFocus(wl.timelineView)
+	case focusFilters:
+		if wl.filterBar != nil {
+			wl.app.JigApp().SetFocus(wl.filterBar)
+		} else {
+			wl.app.JigApp().SetFocus(wl.table)
+		}
 	default:
 		if wl.taskQueuesActive() && wl.taskQueues != nil {
 			wl.app.JigApp().SetFocus(wl.taskQueues.queueTable)
@@ -1216,7 +1229,7 @@ func (wl *WorkflowList) setFocusPane(pane workflowFocusPane) {
 func (wl *WorkflowList) applyFocusStyles() {
 	active := wl == nil || wl.app == nil || !wl.app.modalHasFocus()
 	if wl.workflowsPanel != nil {
-		wl.workflowsPanel.SetFocused(active && wl.focusPane == focusWorkflows)
+		wl.workflowsPanel.SetFocused(active && (wl.focusPane == focusWorkflows || wl.focusPane == focusFilters))
 	}
 	if wl.previewPanel != nil {
 		wl.previewPanel.SetFocused(active && wl.focusPane == focusEvents)
@@ -1318,6 +1331,8 @@ func (wl *WorkflowList) syncFocusFromPrimitives() {
 		pane = focusWorkflows
 	case wl.workers != nil && wl.workers.table != nil && wl.workers.table.HasFocus():
 		pane = focusWorkflows
+	case wl.filterBar != nil && wl.filterBar.HasFocus():
+		pane = focusFilters
 	case wl.table != nil && wl.table.HasFocus():
 		pane = focusWorkflows
 	default:

@@ -252,8 +252,13 @@ func TestCommandSuggestionsConfigAndFilters(t *testing.T) {
 	}
 
 	items = suggestionsFor("config set ", catalog, commandExtras{})
-	if !hasLabel(items, "theme") || !hasLabel(items, "autosave") || !hasLabel(items, "filter_wrap") {
+	if !hasLabel(items, "theme") || !hasLabel(items, "autosave") || !hasLabel(items, "filter_wrap") || !hasLabel(items, "saved_filters_position") {
 		t.Fatalf("config set names=%v", suggestionLabels(items))
+	}
+
+	items = suggestionsFor("config set saved_filters_position ", catalog, commandExtras{})
+	if !hasLabel(items, "top") || !hasLabel(items, "side") {
+		t.Fatalf("saved_filters_position values=%v", suggestionLabels(items))
 	}
 
 	items = suggestionsFor("config set theme ", catalog, commandExtras{})

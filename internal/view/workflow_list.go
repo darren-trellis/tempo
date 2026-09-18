@@ -23,6 +23,7 @@ const (
 	focusScheduleDetail
 	focusScheduleRuns
 	focusWorkerDetail
+	focusFilters
 )
 
 // WorkflowList displays a list of workflows.
@@ -50,6 +51,7 @@ type WorkflowList struct {
 	workflowStack         *tview.Flex
 	workflowBody          tview.Primitive
 	filterBarRows         int
+	filterBarSide         bool
 	workflowsPanel        *chromePanel
 	previewPanel          *components.Panel
 	previewTabs           *components.Tabs
@@ -365,11 +367,20 @@ func (wl *WorkflowList) mountWorkflowContent() {
 	if body == nil {
 		body = wl.tableScroll
 	}
-	rows := wl.filterBarHeight()
-	wl.filterBarRows = rows
+	side := wl.filtersOnSide()
+	wl.filterBarSide = side
+	if side {
+		wl.workflowStack.SetDirection(tview.FlexColumn)
+		width := wl.filterSidebarWidth()
+		wl.filterBarRows = width
+	} else {
+		wl.workflowStack.SetDirection(tview.FlexRow)
+		rows := wl.filterBarHeight()
+		wl.filterBarRows = rows
+	}
 	wl.workflowStack.Clear()
 	if wl.filterBar != nil {
-		wl.workflowStack.AddItem(wl.filterBar, rows, 0, false)
+		wl.workflowStack.AddItem(wl.filterBar, wl.filterBarRows, 0, false)
 	}
 	if body != nil {
 		wl.workflowStack.AddItem(body, 0, 1, true)
@@ -951,6 +962,12 @@ func (wl *WorkflowList) Focus(delegate func(p tview.Primitive)) {
 			return
 		}
 		delegate(wl.table)
+	case focusFilters:
+		if wl.filterBar != nil {
+			delegate(wl.filterBar)
+			return
+		}
+		delegate(wl.table)
 	default:
 		delegate(wl.table)
 	}
@@ -1020,6 +1037,6 @@ func (wl *WorkflowList) Draw(screen tcell.Screen) {
 		wl.timelineView.SetBackgroundColor(bg)
 	}
 	wl.syncFocusFromPrimitives()
-	wl.syncFilterBarHeight()
+	wl.syncFilterBarLayout()
 	wl.Flex.Draw(screen)
 }

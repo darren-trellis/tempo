@@ -154,26 +154,27 @@ const ExternalProfilePrefix = "import:"
 
 // Config represents the application configuration.
 type Config struct {
-	Theme              string                      `yaml:"theme"`
-	ActiveProfile      string                      `yaml:"active_profile,omitempty"`
-	Profiles           map[string]ConnectionConfig `yaml:"profiles,omitempty"`
-	ExternalProfiles   map[string]ConnectionConfig `yaml:"-"`
-	SavedFilters       []SavedFilter               `yaml:"saved_filters,omitempty"`
-	CheckUpdates       *bool                       `yaml:"check_updates,omitempty"`
-	Autoreload         *bool                       `yaml:"autoreload,omitempty"`
-	Autosave           *bool                       `yaml:"autosave,omitempty"`
-	HelpStyle          string                      `yaml:"help_style,omitempty"` // "modal" (default) or "sheet"
-	Commands           map[string]CommandConfig    `yaml:"commands,omitempty"`
-	WorkflowColumns    []WorkflowColumnConfig      `yaml:"workflow_columns,omitempty"`
-	ActivityColumns    []WorkflowColumnConfig      `yaml:"activity_columns,omitempty"`
-	WorkflowTimeFormat string                      `yaml:"workflow_time_format,omitempty"`
-	ActivityTimeFormat string                      `yaml:"activity_time_format,omitempty"`
-	PreviewCacheSize   *int                        `yaml:"preview_cache_size,omitempty"`
-	MouseScrollStep    *int                        `yaml:"mouse_scroll_step,omitempty"`
-	ShowScrollbars     *bool                       `yaml:"show_scrollbars,omitempty"`
-	FilterWrap         *bool                       `yaml:"filter_wrap,omitempty"`
-	ModalShadow        string                      `yaml:"modal_shadow,omitempty"`
-	WorkflowPageSize   *int                        `yaml:"workflow_page_size,omitempty"`
+	Theme                string                      `yaml:"theme"`
+	ActiveProfile        string                      `yaml:"active_profile,omitempty"`
+	Profiles             map[string]ConnectionConfig `yaml:"profiles,omitempty"`
+	ExternalProfiles     map[string]ConnectionConfig `yaml:"-"`
+	SavedFilters         []SavedFilter               `yaml:"saved_filters,omitempty"`
+	CheckUpdates         *bool                       `yaml:"check_updates,omitempty"`
+	Autoreload           *bool                       `yaml:"autoreload,omitempty"`
+	Autosave             *bool                       `yaml:"autosave,omitempty"`
+	HelpStyle            string                      `yaml:"help_style,omitempty"` // "modal" (default) or "sheet"
+	Commands             map[string]CommandConfig    `yaml:"commands,omitempty"`
+	WorkflowColumns      []WorkflowColumnConfig      `yaml:"workflow_columns,omitempty"`
+	ActivityColumns      []WorkflowColumnConfig      `yaml:"activity_columns,omitempty"`
+	WorkflowTimeFormat   string                      `yaml:"workflow_time_format,omitempty"`
+	ActivityTimeFormat   string                      `yaml:"activity_time_format,omitempty"`
+	PreviewCacheSize     *int                        `yaml:"preview_cache_size,omitempty"`
+	MouseScrollStep      *int                        `yaml:"mouse_scroll_step,omitempty"`
+	ShowScrollbars       *bool                       `yaml:"show_scrollbars,omitempty"`
+	FilterWrap           *bool                       `yaml:"filter_wrap,omitempty"`
+	SavedFiltersPosition string                      `yaml:"saved_filters_position,omitempty"`
+	ModalShadow          string                      `yaml:"modal_shadow,omitempty"`
+	WorkflowPageSize     *int                        `yaml:"workflow_page_size,omitempty"`
 	// How long a worker may go unseen before the workers tab calls it stale,
 	// written as a duration such as "45s" or "2m", or as a plain number of
 	// seconds.
@@ -397,6 +398,23 @@ func (c *Config) ShouldWrapFilters() bool {
 		return false
 	}
 	return *c.FilterWrap
+}
+
+const (
+	SavedFiltersPositionTop  = "top"
+	SavedFiltersPositionSide = "side"
+)
+
+func (c *Config) ResolvedSavedFiltersPosition() string {
+	if c == nil {
+		return SavedFiltersPositionTop
+	}
+	switch strings.ToLower(strings.TrimSpace(c.SavedFiltersPosition)) {
+	case SavedFiltersPositionSide:
+		return SavedFiltersPositionSide
+	default:
+		return SavedFiltersPositionTop
+	}
 }
 
 const (

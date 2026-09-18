@@ -108,6 +108,72 @@ func TestFilterBarDrawsDivider(t *testing.T) {
 	}
 }
 
+func TestFilterSidebarLayoutAndFocus(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	cfg := config.DefaultConfig()
+	cfg.SavedFiltersPosition = config.SavedFiltersPositionSide
+	cfg.SavedFilters = []config.SavedFilter{{Name: "Running"}, {Name: "Failed"}}
+	a := NewAppWithProvider(nil, "default", cfg, "local")
+	wl := NewWorkflowList(a, "default")
+	wl.keepDataOnStart = true
+	if !wl.filtersOnSide() {
+		t.Fatal("side position should use the sidebar")
+	}
+	if !wl.filterBarSide {
+		t.Fatal("workflow stack should mount as a column")
+	}
+
+	wl.focusPane = focusWorkflows
+	wl.cycleFocus(-1)
+	if wl.focusPane != focusFilters {
+		t.Fatalf("shift-tab from the list should focus filters, got %d", wl.focusPane)
+	}
+	wl.cycleFocus(1)
+	if wl.focusPane != focusWorkflows {
+		t.Fatalf("tab from filters should return to the list, got %d", wl.focusPane)
+	}
+
+	wl.filterBar.SetRect(0, 0, 20, 8)
+	screen := tcell.NewSimulationScreen("UTF-8")
+	if err := screen.Init(); err != nil {
+		t.Fatal(err)
+	}
+	screen.SetSize(20, 8)
+	wl.filterBar.Draw(screen)
+	if !strings.Contains(rowText(screen, 0, 20), "All") {
+		t.Fatalf("row0=%q", rowText(screen, 0, 20))
+	}
+	if !strings.Contains(rowText(screen, 1, 20), "Running") {
+		t.Fatalf("row1=%q", rowText(screen, 1, 20))
+	}
+	if !strings.Contains(rowText(screen, 2, 20), "Failed") {
+		t.Fatalf("row2=%q", rowText(screen, 2, 20))
+	}
+	if !strings.Contains(rowText(screen, 0, 20), "│") {
+		t.Fatalf("sidebar should draw a vertical divider, got %q", rowText(screen, 0, 20))
+	}
+
+	wl.SetRect(0, 0, 80, 16)
+	screen.Clear()
+	screen.SetSize(80, 16)
+	wl.Draw(screen)
+	fx, _, fw, _ := wl.filterBar.GetRect()
+	tx, _, _, _ := wl.tableScroll.GetRect()
+	if fw <= 0 || fx >= tx {
+		t.Fatalf("sidebar should sit left of the table, filter x=%d w=%d table x=%d", fx, fw, tx)
+	}
+}
+
+func TestFilterSidebarEscapeReturnsToList(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.SavedFiltersPosition = config.SavedFiltersPositionSide
+	wl := NewWorkflowList(&App{config: cfg}, "default")
+	wl.focusPane = focusFilters
+	if !wl.HandleEscape() || wl.focusPane != focusWorkflows {
+		t.Fatalf("escape should leave the sidebar, pane=%d", wl.focusPane)
+	}
+}
+
 func screenHasAllAndRunning(screen tcell.SimulationScreen, height, width int) bool {
 	for y := 0; y < height; y++ {
 		row := rowText(screen, y, width)

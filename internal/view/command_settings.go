@@ -106,6 +106,25 @@ func tempoSettings() []tempoSetting {
 			return c.ShouldWrapFilters()
 		}, func(c *config.Config, on bool) { c.FilterWrap = &on }),
 		{
+			name: "saved_filters_position",
+			help: "Saved filter chips: top bar or left sidebar",
+			get: func(c *config.Config) string {
+				return c.ResolvedSavedFiltersPosition()
+			},
+			apply: func(a *App, value string) error {
+				switch strings.ToLower(strings.TrimSpace(value)) {
+				case config.SavedFiltersPositionTop, config.SavedFiltersPositionSide:
+					a.config.SavedFiltersPosition = strings.ToLower(strings.TrimSpace(value))
+					return nil
+				default:
+					return fmt.Errorf("saved_filters_position must be top or side")
+				}
+			},
+			values: func() []string {
+				return []string{config.SavedFiltersPositionTop, config.SavedFiltersPositionSide}
+			},
+		},
+		{
 			name: "modal_shadow",
 			help: "Modal box shadow",
 			get: func(c *config.Config) string {
@@ -572,7 +591,14 @@ func (a *App) applySettingSideEffects(name string) {
 		}
 	case "filter_wrap":
 		if hasWL {
-			wl.syncFilterBarHeight()
+			wl.syncFilterBarLayout()
+		}
+	case "saved_filters_position":
+		if hasWL {
+			wl.mountWorkflowContent()
+			if wl.focusPane == focusFilters && !wl.filtersOnSide() {
+				wl.setFocusPane(focusWorkflows)
+			}
 		}
 	}
 }
