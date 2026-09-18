@@ -48,7 +48,9 @@ func TestPopulateTableShiftsScrollWhenPagesPrepend(t *testing.T) {
 	wl.workflows = first
 	wl.allWorkflows = first
 	wl.populateTable()
-	wl.table.SelectRow(0)
+	// Away from the first row, so the highlight rides along with its workflow
+	// rather than staying pinned to the top of the list.
+	wl.table.SelectRow(5)
 	wl.table.SetOffset(0, 0)
 	wl.rememberHighlightedWorkflow()
 	if wl.tableScroll != nil {
@@ -68,11 +70,83 @@ func TestPopulateTableShiftsScrollWhenPagesPrepend(t *testing.T) {
 	if row != 10 {
 		t.Fatalf("prepend should keep the same rows on screen, offset=%d", row)
 	}
-	if wl.table.SelectedRow() != 10 || wl.workflows[wl.table.SelectedRow()].ID != "old-0" {
-		t.Fatalf("should keep old-0 highlighted, row=%d", wl.table.SelectedRow())
+	if wl.table.SelectedRow() != 15 || wl.workflows[wl.table.SelectedRow()].ID != "old-5" {
+		t.Fatalf("should keep old-5 highlighted, row=%d", wl.table.SelectedRow())
 	}
 	if wl.tableScroll != nil && wl.tableScroll.offset != 4 {
 		t.Fatalf("horizontal scroll should stay put, offset=%d", wl.tableScroll.offset)
+	}
+}
+
+// Resting on the first row means "show me the newest", so newer workflows
+// arriving on a refresh should not push the highlight down the list.
+func TestFirstRowStaysHighlightedWhenNewerWorkflowsArrive(t *testing.T) {
+	wl := NewWorkflowList(&App{}, "default")
+	first := make([]temporal.Workflow, 20)
+	for i := range first {
+		first[i] = temporal.Workflow{ID: fmt.Sprintf("old-%d", i), RunID: "r", Type: "T", Status: "Running"}
+	}
+	wl.workflows = first
+	wl.allWorkflows = first
+	wl.populateTable()
+	wl.table.SelectRow(0)
+	wl.table.SetOffset(0, 0)
+	wl.rememberHighlightedWorkflow()
+
+	if wl.listEdgePin != listEdgeStart {
+		t.Fatal("resting on the first row should pin to the start")
+	}
+
+	arrived := make([]temporal.Workflow, 3)
+	for i := range arrived {
+		arrived[i] = temporal.Workflow{ID: fmt.Sprintf("new-%d", i), RunID: "r", Type: "T", Status: "Running"}
+	}
+	wl.rememberListAnchor()
+	wl.workflows = append(append([]temporal.Workflow{}, arrived...), first...)
+	wl.allWorkflows = wl.workflows
+	wl.populateTable()
+
+	if got := wl.table.SelectedRow(); got != 0 {
+		t.Fatalf("highlight should stay on the first row, row=%d", got)
+	}
+	if got := wl.workflows[wl.table.SelectedRow()].ID; got != "new-0" {
+		t.Fatalf("first row should be the newest workflow, got %q", got)
+	}
+	if row, _ := wl.table.GetOffset(); row != 0 {
+		t.Fatalf("the list should stay scrolled to the top, offset=%d", row)
+	}
+}
+
+// Moving off the first row gives up the pin, so the highlight goes back to
+// following its own workflow.
+func TestMovingOffFirstRowReleasesThePin(t *testing.T) {
+	wl := NewWorkflowList(&App{}, "default")
+	items := make([]temporal.Workflow, 20)
+	for i := range items {
+		items[i] = temporal.Workflow{ID: fmt.Sprintf("old-%d", i), RunID: "r", Type: "T", Status: "Running"}
+	}
+	wl.workflows = items
+	wl.allWorkflows = items
+	wl.populateTable()
+
+	wl.table.SelectRow(0)
+	if wl.listEdgePin != listEdgeStart {
+		t.Fatal("first row should pin")
+	}
+	wl.table.SelectRow(3)
+	if wl.listEdgePin != listEdgeNone {
+		t.Fatalf("moving away should release the pin, pin=%v", wl.listEdgePin)
+	}
+	wl.rememberHighlightedWorkflow()
+
+	arrived := []temporal.Workflow{{ID: "new-0", RunID: "r", Type: "T", Status: "Running"}}
+	wl.rememberListAnchor()
+	wl.workflows = append(arrived, items...)
+	wl.allWorkflows = wl.workflows
+	wl.populateTable()
+
+	if got := wl.workflows[wl.table.SelectedRow()].ID; got != "old-3" {
+		t.Fatalf("highlight should follow its workflow, got %q at row %d", got, wl.table.SelectedRow())
 	}
 }
 

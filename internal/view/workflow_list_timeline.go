@@ -249,7 +249,7 @@ func (wl *WorkflowList) selectedWorkflow() (temporal.Workflow, bool) {
 }
 
 func (wl *WorkflowList) syncHistoryForSelectedRow() {
-	wl.clearListEdgePinIfMoved()
+	wl.syncListEdgePin()
 	wl.rememberHighlightedWorkflow()
 	wl.maybeFetchPages()
 	if !wl.historyNeeded() || wl.table == nil {

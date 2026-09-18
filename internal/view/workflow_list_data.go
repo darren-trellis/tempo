@@ -354,20 +354,23 @@ func (wl *WorkflowList) jumpWorkflowListEdge(end bool) {
 	wl.rememberHighlightedWorkflow()
 }
 
-func (wl *WorkflowList) clearListEdgePinIfMoved() {
-	if wl == nil || wl.table == nil || wl.listEdgePin == listEdgeNone {
+// syncListEdgePin tracks whether the highlight is sitting on an edge of the
+// list. Resting on the first row pins it there, so a refresh that prepends
+// newer workflows leaves the highlight on the newest row rather than pushing
+// it down with the row it was on. The end pin is only ever set by G, because
+// pinning it here would stop the pager from loading further pages whenever the
+// highlight reached the last loaded row.
+func (wl *WorkflowList) syncListEdgePin() {
+	if wl == nil || wl.table == nil {
 		return
 	}
 	row := wl.table.SelectedRow()
-	switch wl.listEdgePin {
-	case listEdgeStart:
-		if row != 0 {
-			wl.listEdgePin = listEdgeNone
-		}
-	case listEdgeEnd:
-		if row != len(wl.workflows)-1 {
-			wl.listEdgePin = listEdgeNone
-		}
+	switch {
+	case row == 0:
+		wl.listEdgePin = listEdgeStart
+	case wl.listEdgePin == listEdgeEnd && row == len(wl.workflows)-1:
+	default:
+		wl.listEdgePin = listEdgeNone
 	}
 }
 
