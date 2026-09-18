@@ -1,6 +1,7 @@
 package view
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -488,10 +489,7 @@ func TestShowFilterManagerReorderAndDelete(t *testing.T) {
 	if !ok {
 		t.Fatalf("current=%T", a.app.Pages().Current())
 	}
-	table, ok := om.body.(*components.Table)
-	if !ok {
-		t.Fatalf("content=%T", om.body)
-	}
+	table := overlayModalTable(t, om)
 	table.SelectRow(0)
 	capture := table.GetInputCapture()
 	if capture == nil {
@@ -533,10 +531,7 @@ func TestDeleteActiveFilterKeepsManagerFocus(t *testing.T) {
 	if !ok {
 		t.Fatalf("current=%T", a.app.Pages().Current())
 	}
-	table, ok := om.body.(*components.Table)
-	if !ok {
-		t.Fatalf("content=%T", om.body)
-	}
+	table := overlayModalTable(t, om)
 	table.SelectRow(0)
 	capture := table.GetInputCapture()
 	if capture == nil {
@@ -605,11 +600,7 @@ func TestFilterManagerRefreshesAfterSave(t *testing.T) {
 		if !ok {
 			t.Fatalf("current=%T", a.app.Pages().Current())
 		}
-		table, ok := om.body.(*components.Table)
-		if !ok {
-			t.Fatalf("content=%T", om.body)
-		}
-		return table
+		return overlayModalTable(t, om)
 	}
 
 	table := managerTable()
@@ -673,6 +664,34 @@ func TestFilterManagerRefreshesAfterSave(t *testing.T) {
 	}
 }
 
+// overlayModalTable unwraps a modal body that may be a table or a scroll
+// wrapper around one.
+func overlayModalTable(t *testing.T, om *overlayModal) *components.Table {
+	t.Helper()
+	switch body := om.body.(type) {
+	case *components.Table:
+		return body
+	case *charScrollView:
+		table, ok := body.content.(*components.Table)
+		if !ok {
+			t.Fatalf("scroll content=%T", body.content)
+		}
+		return table
+	default:
+		t.Fatalf("content=%T", om.body)
+		return nil
+	}
+}
+
+func overlayModalScroll(t *testing.T, om *overlayModal) *charScrollView {
+	t.Helper()
+	scroll, ok := om.body.(*charScrollView)
+	if !ok {
+		t.Fatalf("content=%T, want a scroll view", om.body)
+	}
+	return scroll
+}
+
 // filterManagerTable opens the Filters dialog and hands back its table.
 func filterManagerTable(t *testing.T, a *App, wl *WorkflowList) *components.Table {
 	t.Helper()
@@ -681,11 +700,7 @@ func filterManagerTable(t *testing.T, a *App, wl *WorkflowList) *components.Tabl
 	if !ok {
 		t.Fatalf("current=%T", a.app.Pages().Current())
 	}
-	table, ok := om.body.(*components.Table)
-	if !ok {
-		t.Fatalf("content=%T", om.body)
-	}
-	return table
+	return overlayModalTable(t, om)
 }
 
 // submitNamePrompt fills in the open name prompt and accepts it.
@@ -914,6 +929,80 @@ func TestRenameFilterWithNothingSelectedDoesNothing(t *testing.T) {
 	}
 }
 
+func TestFilterManagerShowsFullQueryAndScrolls(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	longQuery := "WorkflowType = 'VeryLongWorkflowTypeNameThatShouldNotBeTruncated' AND ExecutionStatus = 'Running' AND WorkflowId STARTS_WITH 'order-'"
+	cfg := config.DefaultConfig()
+	cfg.SavedFilters = nil
+	for i := 0; i < 40; i++ {
+		cfg.SavedFilters = append(cfg.SavedFilters, config.SavedFilter{
+			Name:  fmt.Sprintf("filter-%02d", i),
+			Query: longQuery,
+		})
+	}
+	a := NewAppWithProvider(nil, "default", cfg, "local")
+	wl := NewWorkflowList(a, "default")
+	wl.keepDataOnStart = true
+	a.app.Pages().Push(wl)
+
+	wl.showFilterManager()
+	om, ok := a.app.Pages().Current().(*overlayModal)
+	if !ok {
+		t.Fatalf("current=%T", a.app.Pages().Current())
+	}
+	table := overlayModalTable(t, om)
+	scroll := overlayModalScroll(t, om)
+
+	row := table.GetRowData(0)
+	if len(row) < 2 || !strings.Contains(row[1], "VeryLongWorkflowTypeNameThatShouldNotBeTruncated") {
+		t.Fatalf("FILTER column should keep the full query, got %q", row)
+	}
+	if strings.Contains(row[1], "...") {
+		t.Fatalf("FILTER column should not truncate, got %q", row[1])
+	}
+
+	om.SetRect(0, 0, 80, 24)
+	screen := tcell.NewSimulationScreen("UTF-8")
+	if err := screen.Init(); err != nil {
+		t.Fatal(err)
+	}
+	screen.SetSize(80, 24)
+	om.Draw(screen)
+	if tableContentWidth(table) <= scroll.viewport() {
+		t.Fatalf("a long query should be wider than the dialog, content=%d viewport=%d", tableContentWidth(table), scroll.viewport())
+	}
+
+	capture := table.GetInputCapture()
+	if ev := capture(tcell.NewEventKey(tcell.KeyRight, 0, tcell.ModNone)); ev != nil {
+		t.Fatal("right should scroll horizontally")
+	}
+	om.Draw(screen)
+	if scroll.offset == 0 {
+		t.Fatal("right should move the horizontal offset")
+	}
+
+	table.SelectRow(39)
+	om.Draw(screen)
+	if rowOff, _ := table.GetOffset(); rowOff == 0 {
+		t.Fatal("selecting the last row should scroll the table vertically")
+	}
+	if !filterManagerHasVerticalScrollbar(screen, 80, 24) {
+		t.Fatal("a long list should show a vertical scrollbar")
+	}
+}
+
+func filterManagerHasVerticalScrollbar(screen tcell.SimulationScreen, width, height int) bool {
+	for y := 0; y < height; y++ {
+		for x := 0; x < width; x++ {
+			mainc, _, _, _ := screen.GetContent(x, y)
+			if mainc == scrollbarThinVert {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 func clauseEditorScreen(t *testing.T, a *App, wl *WorkflowList, clause config.FilterClause) tcell.SimulationScreen {
 	t.Helper()
 	wl.showClauseEditor(clause, nil)
@@ -979,10 +1068,7 @@ func TestNewFilterOpensClauseEditorFirst(t *testing.T) {
 	if !ok {
 		t.Fatalf("manager current=%T", a.app.Pages().Current())
 	}
-	table, ok := manager.body.(*components.Table)
-	if !ok {
-		t.Fatalf("manager body=%T", manager.body)
-	}
+	table := overlayModalTable(t, manager)
 	capture := table.GetInputCapture()
 	if capture == nil {
 		t.Fatal("manager table should have keys")
@@ -1046,8 +1132,7 @@ func TestNewFilterCancelledClauseReturnsToManager(t *testing.T) {
 	wl.showFilterManager()
 
 	manager := a.app.Pages().Current().(*overlayModal)
-	capture := manager.body.(*components.Table).GetInputCapture()
-	capture(tcell.NewEventKey(tcell.KeyRune, 'n', tcell.ModNone))
+	overlayModalTable(t, manager).GetInputCapture()(tcell.NewEventKey(tcell.KeyRune, 'n', tcell.ModNone))
 
 	wl.closeModal()
 
@@ -1055,7 +1140,7 @@ func TestNewFilterCancelledClauseReturnsToManager(t *testing.T) {
 	if !ok {
 		t.Fatalf("current=%T", a.app.Pages().Current())
 	}
-	if _, isTable := back.body.(*components.Table); !isTable {
+	if _, isScroll := back.body.(*charScrollView); !isScroll {
 		t.Fatalf("cancelling the clause should land back on the Filters modal, got %T", back.body)
 	}
 }

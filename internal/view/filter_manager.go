@@ -45,7 +45,7 @@ func (wl *WorkflowList) showFilterManager() {
 			table.AddRow("(none)", "Press n to create a filter")
 		} else {
 			for _, f := range filters {
-				table.AddRow(f.Name, truncate(savedFilterSummary(f), 52))
+				table.AddRow(f.Name, savedFilterSummary(f))
 			}
 		}
 		if row < 0 {
@@ -221,6 +221,9 @@ func (wl *WorkflowList) showFilterManager() {
 			return true
 		})
 
+	refresh()
+
+	scroll := attachTableCharScroll(table, wl.app)
 	table.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		if event.Key() == tcell.KeyEnter {
 			applySelected()
@@ -237,17 +240,18 @@ func (wl *WorkflowList) showFilterManager() {
 		if bindings.Handle(event) {
 			return nil
 		}
+		if handleTableCharScroll(scroll, table, event) {
+			return nil
+		}
 		return event
 	})
-
-	refresh()
 
 	modal := newOverlayModal(components.ModalConfig{
 		Title:  fmt.Sprintf("%s Filters", theme.IconFilter),
 		Width:  76,
 		Height: 22,
 	}, wl)
-	modal.SetContent(table)
+	modal.SetContent(scroll)
 	modal.SetHints([]components.KeyHint{
 		{Key: "Enter", Description: "Apply"},
 		{Key: "n", Description: "New Filter"},
