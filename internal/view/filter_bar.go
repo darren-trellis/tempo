@@ -155,7 +155,7 @@ func filterBarItems(wl *WorkflowList) []filterBarChip {
 	return items
 }
 
-const filterBarChipSep = " | "
+const filterBarChipSep = "|"
 
 func filterChipWidth(label string) int {
 	return utf8.RuneCountInString(label) + 2
