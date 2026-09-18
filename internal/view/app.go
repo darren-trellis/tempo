@@ -373,6 +373,7 @@ type WorkflowStats struct {
 	Terminated     int
 	TimedOut       int
 	ContinuedAsNew int
+	Total          int
 }
 
 // SetWorkflowStats updates the workflow count badges on the bottom bar.

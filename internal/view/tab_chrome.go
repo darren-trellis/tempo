@@ -2,6 +2,7 @@ package view
 
 import (
 	"strconv"
+	"strings"
 
 	"github.com/atterpac/jig/components"
 	"github.com/atterpac/jig/theme"
@@ -44,6 +45,9 @@ func (a *App) statusBarSegments() []chromeSeg {
 	add(a.autoRefreshChromeText(), a.autoRefreshChromeColor())
 	if wl, ok := a.workflowList(); ok && wl.workflowsActive() {
 		add(workflowTreeChromeText(wl.workflowTreeMode), theme.Fg())
+		if term := strings.TrimSpace(wl.searchFilterTerm()); term != "" {
+			add(theme.IconSearch+" "+term, theme.Fg())
+		}
 	}
 	add(a.profileTitle(), theme.Fg())
 	return segs
@@ -68,6 +72,7 @@ func (a *App) workflowChromeBadges() []workflowStatBadge {
 	var out []workflowStatBadge
 	if wl, ok := a.workflowList(); ok && wl.workflowsActive() {
 		out = append(out,
+			workflowStatBadge{Text: formatCount(wl.totalWorkflowCount()) + " Total", Variant: components.BadgeDefault},
 			workflowStatBadge{Text: formatCount(wl.loadedWorkflowCount()) + " Loaded", Variant: components.BadgeDefault},
 			workflowStatBadge{Text: formatCount(wl.displayedWorkflowCount()) + " Displayed", Variant: components.BadgeDefault},
 		)

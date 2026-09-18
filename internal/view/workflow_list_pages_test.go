@@ -186,6 +186,18 @@ func TestDisplayedStatsUsesServerCounts(t *testing.T) {
 	}
 }
 
+func TestTotalWorkflowCountUsesServerTotal(t *testing.T) {
+	wl := NewWorkflowList(&App{}, "default")
+	wl.allWorkflows = []temporal.Workflow{{Status: "Running"}, {Status: "Completed"}, {Status: "Failed"}}
+	if wl.totalWorkflowCount() != 3 {
+		t.Fatalf("local total=%d", wl.totalWorkflowCount())
+	}
+	wl.applyServerCounts(temporal.WorkflowCounts{Running: 40, Completed: 120, Total: 186})
+	if wl.totalWorkflowCount() != 186 {
+		t.Fatalf("server total=%d", wl.totalWorkflowCount())
+	}
+}
+
 func ids(workflows []temporal.Workflow) []string {
 	out := make([]string, len(workflows))
 	for i, w := range workflows {

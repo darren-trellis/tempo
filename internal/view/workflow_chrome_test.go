@@ -198,12 +198,12 @@ func TestStatusBarShowsLoadedDisplayedProfileAndTree(t *testing.T) {
 	a.menu.Draw(screen)
 	a.drawBottomChrome(screen)
 	got := rowText(screen, 0, 120)
-	if !strings.Contains(got, "3 Loaded") || !strings.Contains(got, "2 Displayed") {
-		t.Fatalf("loaded/displayed should sit with status counts, got %q", got)
+	if !strings.Contains(got, "3 Total") || !strings.Contains(got, "3 Loaded") || !strings.Contains(got, "2 Displayed") {
+		t.Fatalf("total/loaded/displayed should sit with status counts, got %q", got)
 	}
 	badges := a.workflowChromeBadges()
-	if len(badges) < 2 || badges[0].Variant != components.BadgeDefault || badges[1].Variant != components.BadgeDefault {
-		t.Fatalf("loaded and displayed should use the same badge color")
+	if len(badges) < 3 || badges[0].Variant != components.BadgeDefault || badges[1].Variant != components.BadgeDefault || badges[2].Variant != components.BadgeDefault {
+		t.Fatalf("total, loaded, and displayed should use the same badge color")
 	}
 	if !strings.Contains(got, "local") {
 		t.Fatalf("profile should be on the status bar, got %q", got)
@@ -214,6 +214,16 @@ func TestStatusBarShowsLoadedDisplayedProfileAndTree(t *testing.T) {
 	if strings.Contains(paneTitle(wl.workflowsPanel), "local") || strings.Contains(paneTitle(wl.workflowsPanel), "Loaded") {
 		t.Fatalf("primary pane should stay untitled, got %q", paneTitle(wl.workflowsPanel))
 	}
+
+	wl.filterText = "orders"
+	screen.Clear()
+	a.menu.Draw(screen)
+	a.drawBottomChrome(screen)
+	got = rowText(screen, 0, 120)
+	if !strings.Contains(got, "orders") || !strings.Contains(got, theme.IconSearch) {
+		t.Fatalf("search phrase should sit on the status bar, got %q", got)
+	}
+	wl.filterText = ""
 
 	wl.workflowTreeMode = false
 	screen.Clear()
@@ -229,8 +239,8 @@ func TestStatusBarShowsLoadedDisplayedProfileAndTree(t *testing.T) {
 	a.menu.Draw(screen)
 	a.drawBottomChrome(screen)
 	got = rowText(screen, 0, 120)
-	if strings.Contains(got, "Loaded") || strings.Contains(got, "Displayed") {
-		t.Fatalf("other tabs should hide loaded/displayed, got %q", got)
+	if strings.Contains(got, "Loaded") || strings.Contains(got, "Displayed") || strings.Contains(got, "Total") {
+		t.Fatalf("other tabs should hide loaded/displayed/total, got %q", got)
 	}
 	if strings.Contains(got, theme.IconList) || strings.Contains(got, theme.IconNamespace) {
 		t.Fatalf("other tabs should hide the tree/list glyph, got %q", got)

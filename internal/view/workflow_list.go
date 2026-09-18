@@ -330,6 +330,21 @@ func (wl *WorkflowList) loadedWorkflowCount() int {
 	return len(wl.allWorkflows)
 }
 
+func (wl *WorkflowList) totalWorkflowCount() int {
+	if wl == nil {
+		return 0
+	}
+	if wl.serverStatsOK {
+		if wl.serverStats.Total > 0 {
+			return wl.serverStats.Total
+		}
+		return wl.serverStats.Running + wl.serverStats.Completed + wl.serverStats.Failed +
+			wl.serverStats.Canceled + wl.serverStats.Terminated + wl.serverStats.TimedOut +
+			wl.serverStats.ContinuedAsNew
+	}
+	return len(wl.allWorkflows)
+}
+
 func (wl *WorkflowList) applyProfileTitle() {
 	if wl == nil || wl.workflowsPanel == nil {
 		return

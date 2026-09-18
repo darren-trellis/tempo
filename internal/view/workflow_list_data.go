@@ -512,6 +512,7 @@ func (wl *WorkflowList) applyServerCounts(counts temporal.WorkflowCounts) {
 		Terminated:     counts.Terminated,
 		TimedOut:       counts.TimedOut,
 		ContinuedAsNew: counts.ContinuedAsNew,
+		Total:          counts.Total,
 	}
 	wl.serverStatsOK = true
 	wl.updateStats()
