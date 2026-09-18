@@ -155,8 +155,14 @@ func filterBarItems(wl *WorkflowList) []filterBarChip {
 	return items
 }
 
+const filterBarChipSep = " | "
+
 func filterChipWidth(label string) int {
 	return utf8.RuneCountInString(label) + 2
+}
+
+func filterBarSepWidth() int {
+	return utf8.RuneCountInString(filterBarChipSep)
 }
 
 func filterBarContentWidth(items []filterBarChip) int {
@@ -166,7 +172,7 @@ func filterBarContentWidth(items []filterBarChip) int {
 	used := 0
 	for i, item := range items {
 		if i > 0 {
-			used++
+			used += filterBarSepWidth()
 		}
 		used += filterChipWidth(item.label)
 	}
@@ -197,7 +203,7 @@ func layoutFilterBarLines(items []filterBarChip, width int) [][]filterBarChip {
 		w := filterChipWidth(item.label)
 		need := w
 		if len(line) > 0 {
-			need++
+			need += filterBarSepWidth()
 		}
 		if len(line) > 0 && used+need > width {
 			lines = append(lines, line)
@@ -380,7 +386,6 @@ func (b *filterChipBar) paintTopDivider(screen tcell.Screen, x, y, width int, it
 func (b *filterChipBar) paintChipRow(screen tcell.Screen, items []filterBarChip, x, y, width, start int) {
 	col := x - start
 	limit := x + width
-	bg := tcell.StyleDefault.Background(theme.Bg()).Foreground(theme.Fg())
 	for i, item := range items {
 		style := tcell.StyleDefault.Background(theme.Bg()).Foreground(theme.Fg())
 		if item.active {
@@ -406,7 +411,10 @@ func (b *filterChipBar) paintChipRow(screen tcell.Screen, items []filterBarChip,
 			b.hits = append(b.hits, filterBarHit{name: item.name, x0: vis0, x1: vis1, y: y})
 		}
 		if i < len(items)-1 {
-			write(' ', bg)
+			sep := tcell.StyleDefault.Background(theme.Bg()).Foreground(theme.FgDim())
+			for _, r := range filterBarChipSep {
+				write(r, sep)
+			}
 		}
 	}
 }
@@ -473,7 +481,7 @@ func (b *filterChipBar) revealChip(name string) {
 		}
 		col += w
 		if i < len(items)-1 {
-			col++
+			col += filterBarSepWidth()
 		}
 	}
 }

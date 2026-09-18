@@ -41,7 +41,7 @@ func TestFilterBarContentWidth(t *testing.T) {
 		{label: "Failed Workflows"},
 		{label: "Completed Workflows"},
 	}
-	if got := filterBarContentWidth(items); got != 5+1+19+1+18+1+21 {
+	if got := filterBarContentWidth(items); got != 5+3+19+3+18+3+21 {
 		t.Fatalf("width=%d", got)
 	}
 }
@@ -64,6 +64,9 @@ func TestFilterBarScrollsHorizontally(t *testing.T) {
 	top := rowText(screen, 0, 24)
 	if !strings.Contains(top, "All") {
 		t.Fatalf("start=%q", top)
+	}
+	if !strings.Contains(top, " | ") {
+		t.Fatalf("top chips should use a pipe separator, got %q", top)
 	}
 	if strings.Contains(top, "Completed") {
 		t.Fatalf("narrow bar should not show the last chip yet, got %q", top)
