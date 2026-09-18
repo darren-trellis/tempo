@@ -171,7 +171,7 @@ func (wl *WorkflowList) filterBarWidth() int {
 	return 0
 }
 
-func (wl *WorkflowList) filterBarHeight() int {
+func (wl *WorkflowList) filterBarChipRows() int {
 	if wl == nil || !wl.shouldWrapFilters() {
 		return 1
 	}
@@ -180,6 +180,10 @@ func (wl *WorkflowList) filterBarHeight() int {
 		return 1
 	}
 	return len(lines)
+}
+
+func (wl *WorkflowList) filterBarHeight() int {
+	return wl.filterBarChipRows() + 1
 }
 
 func (wl *WorkflowList) syncFilterBarHeight() {
@@ -211,6 +215,10 @@ func (b *filterChipBar) Draw(screen tcell.Screen) {
 			screen.SetContent(col, y+row, ' ', nil, bg)
 		}
 	}
+	chipRows := height
+	if height > 1 {
+		chipRows = height - 1
+	}
 	items := filterBarItems(b.wl)
 	var lines [][]filterBarChip
 	extra := 0
@@ -222,7 +230,7 @@ func (b *filterChipBar) Draw(screen tcell.Screen) {
 		extra = n
 	}
 	for row, shown := range lines {
-		if row >= height {
+		if row >= chipRows {
 			break
 		}
 		col := x
@@ -262,6 +270,13 @@ func (b *filterChipBar) Draw(screen tcell.Screen) {
 				screen.SetContent(col, y+row, r, nil, dim)
 				col++
 			}
+		}
+	}
+	if height > 1 {
+		line := tcell.StyleDefault.Background(theme.Bg()).Foreground(theme.Border())
+		row := y + height - 1
+		for col := x; col < x+width; col++ {
+			screen.SetContent(col, row, '─', nil, line)
 		}
 	}
 }

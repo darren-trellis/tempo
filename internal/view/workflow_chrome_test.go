@@ -201,6 +201,10 @@ func TestStatusBarShowsLoadedDisplayedProfileAndTree(t *testing.T) {
 	if !strings.Contains(got, "3 Loaded") || !strings.Contains(got, "2 Displayed") {
 		t.Fatalf("loaded/displayed should sit with status counts, got %q", got)
 	}
+	badges := a.workflowChromeBadges()
+	if len(badges) < 2 || badges[0].Variant != components.BadgeDefault || badges[1].Variant != components.BadgeDefault {
+		t.Fatalf("loaded and displayed should use the same badge color")
+	}
 	if !strings.Contains(got, "local") {
 		t.Fatalf("profile should be on the status bar, got %q", got)
 	}

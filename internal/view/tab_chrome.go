@@ -69,7 +69,7 @@ func (a *App) workflowChromeBadges() []workflowStatBadge {
 	if wl, ok := a.workflowList(); ok && wl.workflowsActive() {
 		out = append(out,
 			workflowStatBadge{Text: formatCount(wl.loadedWorkflowCount()) + " Loaded", Variant: components.BadgeDefault},
-			workflowStatBadge{Text: formatCount(wl.displayedWorkflowCount()) + " Displayed", Variant: components.BadgePrimary},
+			workflowStatBadge{Text: formatCount(wl.displayedWorkflowCount()) + " Displayed", Variant: components.BadgeDefault},
 		)
 	}
 	return append(out, workflowStatBadges(a.chromeStats)...)

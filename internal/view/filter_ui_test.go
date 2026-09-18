@@ -83,8 +83,28 @@ func TestFilterBarHeightWraps(t *testing.T) {
 		},
 	}}, "default")
 	wl.filterBar.SetRect(0, 0, 20, 1)
-	if h := wl.filterBarHeight(); h < 2 {
+	if h := wl.filterBarHeight(); h < 3 {
 		t.Fatalf("wrap height=%d", h)
+	}
+}
+
+func TestFilterBarDrawsDivider(t *testing.T) {
+	wl := NewWorkflowList(&App{}, "default")
+	if wl.filterBarHeight() != 2 {
+		t.Fatalf("default height=%d", wl.filterBarHeight())
+	}
+	wl.filterBar.SetRect(0, 0, 40, 2)
+	screen := tcell.NewSimulationScreen("UTF-8")
+	if err := screen.Init(); err != nil {
+		t.Fatal(err)
+	}
+	screen.SetSize(40, 2)
+	wl.filterBar.Draw(screen)
+	if !strings.Contains(rowText(screen, 0, 40), "All") {
+		t.Fatalf("chips=%q", rowText(screen, 0, 40))
+	}
+	if !strings.Contains(rowText(screen, 1, 40), "─") {
+		t.Fatalf("divider=%q", rowText(screen, 1, 40))
 	}
 }
 
