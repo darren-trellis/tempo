@@ -580,7 +580,13 @@ func (wl *WorkflowList) restoreFocus() {
 }
 
 func (wl *WorkflowList) shouldFocusWorkflowTable() bool {
-	return wl.workflowsActive() && wl.focusPane == focusWorkflows
+	if wl == nil || !wl.workflowsActive() || wl.focusPane != focusWorkflows {
+		return false
+	}
+	if wl.app != nil && wl.app.modalHasFocus() {
+		return false
+	}
+	return true
 }
 
 func (wl *WorkflowList) handleWorkflowScroll(event *tcell.EventKey) bool {

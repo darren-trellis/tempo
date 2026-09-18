@@ -389,6 +389,50 @@ func TestShowFilterManagerReorderAndDelete(t *testing.T) {
 	}
 }
 
+func TestDeleteActiveFilterKeepsManagerFocus(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	cfg := config.DefaultConfig()
+	cfg.SavedFilters = []config.SavedFilter{{Name: "Running"}}
+	a := NewAppWithProvider(nil, "default", cfg, "local")
+	wl := NewWorkflowList(a, "default")
+	wl.keepDataOnStart = true
+	wl.activeFilterName = "Running"
+	wl.visibilityQuery = "ExecutionStatus = 'Running'"
+	a.app.Pages().Push(wl)
+	wl.showFilterManager()
+	if !a.modalHasFocus() {
+		t.Fatal("manager should be the current modal")
+	}
+	if wl.shouldFocusWorkflowTable() {
+		t.Fatal("a modal should keep the workflow table from taking focus")
+	}
+	om, ok := a.app.Pages().Current().(*overlayModal)
+	if !ok {
+		t.Fatalf("current=%T", a.app.Pages().Current())
+	}
+	table, ok := om.body.(*components.Table)
+	if !ok {
+		t.Fatalf("content=%T", om.body)
+	}
+	table.SelectRow(0)
+	capture := table.GetInputCapture()
+	if capture == nil {
+		t.Fatal("manager table should have keys")
+	}
+	if ev := capture(tcell.NewEventKey(tcell.KeyRune, 'd', tcell.ModNone)); ev != nil {
+		t.Fatal("d should delete")
+	}
+	if wl.activeFilterName != "" {
+		t.Fatalf("active filter should clear, got %q", wl.activeFilterName)
+	}
+	if !a.app.Pages().CurrentIsModal() {
+		t.Fatal("Filters modal should stay open")
+	}
+	if wl.shouldFocusWorkflowTable() {
+		t.Fatal("reloading after delete should not focus the workflow table")
+	}
+}
+
 func TestFilterManagerHintIsNewFilter(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	a := NewAppWithProvider(nil, "default", config.DefaultConfig(), "local")
