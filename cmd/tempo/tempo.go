@@ -20,6 +20,7 @@ import (
 	"github.com/galaxy-io/tempo/internal/view"
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
+	"golang.org/x/term"
 )
 
 // CLI flags
@@ -180,16 +181,6 @@ func recoverAndLog() {
 	fmt.Fprintf(os.Stderr, "tempo panicked: %v\nSee %s\n", r, logPath)
 }
 
-const splashLogo = `
-░▒▓████████▓▒░▒▓████████▓▒░▒▓██████████████▓▒░░▒▓███████▓▒░ ░▒▓██████▓▒░  
-   ░▒▓█▓▒░   ░▒▓█▓▒░      ░▒▓█▓▒░░▒▓█▓▒░░▒▓█▓▒░▒▓█▓▒░░▒▓█▓▒░▒▓█▓▒░░▒▓█▓▒░ 
-   ░▒▓█▓▒░   ░▒▓█▓▒░      ░▒▓█▓▒░░▒▓█▓▒░░▒▓█▓▒░▒▓█▓▒░░▒▓█▓▒░▒▓█▓▒░░▒▓█▓▒░ 
-   ░▒▓█▓▒░   ░▒▓██████▓▒░ ░▒▓█▓▒░░▒▓█▓▒░░▒▓█▓▒░▒▓███████▓▒░░▒▓█▓▒░░▒▓█▓▒░ 
-   ░▒▓█▓▒░   ░▒▓█▓▒░      ░▒▓█▓▒░░▒▓█▓▒░░▒▓█▓▒░▒▓█▓▒░      ░▒▓█▓▒░░▒▓█▓▒░ 
-   ░▒▓█▓▒░   ░▒▓█▓▒░      ░▒▓█▓▒░░▒▓█▓▒░░▒▓█▓▒░▒▓█▓▒░      ░▒▓█▓▒░░▒▓█▓▒░ 
-   ░▒▓█▓▒░   ░▒▓████████▓▒░▒▓█▓▒░░▒▓█▓▒░░▒▓█▓▒░▒▓█▓▒░       ░▒▓██████▓▒░  
-`
-
 // const splashLogo = `
 //                _                       __
 //               /   \                  /      \
@@ -226,6 +217,16 @@ const splashLogo = `
 //   "OOOOOOOOOOOOoooooooo....
 // `
 
+// terminalSize reports the terminal in columns and rows, zeroes when stdout
+// is not a terminal we can measure.
+func terminalSize() (cols, rows int) {
+	cols, rows, err := term.GetSize(int(os.Stdout.Fd()))
+	if err != nil {
+		return 0, 0
+	}
+	return cols, rows
+}
+
 // connectWithUI shows a connection UI while attempting to connect to Temporal.
 // Returns the provider on success, or error if user quits or max retries exceeded.
 func connectWithUI(config temporal.ConnectionConfig) (temporal.Provider, error) {
@@ -239,9 +240,11 @@ func connectWithUI(config temporal.ConnectionConfig) (temporal.Provider, error) 
 		SetTextAlign(tview.AlignLeft)
 	logoText.SetBackgroundColor(theme.Bg())
 
+	logo := view.RandomSplashLogo(terminalSize())
+
 	// Apply gradient effect to logo using theme colors
 	gradientColors := util.DefaultGradientColors()
-	gradientLogo := util.ApplyDiagonalGradient(splashLogo, gradientColors)
+	gradientLogo := util.ApplyDiagonalGradient(logo.Art, gradientColors)
 	logoText.SetText(gradientLogo)
 
 	// Create spacer boxes with background color
@@ -254,7 +257,7 @@ func connectWithUI(config temporal.ConnectionConfig) (temporal.Provider, error) 
 	// Wrap logo in horizontal flex to center it as a block
 	logoContainer := tview.NewFlex().SetDirection(tview.FlexColumn).
 		AddItem(leftSpacer, 0, 1, false).
-		AddItem(logoText, 78, 0, false).
+		AddItem(logoText, logo.Width(), 0, false).
 		AddItem(rightSpacer, 0, 1, false)
 	logoContainer.SetBackgroundColor(theme.Bg())
 
@@ -277,7 +280,7 @@ func connectWithUI(config temporal.ConnectionConfig) (temporal.Provider, error) 
 	// Build layout
 	flex := tview.NewFlex().SetDirection(tview.FlexRow).
 		AddItem(topSpacer, 0, 1, false).
-		AddItem(logoContainer, 9, 0, false).
+		AddItem(logoContainer, logo.Height()+2, 0, false).
 		AddItem(statusText, 3, 0, false).
 		AddItem(midSpacer, 1, 0, false).
 		AddItem(sponsorText, 1, 0, false).

@@ -835,20 +835,10 @@ type SplashTestView struct {
 	themes        []string
 	currentTheme  int
 	gradientType  int // 0=diagonal, 1=reverse diagonal, 2=horizontal, 3=vertical
+	logoIndex     int
 	onClose       func()
 	onThemeChange func(string)
 }
-
-// Logo for splash screen testing (same as main splash)
-const splashTestLogo = `
-░▒▓████████▓▒░▒▓████████▓▒░▒▓██████████████▓▒░░▒▓███████▓▒░ ░▒▓██████▓▒░
-   ░▒▓█▓▒░   ░▒▓█▓▒░      ░▒▓█▓▒░░▒▓█▓▒░░▒▓█▓▒░▒▓█▓▒░░▒▓█▓▒░▒▓█▓▒░░▒▓█▓▒░
-   ░▒▓█▓▒░   ░▒▓█▓▒░      ░▒▓█▓▒░░▒▓█▓▒░░▒▓█▓▒░▒▓█▓▒░░▒▓█▓▒░▒▓█▓▒░░▒▓█▓▒░
-   ░▒▓█▓▒░   ░▒▓██████▓▒░ ░▒▓█▓▒░░▒▓█▓▒░░▒▓█▓▒░▒▓███████▓▒░░▒▓█▓▒░░▒▓█▓▒░
-   ░▒▓█▓▒░   ░▒▓█▓▒░      ░▒▓█▓▒░░▒▓█▓▒░░▒▓█▓▒░▒▓█▓▒░      ░▒▓█▓▒░░▒▓█▓▒░
-   ░▒▓█▓▒░   ░▒▓█▓▒░      ░▒▓█▓▒░░▒▓█▓▒░░▒▓█▓▒░▒▓█▓▒░      ░▒▓█▓▒░░▒▓█▓▒░
-   ░▒▓█▓▒░   ░▒▓████████▓▒░▒▓█▓▒░░▒▓█▓▒░░▒▓█▓▒░▒▓█▓▒░       ░▒▓██████▓▒░
-`
 
 func NewSplashTestView(currentThemeName string) *SplashTestView {
 	v := &SplashTestView{
@@ -904,14 +894,14 @@ func (v *SplashTestView) setup() {
 	// Center the logo horizontally
 	v.logoContainer = tview.NewFlex().SetDirection(tview.FlexColumn).
 		AddItem(v.leftSpacer, 0, 1, false).
-		AddItem(v.logoView, 78, 0, false).
+		AddItem(v.logoView, 0, 0, false).
 		AddItem(v.rightSpacer, 0, 1, false)
 	v.logoContainer.SetBackgroundColor(theme.Bg())
 
 	// Build layout matching main splash screen
 	v.flex = tview.NewFlex().SetDirection(tview.FlexRow).
 		AddItem(v.topSpacer, 0, 1, false).
-		AddItem(v.logoContainer, 9, 0, false).
+		AddItem(v.logoContainer, 0, 0, false).
 		AddItem(v.statusView, 3, 0, false).
 		AddItem(v.hintsView, 1, 0, false).
 		AddItem(v.midSpacer, 1, 0, false).
@@ -926,25 +916,29 @@ func (v *SplashTestView) updateDisplay() {
 	// Get gradient colors from current theme
 	gradientColors := util.DefaultGradientColors()
 
+	logo := SplashLogos[v.logoIndex%len(SplashLogos)]
+
 	// Apply gradient based on type
 	var gradientLogo string
 	var gradientName string
 	switch v.gradientType {
 	case 0:
-		gradientLogo = util.ApplyDiagonalGradient(splashTestLogo, gradientColors)
+		gradientLogo = util.ApplyDiagonalGradient(logo.Art, gradientColors)
 		gradientName = "Diagonal"
 	case 1:
-		gradientLogo = util.ApplyReverseDiagonalGradient(splashTestLogo, gradientColors)
+		gradientLogo = util.ApplyReverseDiagonalGradient(logo.Art, gradientColors)
 		gradientName = "Reverse Diagonal"
 	case 2:
-		gradientLogo = util.ApplyHorizontalGradient(splashTestLogo, gradientColors)
+		gradientLogo = util.ApplyHorizontalGradient(logo.Art, gradientColors)
 		gradientName = "Horizontal"
 	case 3:
-		gradientLogo = util.ApplyVerticalGradient(splashTestLogo, gradientColors)
+		gradientLogo = util.ApplyVerticalGradient(logo.Art, gradientColors)
 		gradientName = "Vertical"
 	}
 
 	v.logoView.SetText(gradientLogo)
+	v.logoContainer.ResizeItem(v.logoView, logo.Width(), 0)
+	v.flex.ResizeItem(v.logoContainer, logo.Height()+2, 0)
 
 	// Update status
 	themeName := ""
@@ -952,18 +946,20 @@ func (v *SplashTestView) updateDisplay() {
 		themeName = v.themes[v.currentTheme]
 	}
 	v.statusView.SetText(fmt.Sprintf(
-		"[%s]Theme: [%s::b]%s[-:-:-] [%s](%d/%d)[-]  [%s]Gradient: [%s::b]%s[-:-:-]",
+		"[%s]Theme: [%s::b]%s[-:-:-] [%s](%d/%d)[-]  [%s]Gradient: [%s::b]%s[-:-:-]  [%s]Logo: [%s::b]%s[-:-:-]",
 		theme.TagFgDim(),
 		theme.TagAccent(), themeName,
 		theme.TagFgDim(), v.currentTheme+1, len(v.themes),
 		theme.TagFgDim(),
 		theme.TagAccent(), gradientName,
+		theme.TagFgDim(),
+		theme.TagAccent(), logo.Name,
 	))
 
 	// Update hints
 	v.hintsView.SetText(fmt.Sprintf(
-		"[%s]n/p[-] Next/Prev theme  [%s]g[-] Cycle gradient  [%s]Esc[-] Close",
-		theme.TagAccent(), theme.TagAccent(), theme.TagAccent(),
+		"[%s]n/p[-] Next/Prev theme  [%s]g[-] Cycle gradient  [%s]l[-] Cycle logo  [%s]Esc[-] Close",
+		theme.TagAccent(), theme.TagAccent(), theme.TagAccent(), theme.TagAccent(),
 	))
 
 	// Update sponsor
@@ -1012,6 +1008,9 @@ func (v *SplashTestView) InputHandler() func(*tcell.EventKey, func(tview.Primiti
 			}
 		case 'g': // Cycle gradient type
 			v.gradientType = (v.gradientType + 1) % 4
+			v.updateDisplay()
+		case 'l': // Cycle logo style
+			v.logoIndex = (v.logoIndex + 1) % len(SplashLogos)
 			v.updateDisplay()
 		}
 
