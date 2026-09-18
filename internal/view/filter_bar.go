@@ -354,17 +354,26 @@ func (b *filterChipBar) drawTop(screen tcell.Screen) {
 		b.paintChipRow(screen, items, x, y, width, b.hOffset)
 	}
 	if height > 1 {
-		row := y + height - 1
-		content := filterBarContentWidth(items)
-		metrics := scrollMetrics{offset: b.hOffset, visible: width, total: content}
-		if b.wl != nil && !b.wl.shouldWrapFilters() && appShowsScrollbars(b.wl.app) && metrics.overflow() {
-			drawScrollbar(screen, x, row, width, metrics, false)
-		} else {
-			line := tcell.StyleDefault.Background(theme.Bg()).Foreground(theme.Border())
-			for col := x; col < x+width; col++ {
-				screen.SetContent(col, row, '─', nil, line)
-			}
+		b.paintTopDivider(screen, x, y+height-1, width, items)
+	}
+}
+
+func (b *filterChipBar) paintTopDivider(screen tcell.Screen, x, y, width int, items []filterBarChip) {
+	line := tcell.StyleDefault.Background(theme.Bg()).Foreground(theme.Border())
+	thumb := tcell.StyleDefault.Background(theme.Bg()).Foreground(theme.Fg())
+	pos, size := -1, 0
+	if b.wl != nil && !b.wl.shouldWrapFilters() && appShowsScrollbars(b.wl.app) {
+		metrics := scrollMetrics{offset: b.hOffset, visible: width, total: filterBarContentWidth(items)}
+		if metrics.overflow() {
+			pos, size = scrollbarThumb(metrics.offset, metrics.visible, metrics.total, width)
 		}
+	}
+	for col := 0; col < width; col++ {
+		style := line
+		if col >= pos && col < pos+size {
+			style = thumb
+		}
+		screen.SetContent(x+col, y, '─', nil, style)
 	}
 }
 

@@ -86,6 +86,13 @@ func TestFilterBarScrollsHorizontally(t *testing.T) {
 	if !strings.Contains(top, "Completed") {
 		t.Fatalf("scrolled bar should show later chips, got %q", top)
 	}
+	divider := rowText(screen, 1, 24)
+	if strings.ContainsAny(divider, "▁") {
+		t.Fatalf("filter divider should stay centered, got %q", divider)
+	}
+	if !strings.Contains(divider, "─") {
+		t.Fatalf("filter divider=%q", divider)
+	}
 
 	wl.filterBar.scrollHoriz(-1000)
 	if wl.filterBar.hOffset != 0 {
