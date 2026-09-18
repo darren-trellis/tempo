@@ -389,7 +389,7 @@ func (b *filterChipBar) paintChipRow(screen tcell.Screen, items []filterBarChip,
 	for i, item := range items {
 		style := tcell.StyleDefault.Background(theme.Bg()).Foreground(theme.Fg())
 		if item.active {
-			style = tcell.StyleDefault.Background(theme.Accent()).Foreground(theme.Bg())
+			style = tcell.StyleDefault.Background(theme.Accent()).Foreground(accentTextColor())
 		}
 		vis0, vis1 := -1, -1
 		write := func(r rune, st tcell.Style) {
@@ -512,7 +512,7 @@ func (b *filterChipBar) drawSide(screen tcell.Screen) {
 			style := tcell.StyleDefault.Background(theme.Bg()).Foreground(theme.Fg())
 			switch {
 			case item.active:
-				style = tcell.StyleDefault.Background(theme.Accent()).Foreground(theme.Bg())
+				style = tcell.StyleDefault.Background(theme.Accent()).Foreground(accentTextColor())
 			case focused && idx == b.cursor:
 				style = tcell.StyleDefault.Background(theme.BgLight()).Foreground(theme.Fg())
 			}

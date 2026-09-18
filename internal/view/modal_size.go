@@ -22,6 +22,7 @@ func (m *resizableModal) toggleMaximize() {
 
 func (m *resizableModal) Draw(screen tcell.Screen) {
 	m.drawBackground(screen)
+	applyRowSelectionStyle(m.body)
 	if panel := m.GetPanel(); panel != nil && !m.frameless {
 		panel.SetFocused(true)
 	}

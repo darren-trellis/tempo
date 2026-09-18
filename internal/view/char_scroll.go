@@ -50,6 +50,7 @@ func (v *charScrollView) Draw(screen tcell.Screen) {
 	if v.content == nil || w <= 0 || h <= 0 {
 		return
 	}
+	applyRowSelectionStyle(v.content)
 	innerW, innerH := w, h
 	vert, horiz := v.scrollBars(innerW, innerH)
 	if appShowsScrollbars(v.app) {
