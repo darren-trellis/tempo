@@ -58,6 +58,6 @@ func TestHintStatusCoversBarLeftAligned(t *testing.T) {
 	a.drawHintStatus(screen)
 	main, _, _, _ = screen.GetContent(1, 0)
 	if main == 'C' {
-		t.Fatal("cleared status should show key hints again")
+		t.Fatal("cleared status should leave the bottom bar empty of that message")
 	}
 }

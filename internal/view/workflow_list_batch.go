@@ -45,16 +45,11 @@ func (wl *WorkflowList) refreshWorkflowRowStyles(indices ...int) {
 		return
 	}
 	now := time.Now()
-	cols := wl.columnLayout()
 	for _, i := range indices {
 		if i < 0 || i >= len(wl.workflows) {
 			continue
 		}
-		cells := make([]components.TableCell, len(cols))
-		for j, col := range cols {
-			cells[j] = col.cell(now, wl.workflows[i], wl.workflowRowPrefix(i))
-		}
-		_ = wl.table.UpdateStyledRow(i, cells)
+		_ = wl.table.UpdateStyledRow(i, wl.styledWorkflowCells(now, wl.workflows[i], i))
 	}
 }
 
@@ -68,11 +63,7 @@ func (wl *WorkflowList) updateSelectionPreview() {
 	wl.refreshSelectHints()
 }
 
-func (wl *WorkflowList) refreshSelectHints() {
-	if wl.app != nil && wl.app.JigApp() != nil && wl.app.JigApp().Menu() != nil {
-		wl.app.JigApp().Menu().SetHints(wl.Hints())
-	}
-}
+func (wl *WorkflowList) refreshSelectHints() {}
 
 func (wl *WorkflowList) selectedWorkflowIndices() []int {
 	selected := wl.table.GetSelectedRows()

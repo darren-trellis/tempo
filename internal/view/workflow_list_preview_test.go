@@ -426,21 +426,46 @@ func TestPreviewHintsArePaneSpecific(t *testing.T) {
 	}
 }
 
+func TestEnterTogglesPreview(t *testing.T) {
+	wl := NewWorkflowList(&App{}, "default")
+	wl.workflows = []temporal.Workflow{{ID: "wf-1", RunID: "run-1", Type: "A"}}
+	wl.allWorkflows = wl.workflows
+	wl.populateTable()
+	wl.table.SelectRow(0)
+
+	if wl.previewModeEnabled() {
+		t.Fatal("preview should start hidden")
+	}
+
+	wl.activateSelectedWorkflow()
+	if !wl.previewModeEnabled() {
+		t.Fatal("enter should open preview")
+	}
+	if wl.focusPane != focusWorkflows {
+		t.Fatalf("focus should stay on the list, got %d", wl.focusPane)
+	}
+
+	wl.activateSelectedWorkflow()
+	if wl.previewModeEnabled() {
+		t.Fatal("enter should close preview")
+	}
+}
+
 func TestPreviewModeLayout(t *testing.T) {
 	wl := NewWorkflowList(&App{}, "default")
 	if wl.GetItemCount() != 1 {
 		t.Fatalf("default layout should be workflows only, got %d items", wl.GetItemCount())
 	}
-	if desc := hintDescription(wl.Hints(), "enter"); desc != "" {
-		t.Fatalf("enter should stay off the footer, got %q", desc)
+	if desc := hintDescription(wl.Hints(), "Enter"); desc != "Preview" {
+		t.Fatalf("workflows enter hint: %q", desc)
 	}
 
 	wl.togglePreviewMode()
 	if wl.mainFlex.GetItemCount() != 2 {
 		t.Fatalf("preview should show events pane, got %d items", wl.mainFlex.GetItemCount())
 	}
-	if desc := hintDescription(wl.Hints(), "enter"); desc != "" {
-		t.Fatalf("preview enter should stay off the footer, got %q", desc)
+	if desc := hintDescription(wl.Hints(), "Enter"); desc != "Preview" {
+		t.Fatalf("preview enter hint: %q", desc)
 	}
 
 	wl.togglePreviewMode()
@@ -695,8 +720,8 @@ func tableStatusText(table *components.Table) string {
 		if cell == nil || cell.Text == "" {
 			continue
 		}
-		switch cell.Text {
-		case "STATUS", "ID", "NAME", "TIME", "TYPE":
+		switch strings.TrimSpace(cell.Text) {
+		case "STATUS", "ID", "NAME", "TIME", "TYPE", "STARTED", "ENDED", "DURATION":
 			continue
 		}
 		return cell.Text

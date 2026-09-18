@@ -68,8 +68,8 @@ func TestNamespaceCatalogListenFiresOnPut(t *testing.T) {
 }
 
 func TestStartCatalogAppliesToTypeaheadFields(t *testing.T) {
-	typeField := newTypeaheadField("workflowType", "Workflow Type", []string{"OldWorkflow"})
-	queueField := newTypeaheadField("taskQueue", "Task Queue", []string{"old-queue"})
+	typeField := newDropdownField("workflowType", "Workflow Type", []string{"OldWorkflow"})
+	queueField := newDropdownField("taskQueue", "Task Queue", []string{"old-queue"})
 	applyStartCatalog(typeField, queueField, startCatalog{
 		types:  []string{"OrderWorkflow", "PaymentWorkflow"},
 		queues: []string{"orders", "payments"},

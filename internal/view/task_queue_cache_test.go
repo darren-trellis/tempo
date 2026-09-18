@@ -1,6 +1,7 @@
 package view
 
 import (
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -83,5 +84,101 @@ func TestTaskQueuePrefetchFillsPollerCountsWithoutHighlight(t *testing.T) {
 	}
 	if cells := tq.queueTable.GetRowData(1); len(cells) < 3 || cells[2] != "1" {
 		t.Fatalf("payments poller cell should show 1, got %v", cells)
+	}
+}
+
+func TestTaskQueueUsesCachedCatalog(t *testing.T) {
+	a := &App{currentNS: "default", provider: &fakeWorkerProvider{queues: []string{"from-server"}}}
+	a.catalog.putIfCurrent("default", a.catalog.beginFetch("default"), startCatalog{
+		queues: []string{"orders", "payments"},
+	})
+	tq := NewTaskQueueView(a)
+	tq.loadData()
+	if len(tq.allQueues) != 2 || tq.allQueues[0].Name != "orders" || tq.allQueues[1].Name != "payments" {
+		t.Fatalf("task queues should use the cached catalog, got %+v", tq.allQueues)
+	}
+}
+
+func TestMergeQueueNamesKeepsPollerCounts(t *testing.T) {
+	tq := NewTaskQueueView(&App{})
+	tq.suppressSelect = true
+	tq.allQueues = []taskQueueEntry{
+		{Name: "orders", Type: "Combined", PollerCount: 4, Backlog: 7},
+		{Name: "old-queue", Type: "Combined", PollerCount: 1},
+	}
+	tq.applyFilter("")
+	tq.queueTable.SelectRow(0)
+	tq.selectedQueue = "orders"
+	tq.suppressSelect = false
+	for i := range tq.allQueues {
+		if tq.allQueues[i].Name == "orders" {
+			tq.allQueues[i].PollerCount = 4
+			tq.allQueues[i].Backlog = 7
+		}
+	}
+
+	tq.mergeQueueNames([]string{"payments", "orders"})
+
+	if len(tq.allQueues) != 2 {
+		t.Fatalf("got %d queues: %+v", len(tq.allQueues), tq.allQueues)
+	}
+	if tq.allQueues[0].Name != "payments" || tq.allQueues[0].PollerCount != 0 {
+		t.Fatalf("new queue should start at 0 pollers, got %+v", tq.allQueues[0])
+	}
+	if tq.allQueues[1].Name != "orders" || tq.allQueues[1].PollerCount != 4 || tq.allQueues[1].Backlog != 7 {
+		t.Fatalf("existing queue should keep stats, got %+v", tq.allQueues[1])
+	}
+	if tq.selectedQueue != "orders" || tq.queueTable.SelectedRow() != 1 {
+		t.Fatalf("selection should follow orders, row=%d name=%s", tq.queueTable.SelectedRow(), tq.selectedQueue)
+	}
+}
+
+func TestTaskQueueLiveRefreshDoesNotZeroCounts(t *testing.T) {
+	hold := make(chan struct{})
+	provider := &fakeWorkerProvider{
+		queues:         []string{"orders", "payments"},
+		listQueuesHold: hold,
+		pollers: map[string][]temporal.Poller{
+			"orders":   {{Identity: "w1"}, {Identity: "w2"}},
+			"payments": {{Identity: "w3"}},
+		},
+	}
+	tq := NewTaskQueueView(&App{provider: provider})
+	tq.allQueues = []taskQueueEntry{
+		{Name: "orders", Type: "Combined", PollerCount: 9, Backlog: 3},
+	}
+	tq.applyFilter("")
+	tq.liveRefresh()
+	if !tq.loading {
+		t.Fatal("live refresh should show the spinner while the fetch is in flight")
+	}
+	if got := tq.app.loadingText(); got == "" || strings.Contains(got, "Loading") {
+		t.Fatalf("auto-refresh should show only the spinner, got %q", got)
+	}
+	close(hold)
+
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		if !tq.liveBusy && len(tq.allQueues) == 2 {
+			break
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	if tq.liveBusy {
+		t.Fatal("live refresh did not finish")
+	}
+	if tq.loading {
+		t.Fatal("live refresh should clear the spinner when it finishes")
+	}
+
+	found := map[string]taskQueueEntry{}
+	for _, q := range tq.allQueues {
+		found[q.Name] = q
+	}
+	if found["orders"].PollerCount != 2 {
+		t.Fatalf("orders pollers: %+v", found["orders"])
+	}
+	if found["payments"].PollerCount != 1 {
+		t.Fatalf("payments pollers: %+v", found["payments"])
 	}
 }

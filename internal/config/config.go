@@ -146,20 +146,25 @@ const ExternalProfilePrefix = "import:"
 
 // Config represents the application configuration.
 type Config struct {
-	Theme            string                      `yaml:"theme"`
-	ActiveProfile    string                      `yaml:"active_profile,omitempty"`
-	Profiles         map[string]ConnectionConfig `yaml:"profiles,omitempty"`
-	ExternalProfiles map[string]ConnectionConfig `yaml:"-"`
-	SavedFilters     []SavedFilter               `yaml:"saved_filters,omitempty"`
-	CheckUpdates     *bool                       `yaml:"check_updates,omitempty"`
-	Autoreload       *bool                       `yaml:"autoreload,omitempty"`
-	HelpStyle        string                      `yaml:"help_style,omitempty"` // "modal" (default) or "sheet"
-	Commands         map[string]CommandConfig    `yaml:"commands,omitempty"`
-	WorkflowColumns  []WorkflowColumnConfig      `yaml:"workflow_columns,omitempty"`
-	PreviewCacheSize *int                        `yaml:"preview_cache_size,omitempty"`
-	MouseScrollStep  *int                        `yaml:"mouse_scroll_step,omitempty"`
-	ShowScrollbars   *bool                       `yaml:"show_scrollbars,omitempty"`
-	WorkflowPageSize *int                        `yaml:"workflow_page_size,omitempty"`
+	Theme              string                      `yaml:"theme"`
+	ActiveProfile      string                      `yaml:"active_profile,omitempty"`
+	Profiles           map[string]ConnectionConfig `yaml:"profiles,omitempty"`
+	ExternalProfiles   map[string]ConnectionConfig `yaml:"-"`
+	SavedFilters       []SavedFilter               `yaml:"saved_filters,omitempty"`
+	CheckUpdates       *bool                       `yaml:"check_updates,omitempty"`
+	Autoreload         *bool                       `yaml:"autoreload,omitempty"`
+	Autosave           *bool                       `yaml:"autosave,omitempty"`
+	HelpStyle          string                      `yaml:"help_style,omitempty"` // "modal" (default) or "sheet"
+	Commands           map[string]CommandConfig    `yaml:"commands,omitempty"`
+	WorkflowColumns    []WorkflowColumnConfig      `yaml:"workflow_columns,omitempty"`
+	ActivityColumns    []WorkflowColumnConfig      `yaml:"activity_columns,omitempty"`
+	WorkflowTimeFormat string                      `yaml:"workflow_time_format,omitempty"`
+	ActivityTimeFormat string                      `yaml:"activity_time_format,omitempty"`
+	PreviewCacheSize   *int                        `yaml:"preview_cache_size,omitempty"`
+	MouseScrollStep    *int                        `yaml:"mouse_scroll_step,omitempty"`
+	ShowScrollbars     *bool                       `yaml:"show_scrollbars,omitempty"`
+	ModalShadow        string                      `yaml:"modal_shadow,omitempty"`
+	WorkflowPageSize   *int                        `yaml:"workflow_page_size,omitempty"`
 	// How long a worker may go unseen before the workers tab calls it stale,
 	// written as a duration such as "45s" or "2m", or as a plain number of
 	// seconds.
@@ -170,7 +175,11 @@ type Config struct {
 	RefreshInterval *Setting `yaml:"refresh_rate,omitempty"`
 	// How long preview waits after a new workflow is highlighted before
 	// fetching history, written as a duration such as "200ms" or "0".
-	PreviewLoadWait *Setting `yaml:"preview_load_delay,omitempty"`
+	PreviewLoadWait     *Setting `yaml:"preview_load_delay,omitempty"`
+	ColorCodeActivities *bool    `yaml:"color_code_activities,omitempty"`
+	ColorCodeWorkflows  *bool    `yaml:"color_code_workflows,omitempty"`
+	ResetPoint          string   `yaml:"reset_point,omitempty"`
+	ResetReason         string   `yaml:"reset_reason,omitempty"`
 }
 
 // Setting is a duration that tolerates how people actually write one: "45s",
@@ -201,8 +210,17 @@ func (s Setting) MarshalYAML() (interface{}, error) {
 	return s.text, nil
 }
 
-// Duration parses the setting, returning ok=false when it is not a usable
-// duration.
+func NewSetting(text string) *Setting {
+	return &Setting{text: strings.TrimSpace(text)}
+}
+
+func (s *Setting) Text() string {
+	if s == nil {
+		return ""
+	}
+	return s.text
+}
+
 func (s *Setting) Duration() (time.Duration, bool) {
 	if s == nil {
 		return 0, false
@@ -258,6 +276,78 @@ func (c *Config) ShouldAutoreload() bool {
 	return *c.Autoreload
 }
 
+// ShouldAutosave returns whether in-app setting changes are written back to the
+// config file. Defaults to false: theme, profile, and column edits apply for
+// the session only unless autosave is explicitly enabled.
+func (c *Config) ShouldAutosave() bool {
+	if c == nil || c.Autosave == nil {
+		return false
+	}
+	return *c.Autosave
+}
+
+func (c *Config) ShouldColorCodeActivities() bool {
+	if c == nil || c.ColorCodeActivities == nil {
+		return false
+	}
+	return *c.ColorCodeActivities
+}
+
+func (c *Config) ShouldColorCodeWorkflows() bool {
+	if c == nil || c.ColorCodeWorkflows == nil {
+		return false
+	}
+	return *c.ColorCodeWorkflows
+}
+
+const (
+	ResetPointFirst    = "first"
+	ResetPointLast     = "last"
+	DefaultResetReason = "Reset via tempo"
+)
+
+func (c *Config) ResetPointDefault() string {
+	if c != nil && strings.EqualFold(strings.TrimSpace(c.ResetPoint), ResetPointLast) {
+		return ResetPointLast
+	}
+	return ResetPointFirst
+}
+
+func (c *Config) ResetReasonDefault() string {
+	if c != nil {
+		if reason := strings.TrimSpace(c.ResetReason); reason != "" {
+			return reason
+		}
+	}
+	return DefaultResetReason
+}
+
+const (
+	TimeFormatRelative = "relative"
+	TimeFormatAbsolute = "absolute"
+)
+
+func normalizeTimeFormat(s string) string {
+	if strings.EqualFold(strings.TrimSpace(s), TimeFormatAbsolute) {
+		return TimeFormatAbsolute
+	}
+	return TimeFormatRelative
+}
+
+func (c *Config) ResolvedWorkflowTimeFormat() string {
+	if c == nil {
+		return TimeFormatRelative
+	}
+	return normalizeTimeFormat(c.WorkflowTimeFormat)
+}
+
+func (c *Config) ResolvedActivityTimeFormat() string {
+	if c == nil {
+		return TimeFormatRelative
+	}
+	return normalizeTimeFormat(c.ActivityTimeFormat)
+}
+
 const (
 	DefaultPreviewCacheSize = 32
 	MaxPreviewCacheSize     = 256
@@ -291,6 +381,24 @@ func (c *Config) ShouldShowScrollbars() bool {
 		return true
 	}
 	return *c.ShowScrollbars
+}
+
+const (
+	ModalShadowDirectional = "directional"
+	ModalShadowNone        = "none"
+	ModalShadowUniform     = "uniform"
+)
+
+func (c *Config) ResolvedModalShadow() string {
+	if c == nil {
+		return ModalShadowDirectional
+	}
+	switch strings.ToLower(strings.TrimSpace(c.ModalShadow)) {
+	case ModalShadowNone, ModalShadowUniform:
+		return strings.ToLower(strings.TrimSpace(c.ModalShadow))
+	default:
+		return ModalShadowDirectional
+	}
 }
 
 func (c *Config) MouseScrollStepSize() int {
@@ -850,7 +958,14 @@ const (
 	WorkflowColumnTaskQueue  = "task_queue"
 	WorkflowColumnRunID      = "run_id"
 
+	ActivityColumnStatus   = "status"
+	ActivityColumnName     = "name"
+	ActivityColumnStarted  = "started"
+	ActivityColumnEnded    = "ended"
+	ActivityColumnDuration = "duration"
+
 	MinWorkflowColumnWidth = 4
+	MinWorkflowStatusWidth = 1
 	MaxWorkflowColumnWidth = 200
 )
 
@@ -909,10 +1024,18 @@ func KnownWorkflowColumnIDs() []string {
 	return ids
 }
 
+func minWorkflowColumnWidth(id string) int {
+	if id == WorkflowColumnStatus {
+		return MinWorkflowStatusWidth
+	}
+	return MinWorkflowColumnWidth
+}
+
 // ClampWorkflowColumnWidth keeps a column width within supported bounds.
-func ClampWorkflowColumnWidth(width int) int {
-	if width < MinWorkflowColumnWidth {
-		return MinWorkflowColumnWidth
+func ClampWorkflowColumnWidth(id string, width int) int {
+	min := minWorkflowColumnWidth(id)
+	if width < min {
+		return min
 	}
 	if width > MaxWorkflowColumnWidth {
 		return MaxWorkflowColumnWidth
@@ -920,33 +1043,43 @@ func ClampWorkflowColumnWidth(width int) int {
 	return width
 }
 
-// ResolveWorkflowColumns validates order and widths, filling in defaults.
-func ResolveWorkflowColumns(cols []WorkflowColumnConfig) []WorkflowColumnConfig {
+func resolveColumns(cols, defaults []WorkflowColumnConfig) []WorkflowColumnConfig {
 	if len(cols) == 0 {
-		return defaultWorkflowColumns()
+		return defaults
+	}
+
+	known := make(map[string]int, len(defaults))
+	for _, col := range defaults {
+		known[col.ID] = col.Width
 	}
 
 	seen := make(map[string]bool, len(cols))
 	out := make([]WorkflowColumnConfig, 0, len(cols))
 	for _, col := range cols {
 		id := strings.ToLower(strings.TrimSpace(col.ID))
-		if !knownWorkflowColumn(id) || seen[id] {
+		defWidth, ok := known[id]
+		if !ok || seen[id] {
 			continue
 		}
 		seen[id] = true
 		width := col.Width
 		if width <= 0 {
-			width = DefaultWorkflowColumnWidth(id)
+			width = defWidth
 		}
 		out = append(out, WorkflowColumnConfig{
 			ID:    id,
-			Width: ClampWorkflowColumnWidth(width),
+			Width: ClampWorkflowColumnWidth(id, width),
 		})
 	}
 	if len(out) == 0 {
-		return defaultWorkflowColumns()
+		return defaults
 	}
 	return out
+}
+
+// ResolveWorkflowColumns validates order and widths, filling in defaults.
+func ResolveWorkflowColumns(cols []WorkflowColumnConfig) []WorkflowColumnConfig {
+	return resolveColumns(cols, defaultWorkflowColumns())
 }
 
 // WorkflowColumnLayout returns the resolved workflows table layout.
@@ -980,4 +1113,59 @@ func workflowColumnsEqual(a, b []WorkflowColumnConfig) bool {
 		}
 	}
 	return true
+}
+
+func defaultActivityColumns() []WorkflowColumnConfig {
+	return []WorkflowColumnConfig{
+		{ID: ActivityColumnStatus, Width: 12},
+		{ID: ActivityColumnName, Width: 28},
+		{ID: ActivityColumnStarted, Width: 11},
+		{ID: ActivityColumnEnded, Width: 11},
+		{ID: ActivityColumnDuration, Width: 12},
+	}
+}
+
+func DefaultActivityColumnWidth(id string) int {
+	for _, col := range defaultActivityColumns() {
+		if col.ID == id {
+			return col.Width
+		}
+	}
+	return 16
+}
+
+func DefaultActivityColumns() []WorkflowColumnConfig {
+	return defaultActivityColumns()
+}
+
+func KnownActivityColumnIDs() []string {
+	cols := defaultActivityColumns()
+	ids := make([]string, len(cols))
+	for i, col := range cols {
+		ids[i] = col.ID
+	}
+	return ids
+}
+
+func ResolveActivityColumns(cols []WorkflowColumnConfig) []WorkflowColumnConfig {
+	return resolveColumns(cols, defaultActivityColumns())
+}
+
+func (c *Config) ActivityColumnLayout() []WorkflowColumnConfig {
+	if c == nil {
+		return defaultActivityColumns()
+	}
+	return ResolveActivityColumns(c.ActivityColumns)
+}
+
+func (c *Config) SetActivityColumns(cols []WorkflowColumnConfig) {
+	if c == nil {
+		return
+	}
+	resolved := ResolveActivityColumns(cols)
+	if workflowColumnsEqual(resolved, defaultActivityColumns()) {
+		c.ActivityColumns = nil
+		return
+	}
+	c.ActivityColumns = resolved
 }

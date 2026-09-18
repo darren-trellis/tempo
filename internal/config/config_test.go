@@ -252,6 +252,133 @@ func TestShouldAutoreloadDefault(t *testing.T) {
 	}
 }
 
+func TestShouldAutosaveDefault(t *testing.T) {
+	if DefaultConfig().ShouldAutosave() {
+		t.Fatal("autosave should default to off")
+	}
+	off := false
+	cfg := &Config{Autosave: &off}
+	if cfg.ShouldAutosave() {
+		t.Fatal("autosave: false should disable writes")
+	}
+	on := true
+	cfg.Autosave = &on
+	if !cfg.ShouldAutosave() {
+		t.Fatal("autosave: true should persist in-app changes")
+	}
+	if (*Config)(nil).ShouldAutosave() {
+		t.Fatal("nil config should not autosave")
+	}
+}
+
+func TestColorCodeFlagsDefaultOff(t *testing.T) {
+	if DefaultConfig().ShouldColorCodeActivities() || DefaultConfig().ShouldColorCodeWorkflows() {
+		t.Fatal("row color coding should default to off")
+	}
+	on := true
+	cfg := &Config{ColorCodeActivities: &on, ColorCodeWorkflows: &on}
+	if !cfg.ShouldColorCodeActivities() || !cfg.ShouldColorCodeWorkflows() {
+		t.Fatal("explicit true should enable color coding")
+	}
+	off := false
+	cfg.ColorCodeActivities = &off
+	cfg.ColorCodeWorkflows = &off
+	if cfg.ShouldColorCodeActivities() || cfg.ShouldColorCodeWorkflows() {
+		t.Fatal("explicit false should keep color coding off")
+	}
+}
+
+func TestResetDefaults(t *testing.T) {
+	if DefaultConfig().ResetPointDefault() != ResetPointFirst {
+		t.Fatal("reset point should default to first")
+	}
+	if DefaultConfig().ResetReasonDefault() != DefaultResetReason {
+		t.Fatal("reset reason should default to Reset via tempo")
+	}
+	cfg := &Config{ResetPoint: "last", ResetReason: "  retry failed activity  "}
+	if cfg.ResetPointDefault() != ResetPointLast {
+		t.Fatal("reset_point: last should select the last point")
+	}
+	if cfg.ResetReasonDefault() != "retry failed activity" {
+		t.Fatalf("reason=%q", cfg.ResetReasonDefault())
+	}
+	parsed, err := parseConfig([]byte("color_code_workflows: true\nreset_point: last\nreset_reason: because\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !parsed.ShouldColorCodeWorkflows() || parsed.ResetPointDefault() != ResetPointLast || parsed.ResetReasonDefault() != "because" {
+		t.Fatalf("parsed color=%v point=%q reason=%q", parsed.ShouldColorCodeWorkflows(), parsed.ResetPointDefault(), parsed.ResetReasonDefault())
+	}
+}
+
+func TestTimeFormatDefaultsRelative(t *testing.T) {
+	if DefaultConfig().ResolvedWorkflowTimeFormat() != TimeFormatRelative {
+		t.Fatal("workflow times should default to relative")
+	}
+	if DefaultConfig().ResolvedActivityTimeFormat() != TimeFormatRelative {
+		t.Fatal("activity times should default to relative")
+	}
+	if (*Config)(nil).ResolvedWorkflowTimeFormat() != TimeFormatRelative {
+		t.Fatal("nil config should use relative workflow times")
+	}
+	cfg := &Config{WorkflowTimeFormat: "absolute", ActivityTimeFormat: "ABSOLUTE"}
+	if cfg.ResolvedWorkflowTimeFormat() != TimeFormatAbsolute || cfg.ResolvedActivityTimeFormat() != TimeFormatAbsolute {
+		t.Fatal("explicit absolute should win")
+	}
+	parsed, err := parseConfig([]byte("workflow_time_format: absolute\nactivity_time_format: relative\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if parsed.ResolvedWorkflowTimeFormat() != TimeFormatAbsolute || parsed.ResolvedActivityTimeFormat() != TimeFormatRelative {
+		t.Fatalf("parsed workflow=%q activity=%q", parsed.ResolvedWorkflowTimeFormat(), parsed.ResolvedActivityTimeFormat())
+	}
+}
+
+func TestDefaultActivityColumnsIncludeEnded(t *testing.T) {
+	found := false
+	for _, col := range DefaultActivityColumns() {
+		if col.ID == ActivityColumnEnded {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatal("default activity columns should include ended")
+	}
+}
+
+func TestResolveActivityColumnsDefaults(t *testing.T) {
+	got := ResolveActivityColumns(nil)
+	want := DefaultActivityColumns()
+	if !workflowColumnsEqual(got, want) {
+		t.Fatalf("got %+v want %+v", got, want)
+	}
+}
+
+func TestSetActivityColumnsOmitsDefaults(t *testing.T) {
+	cfg := &Config{}
+	cfg.SetActivityColumns(DefaultActivityColumns())
+	if cfg.ActivityColumns != nil {
+		t.Fatalf("expected defaults to be omitted, got %+v", cfg.ActivityColumns)
+	}
+	cfg.SetActivityColumns([]WorkflowColumnConfig{{ID: ActivityColumnName, Width: 40}})
+	if len(cfg.ActivityColumns) != 1 || cfg.ActivityColumns[0].Width != 40 {
+		t.Fatalf("got %+v", cfg.ActivityColumns)
+	}
+}
+
+func TestStatusColumnAllowsWidthOne(t *testing.T) {
+	if got := ClampWorkflowColumnWidth(WorkflowColumnStatus, 1); got != 1 {
+		t.Fatalf("status width 1 should be kept, got %d", got)
+	}
+	if got := ClampWorkflowColumnWidth(WorkflowColumnStatus, 0); got != MinWorkflowStatusWidth {
+		t.Fatalf("status width 0 should clamp to %d, got %d", MinWorkflowStatusWidth, got)
+	}
+	if got := ClampWorkflowColumnWidth(WorkflowColumnWorkflowID, 2); got != MinWorkflowColumnWidth {
+		t.Fatalf("other columns should still clamp to %d, got %d", MinWorkflowColumnWidth, got)
+	}
+}
+
 func TestReadChangedConfigFile(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	cfg := DefaultConfig()

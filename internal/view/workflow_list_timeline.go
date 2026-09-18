@@ -113,6 +113,11 @@ func (wl *WorkflowList) setupTimeline() {
 			return nil
 		}
 		switch event.Rune() {
+		case 'L':
+			if wl.app != nil {
+				wl.app.showTimelineLegend()
+			}
+			return nil
 		case 'm':
 			wl.toggleTimelineSize()
 			return nil
@@ -222,9 +227,6 @@ func (wl *WorkflowList) toggleTimelineSize() {
 	wl.applyMainLayout()
 	if wl.app != nil && wl.app.JigApp() != nil {
 		wl.setFocusPane(wl.focusPane)
-		if wl.app.JigApp().Menu() != nil {
-			wl.app.JigApp().Menu().SetHints(wl.Hints())
-		}
 	} else {
 		wl.applyFocusStyles()
 	}

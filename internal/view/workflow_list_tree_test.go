@@ -29,10 +29,10 @@ func TestNestWorkflowsIndentsChildren(t *testing.T) {
 	if got[0].ID != parent || depths[0] != 0 {
 		t.Fatalf("root should stay first, got %s depth %d", got[0].ID, depths[0])
 	}
-	if got[1].ID != child || depths[1] != 1 || prefixes[1] != " └─" {
+	if got[1].ID != child || depths[1] != 1 || prefixes[1] != "└── " {
 		t.Fatalf("child should sit under parent, got %s depth %d prefix %q", got[1].ID, depths[1], prefixes[1])
 	}
-	if got[2].ID != "grandchild" || depths[2] != 2 || prefixes[2] != "    └─" {
+	if got[2].ID != "grandchild" || depths[2] != 2 || prefixes[2] != "    └── " {
 		t.Fatalf("grandchild should nest, got %s depth %d prefix %q", got[2].ID, depths[2], prefixes[2])
 	}
 	if got[3].ID != "other" || depths[3] != 0 {
@@ -85,25 +85,25 @@ func TestWorkflowTreePrefix(t *testing.T) {
 		t.Fatal("roots should not be indented")
 	}
 	last := workflowTreePrefix([]bool{true})
-	if last != " └─" {
+	if last != "└── " {
 		t.Fatalf("last child: %q", last)
 	}
 	branch := workflowTreePrefix([]bool{false})
-	if branch != " ├─" {
+	if branch != "├── " {
 		t.Fatalf("sibling: %q", branch)
 	}
 	nested := workflowTreePrefix([]bool{false, true})
-	if nested != " │  └─" {
+	if nested != "│   └── " {
 		t.Fatalf("nested last under sibling: %q", nested)
 	}
 	nestedLast := workflowTreePrefix([]bool{true, true})
-	if nestedLast != "    └─" {
+	if nestedLast != "    └── " {
 		t.Fatalf("nested last under last: %q", nestedLast)
 	}
 }
 
 func TestColorizeWorkflowTreePrefix(t *testing.T) {
-	prefix := " └─"
+	prefix := "└── "
 	got := colorizeWorkflowTreePrefix(prefix+"child-wf", prefix)
 	want := "[" + theme.TagFgDim() + "]" + prefix + "[-]child-wf"
 	if got != want {
@@ -116,8 +116,8 @@ func TestColorizeWorkflowTreePrefix(t *testing.T) {
 
 func TestWorkflowIDCellDimsTreePrefix(t *testing.T) {
 	col := workflowColumn{id: config.WorkflowColumnWorkflowID, width: 40}
-	cell := col.cell(time.Now(), temporal.Workflow{ID: "child-wf"}, " └─")
-	if !strings.HasPrefix(cell.Text, "["+theme.TagFgDim()+"] └─[-]") {
+	cell := col.cell(time.Now(), temporal.Workflow{ID: "child-wf"}, "└── ", config.TimeFormatRelative)
+	if !strings.HasPrefix(cell.Text, "["+theme.TagFgDim()+"]└── [-]") {
 		t.Fatalf("expected dim tree prefix, got %q", cell.Text)
 	}
 	if !strings.Contains(cell.Text, "child-wf") {
@@ -142,14 +142,14 @@ func TestToggleWorkflowTreeReordersRows(t *testing.T) {
 	for i, w := range wl.workflows {
 		if w.ID == "payment-xyz789" {
 			foundChild = true
-			if wl.workflowDepth(i) != 1 || wl.workflowTreePrefixAt(i) != " └─" {
+			if wl.workflowDepth(i) != 1 || wl.workflowTreePrefixAt(i) != "└── " {
 				t.Fatalf("payment should be indented under parent, depth=%d prefix=%q", wl.workflowDepth(i), wl.workflowTreePrefixAt(i))
 			}
 			if i == 0 || wl.workflows[i-1].ID != "order-processing-abc123" {
 				t.Fatal("payment should appear directly under its parent")
 			}
 		}
-		if w.ID == "fulfillment-ghi000" && (wl.workflowDepth(i) != 2 || wl.workflowTreePrefixAt(i) != "    └─") {
+		if w.ID == "fulfillment-ghi000" && (wl.workflowDepth(i) != 2 || wl.workflowTreePrefixAt(i) != "    └── ") {
 			t.Fatalf("fulfillment should nest under payment, depth=%d prefix=%q", wl.workflowDepth(i), wl.workflowTreePrefixAt(i))
 		}
 	}
@@ -206,7 +206,7 @@ func TestToggleWorkflowTreeFoldHidesChildren(t *testing.T) {
 	if visibleWorkflowIDsContain(wl, "payment-xyz789") || visibleWorkflowIDsContain(wl, "fulfillment-ghi000") {
 		t.Fatalf("folded children should hide, got %v", workflowIDs(wl.workflows))
 	}
-	if !strings.Contains(wl.workflowRowPrefix(wl.table.SelectedRow()), theme.IconTreeCollapsed) {
+	if !strings.Contains(wl.workflowRowPrefix(wl.table.SelectedRow()), workflowTreeCollapsed) {
 		t.Fatalf("folded parent should show a collapsed mark, got %q", wl.workflowRowPrefix(wl.table.SelectedRow()))
 	}
 	if desc := hintDescription(wl.Hints(), "Ctrl+Space"); desc != "Unfold All" {
@@ -218,6 +218,9 @@ func TestToggleWorkflowTreeFoldHidesChildren(t *testing.T) {
 	}
 	if !visibleWorkflowIDsContain(wl, "payment-xyz789") || !visibleWorkflowIDsContain(wl, "fulfillment-ghi000") {
 		t.Fatalf("unfold should restore children, got %v", workflowIDs(wl.workflows))
+	}
+	if !strings.Contains(wl.workflowRowPrefix(wl.table.SelectedRow()), workflowTreeExpanded) {
+		t.Fatalf("unfolded parent should show an empty diamond, got %q", wl.workflowRowPrefix(wl.table.SelectedRow()))
 	}
 }
 

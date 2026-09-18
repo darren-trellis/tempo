@@ -111,6 +111,9 @@ func TestWorkflowListTaskQueueTab(t *testing.T) {
 	if hintDescription(wl.Hints(), "esc") != "" {
 		t.Fatalf("esc should stay off the footer, got %q", hintDescription(wl.Hints(), "esc"))
 	}
+	if hintDescription(wl.Hints(), "a") != "Auto-refresh" {
+		t.Fatalf("task queues should hint auto-refresh, got %q", hintDescription(wl.Hints(), "a"))
+	}
 
 	// Escape from the queue list is not a tab switch: it falls through to the
 	// app's own back navigation, leaving the tab where it was.

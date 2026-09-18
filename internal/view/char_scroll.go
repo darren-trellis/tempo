@@ -2,6 +2,7 @@ package view
 
 import (
 	"github.com/atterpac/jig/components"
+	"github.com/atterpac/jig/theme"
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 )
@@ -42,6 +43,8 @@ func (v *charScrollView) withApp(app *App) *charScrollView {
 }
 
 func (v *charScrollView) Draw(screen tcell.Screen) {
+	v.Box.SetBackgroundColor(theme.Bg())
+	v.Box.DrawForSubclass(screen, v)
 	x, y, w, h := v.GetInnerRect()
 	v.clamp()
 	if v.content == nil || w <= 0 || h <= 0 {

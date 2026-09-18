@@ -39,6 +39,7 @@ type App struct {
 	chromeCodecColor func() tcell.Color
 	chromeStats      WorkflowStats
 	chromeStatsOn    bool
+	modalHintsOn     bool
 	connectionLabel  string
 	namespaceList    *NamespaceList
 
@@ -73,6 +74,7 @@ type App struct {
 	// Loading indicator - which views have a fetch in flight
 	loadMu       sync.Mutex
 	loadingViews map[string]bool
+	loadingQuiet map[string]bool
 	loadingFrame int
 	loadingStop  chan struct{}
 
@@ -117,14 +119,14 @@ func NewAppWithProvider(provider temporal.Provider, defaultNamespace string, cfg
 func (a *App) buildApp() {
 	a.menu = layout.NewMenu()
 	a.hintPrompt = newHintPrompt()
+	a.hintPrompt.history = loadCommandHistory(config.HistoryPath())
+	a.hintPrompt.searchHistory = loadCommandHistory(config.SearchHistoryPath())
 
 	a.app = layout.NewApp(layout.AppConfig{
 		ShowCrumbs: true,
 		BottomBar:  a.menu,
 		OnComponentChange: func(c nav.Component) {
-			if c != nil {
-				a.menu.SetHints(c.Hints())
-			}
+			a.syncModalHints(c)
 			a.updateCrumbs()
 			a.syncWorkflowStats(c)
 		},
@@ -140,10 +142,10 @@ func (a *App) buildApp() {
 		return a.app.Pages().Current()
 	})
 	tviewApp.SetAfterDrawFunc(func(screen tcell.Screen) {
-		a.drawCrumbStats(screen)
 		a.drawHintStatus(screen)
 		a.drawHintLoading(screen)
 		a.drawHintPrompt(screen)
+		a.drawBottomChrome(screen)
 	})
 }
 
@@ -209,17 +211,9 @@ func (a *App) setup() {
 			}
 		}
 
-		// Help (works everywhere except modals). Timeline focus shows the color legend.
-		if event.Rune() == '?' && !isModalPage {
-			if a.timelineHasFocus() {
-				a.showTimelineLegend()
-				return nil
-			}
-			if a.config != nil && a.config.GetHelpStyle() == "sheet" {
-				a.showHintSheet()
-			} else {
-				a.showHelp()
-			}
+		// Help: pane views open a hint modal; open modals put hints on the bottom bar.
+		if event.Rune() == '?' {
+			a.handleQuestionMark()
 			return nil
 		}
 
@@ -284,7 +278,10 @@ func (a *App) syncWorkflowStats(c nav.Component) {
 	if a == nil || c == nil || nav.IsModal(c) {
 		return
 	}
-	if _, ok := c.(*WorkflowList); ok {
+	if wl, ok := c.(*WorkflowList); ok {
+		if !wl.workflowsActive() {
+			a.ClearWorkflowStats()
+		}
 		return
 	}
 	a.ClearWorkflowStats()
@@ -303,10 +300,6 @@ func (a *App) updateCrumbs() {
 			path = []string{"Namespaces"}
 		case "workflows":
 			path = []string{"Namespaces", a.currentNS, "Workflows"}
-		case "workflow-detail":
-			path = []string{"Namespaces", a.currentNS, "Workflows", "Detail"}
-		case "events":
-			path = []string{"Namespaces", a.currentNS, "Workflows", "Detail", "Events"}
 		case "task-queues":
 			path = []string{"Namespaces", a.currentNS, "Task Queues"}
 		case "schedules":
@@ -399,7 +392,7 @@ type WorkflowStats struct {
 	ContinuedAsNew int
 }
 
-// SetWorkflowStats updates the workflow count badges on the breadcrumb bar.
+// SetWorkflowStats updates the workflow count badges on the bottom bar.
 func (a *App) SetWorkflowStats(stats WorkflowStats) {
 	if a == nil {
 		return
@@ -408,7 +401,7 @@ func (a *App) SetWorkflowStats(stats WorkflowStats) {
 	a.chromeStatsOn = true
 }
 
-// ClearWorkflowStats removes workflow count badges from the breadcrumb bar.
+// ClearWorkflowStats removes workflow count badges from the bottom bar.
 func (a *App) ClearWorkflowStats() {
 	if a == nil {
 		return
@@ -458,10 +451,21 @@ func (a *App) NavigateToWorkflows(namespace string) {
 	a.app.Pages().Push(wl)
 }
 
-// NavigateToWorkflowDetail pushes the workflow detail view.
-func (a *App) NavigateToWorkflowDetail(workflowID, runID string) {
-	wd := NewWorkflowDetail(a, workflowID, runID)
-	a.app.Pages().Push(wd)
+// OpenWorkflowPreview shows the selected workflow in the Workflows preview pane.
+func (a *App) OpenWorkflowPreview(workflowID, runID string) {
+	if a == nil {
+		return
+	}
+	wl, ok := a.currentContent().(*WorkflowList)
+	if !ok {
+		if a.app == nil || a.app.Pages() == nil {
+			return
+		}
+		wl = NewWorkflowList(a, a.CurrentNamespace())
+		a.app.Pages().Push(wl)
+	}
+	wl.setListKind(listWorkflows)
+	wl.revealWorkflow(workflowID, runID)
 }
 
 // NavigateToTaskQueues opens the task queues tab on the workflows view.
@@ -867,11 +871,8 @@ func (a *App) timelineHasFocus() bool {
 		return false
 	}
 	if current := a.app.Pages().Current(); current != nil {
-		switch v := current.(type) {
-		case *WorkflowList:
+		if v, ok := current.(*WorkflowList); ok {
 			return v.focusPane == focusTimeline
-		case *EventHistory:
-			return v.viewMode == ViewModeTimeline
 		}
 	}
 	if tviewApp := a.app.GetApplication(); tviewApp != nil {
@@ -879,6 +880,50 @@ func (a *App) timelineHasFocus() bool {
 		return ok
 	}
 	return false
+}
+
+func (a *App) modalHasFocus() bool {
+	return a != nil && a.app != nil && a.app.Pages() != nil && a.app.Pages().CurrentIsModal()
+}
+
+func (a *App) handleQuestionMark() {
+	if a == nil || a.app == nil || a.app.Pages() == nil {
+		return
+	}
+	current := a.app.Pages().Current()
+	if helpModalOf(current) != nil {
+		a.closeHelp()
+		return
+	}
+	if a.app.Pages().CurrentIsModal() {
+		return
+	}
+	a.showHelp()
+}
+
+func (a *App) syncModalHints(c nav.Component) {
+	if a == nil || a.menu == nil {
+		return
+	}
+	if nav.IsModal(c) {
+		a.modalHintsOn = true
+		a.menu.SetHints(c.Hints())
+		return
+	}
+	a.modalHintsOn = false
+	a.menu.SetHints(nil)
+}
+
+func helpModalOf(c nav.Component) *HelpModal {
+	switch v := c.(type) {
+	case *HelpModal:
+		return v
+	case *overlayModalPage:
+		if h, ok := v.Modal.(*HelpModal); ok {
+			return h
+		}
+	}
+	return nil
 }
 
 func (a *App) showTimelineLegend() {
@@ -1046,40 +1091,40 @@ func (a *App) showDebugScreen() {
 
 func (a *App) showCommandBar() {
 	p := a.prompt()
-	p.onComplete = func(input string) []string {
-		builtins := []string{"profile"}
-		var userCmds []string
-		if a.config != nil {
-			userCmds = a.config.ListCommandNames(a.activeProfile)
-		}
-		all := append(builtins, userCmds...)
-		if input == "" {
-			return all
-		}
-		var matches []string
-		for _, name := range all {
-			if strings.HasPrefix(name, input) {
-				matches = append(matches, name)
-			}
-		}
-		return matches
+	p.suggestFn = func(input string) []commandSuggestion {
+		return suggestionsFor(input, a.commandCatalog(), a.commandExtras())
 	}
+	p.input.SetChangedFunc(func(string) {
+		if p.applying {
+			return
+		}
+		p.history.resetBrowse()
+		p.refreshSuggestions()
+	})
 	a.enterPrompt(": ", "command...")
+	p.refreshSuggestions()
 }
 
 // applyTheme switches the live theme, remembers it in the running config and
 // persists it. Without the in-memory update, a later cancel would restore the
 // theme the app started with rather than the one on screen.
-func (a *App) applyTheme(name string) {
+func (a *App) applyThemeLive(name string) {
 	if selected := themes.Get(name); selected != nil {
-		theme.SetProvider(selected) // Auto-refreshes all registered views
+		theme.SetProvider(selected)
 	}
 	if a.config != nil {
 		a.config.Theme = name
 	}
+}
+
+func (a *App) applyTheme(name string) {
+	a.applyThemeLive(name)
 	if a.configUnreadable {
 		// The file could not be parsed; writing would replace it with defaults.
 		a.ToastError("Theme applied, but not saved: " + config.ConfigPath() + " could not be read")
+		return
+	}
+	if a.config == nil || !a.config.ShouldAutosave() {
 		return
 	}
 	go func() {
@@ -1342,9 +1387,6 @@ func (a *App) ShowProfileSelector() {
 	})
 
 	a.PushModal(modal)
-	if a.app.Menu() != nil {
-		a.app.Menu().SetHints(modal.Hints())
-	}
 	a.app.SetFocus(modal)
 }
 
@@ -1394,10 +1436,14 @@ func (a *App) deleteProfile(name string) {
 	_ = a.SaveConfig()
 }
 
-// SaveConfig persists the running config, unless the file on disk could not be
-// read: overwriting it then would replace the user's settings with defaults.
+// SaveConfig persists the running config when autosave is on, unless the file
+// on disk could not be read: overwriting it then would replace the user's
+// settings with defaults.
 func (a *App) SaveConfig() error {
 	if a == nil || a.config == nil {
+		return nil
+	}
+	if !a.config.ShouldAutosave() {
 		return nil
 	}
 	if a.configUnreadable {
@@ -1627,13 +1673,19 @@ func (a *App) ShowFilterMode(initialText string, callbacks FilterModeCallbacks) 
 	}
 	filterModeCallbacks = &callbacks
 	p := a.prompt()
+	if p.searchHistory == nil {
+		p.searchHistory = loadCommandHistory(config.SearchHistoryPath())
+	}
 	p.onComplete = nil
+	p.suggestFn = nil
+	p.suggestions.clear()
 	p.onSubmit = func(text string) {
 		a.stopFilterDebounce()
 		p.input.SetChangedFunc(nil)
 		filterModeCallbacks = nil
 		a.restoreDefaultCommandCallbacks()
 		a.exitPrompt()
+		a.recordSearch(text)
 		if callbacks.OnSubmit != nil {
 			callbacks.OnSubmit(text)
 		}
@@ -1653,6 +1705,9 @@ func (a *App) ShowFilterMode(initialText string, callbacks FilterModeCallbacks) 
 	}
 	if callbacks.OnChange != nil {
 		p.input.SetChangedFunc(func(text string) {
+			if !p.applying {
+				p.searchHistory.resetBrowse()
+			}
 			a.scheduleFilterChange(text, callbacks.OnChange)
 		})
 	}
@@ -1723,7 +1778,10 @@ func (a *App) restoreDefaultCommandCallbacks() {
 	p := a.prompt()
 	p.input.SetChangedFunc(nil)
 	p.onComplete = nil
+	p.suggestFn = nil
+	p.suggestions.clear()
 	p.onSubmit = func(text string) {
+		a.recordCommand(text)
 		a.exitPrompt()
 		a.handleCommandInput(text)
 	}
@@ -1748,10 +1806,15 @@ func (a *App) handleCommandInput(text string) {
 	}
 
 	fields := strings.Fields(text)
+	if a.executeBuiltinCommand(fields) {
+		if a.app != nil && a.app.Pages() != nil && !a.app.Pages().CurrentIsModal() {
+			a.refocusCurrent()
+		}
+		return
+	}
+
 	cmdName := fields[0]
 	args := fields[1:]
-
-	// Check user-defined commands first
 	if a.config != nil {
 		commands := a.config.GetMergedCommands(a.activeProfile)
 		if cfg, ok := commands[cmdName]; ok {
@@ -1760,15 +1823,7 @@ func (a *App) handleCommandInput(text string) {
 		}
 	}
 
-	// Built-in commands
-	if strings.HasPrefix(text, "profile") {
-		cmdArgs := strings.TrimPrefix(text, "profile")
-		a.handleProfileCommand(strings.TrimSpace(cmdArgs))
-	} else {
-		a.ToastWarning(fmt.Sprintf("Unknown command: %s", cmdName))
-	}
-
-	// Restore focus to current view
+	a.ToastWarning(fmt.Sprintf("Unknown command: %s", cmdName))
 	a.refocusCurrent()
 }
 
@@ -2019,7 +2074,7 @@ func (a *App) runCommandWorkflows(name, expandedCmd string, _ config.CommandConf
 	}()
 }
 
-// runCommandWorkflow runs a command, parses workflow ID/run ID, and navigates to WorkflowDetail.
+// runCommandWorkflow runs a command, parses workflow ID/run ID, and opens Preview.
 func (a *App) runCommandWorkflow(name, expandedCmd string, _ config.CommandConfig) {
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -2041,7 +2096,7 @@ func (a *App) runCommandWorkflow(name, expandedCmd string, _ config.CommandConfi
 		}
 
 		a.app.QueueUpdateDraw(func() {
-			a.NavigateToWorkflowDetail(workflowID, runID)
+			a.OpenWorkflowPreview(workflowID, runID)
 		})
 	}()
 }

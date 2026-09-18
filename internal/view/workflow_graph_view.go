@@ -135,7 +135,7 @@ func (wg *WorkflowGraphView) Hints() []KeyHint {
 		{Key: "space", Description: "Collapse/Expand"},
 		{Key: "c", Description: "Center Graph"},
 		{Key: "+/-", Description: "Depth"},
-		{Key: "Enter", Description: "Open Detail"},
+		{Key: "Enter", Description: "Preview"},
 		{Key: "r", Description: "Refresh"},
 		{Key: "?", Description: "Help"},
 		{Key: "esc", Description: "Back"},
@@ -594,9 +594,8 @@ func (wg *WorkflowGraphView) onTreeSelect(node *components.GraphTreeNode) {
 		return
 	}
 
-	// Navigate to workflow detail
-	if wf, ok := node.Data.(*temporal.Workflow); ok {
-		wg.app.NavigateToWorkflowDetail(wf.ID, wf.RunID)
+	if wf, ok := node.Data.(*temporal.Workflow); ok && wg.app != nil {
+		wg.app.OpenWorkflowPreview(wf.ID, wf.RunID)
 	}
 }
 
@@ -605,9 +604,8 @@ func (wg *WorkflowGraphView) onGraphSelect(node *components.GraphNode) {
 		return
 	}
 
-	// Navigate to workflow detail
-	if wf, ok := node.Data.(*temporal.Workflow); ok {
-		wg.app.NavigateToWorkflowDetail(wf.ID, wf.RunID)
+	if wf, ok := node.Data.(*temporal.Workflow); ok && wg.app != nil {
+		wg.app.OpenWorkflowPreview(wf.ID, wf.RunID)
 	}
 }
 

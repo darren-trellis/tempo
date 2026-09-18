@@ -146,4 +146,88 @@ func TestWorkflowIDFilterQuery(t *testing.T) {
 	if got := workflowIDFilterQuery("pay"); got != "WorkflowId STARTS_WITH 'pay'" {
 		t.Fatalf("query: %q", got)
 	}
+	if got := searchTermFromVisibilityQuery(workflowIDFilterQuery("pay")); got != "pay" {
+		t.Fatalf("term: %q", got)
+	}
+	if searchTermFromVisibilityQuery("ExecutionStatus = 'Running'") != "" {
+		t.Fatal("complex queries should not look like a / search")
+	}
+}
+
+func TestConvertedSearchStaysEditableAndClearsOnEscape(t *testing.T) {
+	a := &App{}
+	wl := NewWorkflowList(a, "default")
+	wl.loadMockData()
+	wl.filterText = "missing-id"
+	wl.convertFilterToVisibilityQuery()
+	if wl.filterText != "missing-id" {
+		t.Fatalf("search term should stay visible, got %q", wl.filterText)
+	}
+	if wl.visibilityQuery != workflowIDFilterQuery("missing-id") {
+		t.Fatalf("query=%q", wl.visibilityQuery)
+	}
+
+	wl.allWorkflows = []temporal.Workflow{{ID: "only-match"}}
+	wl.originalWorkflows = wl.allWorkflows
+	wl.showFilter()
+	if got := a.prompt().input.GetText(); got != "missing-id" {
+		t.Fatalf("/ should reopen the search term, got %q", got)
+	}
+	if ev := a.prompt().capture(tcell.NewEventKey(tcell.KeyEscape, 0, tcell.ModNone)); ev != nil {
+		t.Fatal("esc should close the filter prompt")
+	}
+	if a.IsFilterMode() {
+		t.Fatal("esc should leave filter mode")
+	}
+	if wl.filterText != "" || wl.visibilityQuery != "" {
+		t.Fatalf("esc should clear the search, filter=%q query=%q", wl.filterText, wl.visibilityQuery)
+	}
+	if len(wl.allWorkflows) == 1 && wl.allWorkflows[0].ID == "only-match" {
+		t.Fatal("esc should not restore the filtered snapshot")
+	}
+}
+
+func TestEmptyFilterSubmitClearsConvertedQuery(t *testing.T) {
+	a := &App{}
+	wl := NewWorkflowList(a, "default")
+	wl.loadMockData()
+	wl.filterText = "missing-id"
+	wl.convertFilterToVisibilityQuery()
+	wl.commitFilter("")
+	if wl.filterText != "" || wl.visibilityQuery != "" {
+		t.Fatalf("empty submit should clear, filter=%q query=%q", wl.filterText, wl.visibilityQuery)
+	}
+}
+
+func TestNamespaceEscapeClearsSearch(t *testing.T) {
+	nl := NewNamespaceList(&App{})
+	nl.allNamespaces = []temporal.Namespace{{Name: "default"}, {Name: "prod"}}
+	nl.namespaces = nl.allNamespaces
+	nl.SetSearchText("prod")
+	nl.applyFilter("prod")
+	if len(nl.namespaces) != 1 {
+		t.Fatalf("filtered=%d", len(nl.namespaces))
+	}
+	if !nl.HandleEscape() {
+		t.Fatal("escape should clear namespace search")
+	}
+	if nl.GetSearchText() != "" || len(nl.namespaces) != 2 {
+		t.Fatalf("search=%q n=%d", nl.GetSearchText(), len(nl.namespaces))
+	}
+}
+
+func TestTaskQueueEscapeClearsSearch(t *testing.T) {
+	wl := NewWorkflowList(&App{}, "default")
+	wl.setListKind(listTaskQueues)
+	wl.taskQueues.allQueues = []taskQueueEntry{{Name: "orders"}, {Name: "payments"}}
+	wl.taskQueues.applyFilter("pay")
+	if len(wl.taskQueues.queues) != 1 {
+		t.Fatalf("filtered=%d", len(wl.taskQueues.queues))
+	}
+	if !wl.HandleEscape() {
+		t.Fatal("escape should clear task queue search")
+	}
+	if wl.taskQueues.searchText != "" || len(wl.taskQueues.queues) != 2 {
+		t.Fatalf("search=%q n=%d", wl.taskQueues.searchText, len(wl.taskQueues.queues))
+	}
 }

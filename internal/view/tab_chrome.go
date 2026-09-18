@@ -15,56 +15,15 @@ type chromeSeg struct {
 
 type chromePanel struct {
 	*components.Panel
-	app *App
 }
 
-func newChromePanel(app *App) *chromePanel {
-	p := &chromePanel{Panel: components.NewPanel(), app: app}
+func newChromePanel(_ *App) *chromePanel {
+	p := &chromePanel{Panel: components.NewPanel()}
 	p.SetTitleAlign(components.TitleAlignLeft)
 	return p
 }
 
-func (p *chromePanel) Draw(screen tcell.Screen) {
-	if p == nil || p.Panel == nil {
-		return
-	}
-	p.Panel.Draw(screen)
-	drawTrailingChrome(screen, p.Panel, p.app)
-}
-
-func drawTrailingChrome(screen tcell.Screen, panel *components.Panel, app *App) {
-	if screen == nil || panel == nil || app == nil {
-		return
-	}
-	x, y, width, _ := panel.GetInnerRect()
-	if width < 8 {
-		return
-	}
-	segs := app.tabChromeSegments()
-	if len(segs) == 0 {
-		return
-	}
-	total := 0
-	for _, seg := range segs {
-		total += len([]rune(seg.text))
-	}
-	col := x + width - total - 2
-	if col < x+2 {
-		col = x + 2
-	}
-	for _, seg := range segs {
-		style := tcell.StyleDefault.Background(theme.Bg()).Foreground(seg.color)
-		for _, r := range seg.text {
-			if col >= x+width-1 {
-				return
-			}
-			screen.SetContent(col, y, r, nil, style)
-			col++
-		}
-	}
-}
-
-func (a *App) tabChromeSegments() []chromeSeg {
+func (a *App) statusBarSegments() []chromeSeg {
 	if a == nil {
 		return nil
 	}
@@ -82,15 +41,16 @@ func (a *App) tabChromeSegments() []chromeSeg {
 	if icon := a.codecChromeIcon(); icon != "" {
 		add(icon, a.codecChromeColor())
 	}
+	add(a.autoRefreshChromeText(), a.autoRefreshChromeColor())
 	return segs
 }
 
-type crumbStatBadge struct {
+type workflowStatBadge struct {
 	Text    string
 	Variant components.BadgeVariant
 }
 
-func crumbStatBadges(stats WorkflowStats) []crumbStatBadge {
+func workflowStatBadges(stats WorkflowStats) []workflowStatBadge {
 	items := []struct {
 		count   int
 		label   string
@@ -104,12 +64,12 @@ func crumbStatBadges(stats WorkflowStats) []crumbStatBadge {
 		{stats.TimedOut, "Timed Out", components.BadgeWarning},
 		{stats.ContinuedAsNew, "Continued as New", components.BadgePrimary},
 	}
-	out := make([]crumbStatBadge, 0, len(items))
+	out := make([]workflowStatBadge, 0, len(items))
 	for _, item := range items {
 		if item.count == 0 {
 			continue
 		}
-		out = append(out, crumbStatBadge{
+		out = append(out, workflowStatBadge{
 			Text:    formatCount(item.count) + " " + item.label,
 			Variant: item.variant,
 		})
@@ -135,35 +95,63 @@ func formatCount(n int) string {
 	return string(out)
 }
 
-func (a *App) drawCrumbStats(screen tcell.Screen) {
-	if a == nil || !a.chromeStatsOn || a.app == nil || screen == nil {
+func (a *App) drawBottomChrome(screen tcell.Screen) {
+	if a == nil || a.menu == nil || screen == nil || a.promptActive() {
 		return
 	}
-	crumbs := a.app.Crumbs()
-	if crumbs == nil {
-		return
-	}
-	specs := crumbStatBadges(a.chromeStats)
-	if len(specs) == 0 {
-		return
-	}
-	x, y, width, height := crumbs.GetRect()
+	x, y, width, height := a.menu.GetInnerRect()
 	if width < 8 || height < 1 {
 		return
 	}
-	badges := make([]*components.Badge, len(specs))
-	total := 0
-	for i, spec := range specs {
-		badge := components.NewBadge(spec.Text).SetVariant(spec.Variant).SetPill(true)
-		badges[i] = badge
-		if i > 0 {
-			total++
+
+	segs := a.statusBarSegments()
+	segWidth := 0
+	for _, seg := range segs {
+		segWidth += len([]rune(seg.text))
+	}
+
+	var badges []*components.Badge
+	badgeWidth := 0
+	if a.chromeStatsOn && !a.modalHintsOn {
+		for i, spec := range workflowStatBadges(a.chromeStats) {
+			badge := components.NewBadge(spec.Text).SetVariant(spec.Variant).SetPill(true)
+			if i > 0 {
+				badgeWidth++
+			}
+			badgeWidth += badge.Width()
+			badges = append(badges, badge)
 		}
-		total += badge.Width()
+	}
+
+	sep := ""
+	if segWidth > 0 && badgeWidth > 0 {
+		sep = " | "
+	}
+	total := segWidth + len([]rune(sep)) + badgeWidth
+	if total == 0 {
+		return
 	}
 	col := x + width - total - 1
 	if col < x {
 		col = x
+	}
+	for _, seg := range segs {
+		style := tcell.StyleDefault.Background(theme.Bg()).Foreground(seg.color)
+		for _, r := range seg.text {
+			if col >= x+width-1 {
+				return
+			}
+			screen.SetContent(col, y, r, nil, style)
+			col++
+		}
+	}
+	style := tcell.StyleDefault.Background(theme.Bg()).Foreground(theme.FgDim())
+	for _, r := range sep {
+		if col >= x+width-1 {
+			return
+		}
+		screen.SetContent(col, y, r, nil, style)
+		col++
 	}
 	for _, badge := range badges {
 		w := badge.Width()
@@ -199,4 +187,38 @@ func (a *App) codecChromeColor() tcell.Color {
 		return a.chromeCodecColor()
 	}
 	return theme.FgDim()
+}
+
+func (a *App) autoRefreshChromeText() string {
+	if a != nil && a.currentAutoRefresh() {
+		return theme.IconRefresh
+	}
+	return theme.IconPause
+}
+
+func (a *App) autoRefreshChromeColor() tcell.Color {
+	if a != nil && a.currentAutoRefresh() {
+		return theme.Success()
+	}
+	return theme.FgDim()
+}
+
+func (a *App) currentAutoRefresh() bool {
+	if a == nil {
+		return false
+	}
+	switch v := a.currentContent().(type) {
+	case *WorkflowList:
+		if v.taskQueuesActive() && v.taskQueues != nil {
+			return v.taskQueues.autoRefresh
+		}
+		if v.workflowsActive() {
+			return v.autoRefresh
+		}
+	case *NamespaceList:
+		return v.autoRefresh
+	case *TaskQueueView:
+		return v.autoRefresh
+	}
+	return false
 }

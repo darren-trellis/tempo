@@ -175,11 +175,15 @@ func detailField(details, key string) string {
 }
 
 func (a previewActivity) duration() string {
+	return a.durationAt(time.Now())
+}
+
+func (a previewActivity) durationAt(now time.Time) string {
 	if a.EndTime != nil {
 		return a.EndTime.Sub(a.StartTime).Round(time.Millisecond).String()
 	}
 	if a.Status == "Running" {
-		return time.Since(a.StartTime).Round(time.Second).String()
+		return now.Sub(a.StartTime).Round(time.Second).String()
 	}
 	return ""
 }

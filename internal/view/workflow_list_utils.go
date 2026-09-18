@@ -6,6 +6,7 @@ import (
 	"runtime"
 	"time"
 
+	"github.com/galaxy-io/tempo/internal/config"
 	"github.com/galaxy-io/tempo/internal/temporal"
 )
 
@@ -30,6 +31,16 @@ func formatRelativeTime(now time.Time, t time.Time) string {
 	}
 	days := int(d.Hours() / 24)
 	return fmt.Sprintf("%dd ago", days)
+}
+
+func formatDisplayTime(now, t time.Time, format string) string {
+	if t.IsZero() {
+		return "-"
+	}
+	if format == config.TimeFormatAbsolute {
+		return t.Format("15:04:05")
+	}
+	return formatRelativeTime(now, t)
 }
 
 // truncate truncates a string to maxLen, adding ellipsis if needed.
@@ -117,9 +128,9 @@ func openBrowserOS(rawURL string) error {
 	return cmd.Start()
 }
 
-func workflowEndTime(now time.Time, w temporal.Workflow) string {
+func workflowEndTime(now time.Time, w temporal.Workflow, format string) string {
 	if w.EndTime != nil {
-		return formatRelativeTime(now, *w.EndTime)
+		return formatDisplayTime(now, *w.EndTime, format)
 	}
 	return "-"
 }

@@ -478,7 +478,9 @@ func (da *DebugApp) showThemeSelector() {
 			}
 			// Save theme to config
 			da.config.Theme = name
-			da.config.Save()
+			if da.config.ShouldAutosave() {
+				_ = da.config.Save()
+			}
 			da.app.Pages().DismissModal()
 		})
 		listIdx++
@@ -505,7 +507,9 @@ func (da *DebugApp) showThemeSelector() {
 			}
 			// Save theme to config
 			da.config.Theme = name
-			da.config.Save()
+			if da.config.ShouldAutosave() {
+				_ = da.config.Save()
+			}
 			da.app.Pages().DismissModal()
 		})
 		listIdx++

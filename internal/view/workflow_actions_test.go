@@ -2,8 +2,10 @@ package view
 
 import (
 	"testing"
+	"time"
 
 	"github.com/atterpac/jig/layout"
+	"github.com/galaxy-io/tempo/internal/config"
 	"github.com/galaxy-io/tempo/internal/temporal"
 	"github.com/gdamore/tcell/v2"
 )
@@ -14,6 +16,51 @@ func TestWorkflowActionStatus(t *testing.T) {
 	}
 	if !workflowCanReset("Failed") || workflowCanReset("Running") {
 		t.Fatal("reset status")
+	}
+}
+
+func TestFormatResetPointLabel(t *testing.T) {
+	got := formatResetPointLabel(temporal.ResetPoint{
+		EventID:     12,
+		EventType:   "WorkflowTaskCompleted",
+		Timestamp:   time.Date(2026, 9, 17, 15, 4, 5, 0, time.UTC),
+		Description: "Workflow task completed at event 12",
+	})
+	if got != "#12  15:04:05  Workflow task completed at event 12" {
+		t.Fatalf("label=%q", got)
+	}
+	got = formatResetPointLabel(temporal.ResetPoint{
+		EventID:   4,
+		EventType: "WorkflowTaskCompleted",
+		Timestamp: time.Date(2026, 9, 17, 15, 4, 5, 0, time.UTC),
+	})
+	if got != "#4  15:04:05  WorkflowTaskCompleted" {
+		t.Fatalf("fallback label=%q", got)
+	}
+}
+
+func TestResetPointLabelsKeepOrder(t *testing.T) {
+	labels := resetPointLabels([]temporal.ResetPoint{
+		{EventID: 4, Description: "first", Timestamp: time.Unix(0, 0)},
+		{EventID: 4, Description: "same event id", Timestamp: time.Unix(1, 0)},
+	})
+	if len(labels) != 2 || labels[0] == labels[1] {
+		t.Fatalf("labels=%v", labels)
+	}
+	if resetPointIndex(labels, labels[1]) != 1 {
+		t.Fatalf("index for second label=%d", resetPointIndex(labels, labels[1]))
+	}
+}
+
+func TestResetFormDefaults(t *testing.T) {
+	selected, reason := resetFormDefaults(nil, 3)
+	if selected != 0 || reason != config.DefaultResetReason {
+		t.Fatalf("default selected=%d reason=%q", selected, reason)
+	}
+	app := &App{config: &config.Config{ResetPoint: config.ResetPointLast, ResetReason: "retry"}}
+	selected, reason = resetFormDefaults(app, 3)
+	if selected != 2 || reason != "retry" {
+		t.Fatalf("last selected=%d reason=%q", selected, reason)
 	}
 }
 
@@ -36,13 +83,6 @@ func TestTerminateCompletedShowsStatus(t *testing.T) {
 	wl.showTerminateSelected()
 	if got := a.hintBarMessage(); got != "Cannot terminate a completed workflow" {
 		t.Fatalf("list: %q", got)
-	}
-
-	wd := NewWorkflowDetail(a, "wf-1", "run-1")
-	wd.workflow = &temporal.Workflow{ID: "wf-1", RunID: "run-1", Status: "Completed"}
-	wd.showTerminateConfirm()
-	if got := a.hintBarMessage(); got != "Cannot terminate a completed workflow" {
-		t.Fatalf("detail: %q", got)
 	}
 }
 
@@ -128,13 +168,6 @@ func TestPreviewEventSearchFiltersTable(t *testing.T) {
 	visible := wl.visiblePreviewEvents()
 	if len(visible) != 1 || visible[0].ID != 5 {
 		t.Fatalf("visible: %+v", visible)
-	}
-}
-
-func TestWorkflowDetailOmitsEventModal(t *testing.T) {
-	wd := NewWorkflowDetail(&App{}, "wf", "run")
-	if desc := hintDescription(wd.Hints(), "d"); desc != "" {
-		t.Fatalf("event modal should be gone, got %q", desc)
 	}
 }
 

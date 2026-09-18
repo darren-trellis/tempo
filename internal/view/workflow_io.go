@@ -106,7 +106,7 @@ func showWorkflowIO(app *App, background tview.Primitive, workflowType, input, o
 	inputView := tview.NewTextView().
 		SetDynamicColors(true).
 		SetScrollable(true).
-		SetWrap(true)
+		SetWrap(false)
 	inputView.SetBackgroundColor(theme.Bg())
 	inputView.SetTextColor(theme.Fg())
 	inputView.SetText(formatIOContent("Input", input))
@@ -115,7 +115,7 @@ func showWorkflowIO(app *App, background tview.Primitive, workflowType, input, o
 	outputView := tview.NewTextView().
 		SetDynamicColors(true).
 		SetScrollable(true).
-		SetWrap(true)
+		SetWrap(false)
 	outputView.SetBackgroundColor(theme.Bg())
 	outputView.SetTextColor(theme.Fg())
 	outputView.SetText(formatIOContent("Output", output))
@@ -135,9 +135,7 @@ func showWorkflowIO(app *App, background tview.Primitive, workflowType, input, o
 	applyIOHints := func() {
 		hints := workflowIOHints(modal.maximized)
 		modal.SetHints(hints)
-		if app.JigApp().Menu() != nil {
-			app.JigApp().Menu().SetHints(hints)
-		}
+		app.syncModalHints(modal)
 	}
 	applyIOHints()
 	modal.SetOnCancel(closeModal)
@@ -178,16 +176,6 @@ func showWorkflowIO(app *App, background tview.Primitive, workflowType, input, o
 		case tcell.KeyTab, tcell.KeyBacktab:
 			switchFocus()
 			return nil
-		case tcell.KeyLeft:
-			if !focusedInput {
-				switchFocus()
-			}
-			return nil
-		case tcell.KeyRight:
-			if focusedInput {
-				switchFocus()
-			}
-			return nil
 		}
 		view := outputView
 		if focusedInput {
@@ -199,16 +187,6 @@ func showWorkflowIO(app *App, background tview.Primitive, workflowType, input, o
 		switch event.Key() {
 		case tcell.KeyRune:
 			switch event.Rune() {
-			case 'h':
-				if !focusedInput {
-					switchFocus()
-				}
-				return nil
-			case 'l':
-				if focusedInput {
-					switchFocus()
-				}
-				return nil
 			case 'm':
 				modal.toggleMaximize()
 				applyIOHints()

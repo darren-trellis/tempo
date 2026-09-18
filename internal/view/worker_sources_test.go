@@ -13,20 +13,28 @@ import (
 // fakeWorkerProvider answers only the calls the worker loader makes.
 type fakeWorkerProvider struct {
 	temporal.Provider
-	heartbeats    []temporal.Worker
-	heartbeatErr  error
-	queues        []string
-	queuesErr     error
-	pollers       map[string][]temporal.Poller
-	describeErr   error
-	describeCalls int32
+	heartbeats     []temporal.Worker
+	heartbeatErr   error
+	queues         []string
+	queuesErr      error
+	listQueuesHold chan struct{}
+	pollers        map[string][]temporal.Poller
+	describeErr    error
+	describeCalls  int32
 }
 
 func (f *fakeWorkerProvider) ListWorkers(context.Context, string) ([]temporal.Worker, error) {
 	return f.heartbeats, f.heartbeatErr
 }
 
-func (f *fakeWorkerProvider) ListTaskQueueNames(context.Context, string) ([]string, error) {
+func (f *fakeWorkerProvider) ListTaskQueueNames(ctx context.Context, _ string) ([]string, error) {
+	if f.listQueuesHold != nil {
+		select {
+		case <-f.listQueuesHold:
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
+	}
 	return f.queues, f.queuesErr
 }
 

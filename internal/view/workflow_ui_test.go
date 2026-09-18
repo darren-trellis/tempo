@@ -73,10 +73,3 @@ func TestWorkflowListHintsWebUI(t *testing.T) {
 		t.Fatalf("u hint: %q", desc)
 	}
 }
-
-func TestWorkflowDetailHintsWebUI(t *testing.T) {
-	wd := NewWorkflowDetail(&App{}, "wf", "run")
-	if desc := hintDescription(wd.Hints(), "u"); desc != "Web UI" {
-		t.Fatalf("u hint: %q", desc)
-	}
-}

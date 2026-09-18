@@ -37,35 +37,63 @@ func (wl *WorkflowList) convertFilterToVisibilityQuery() {
 		return
 	}
 
-	searchTerm := wl.filterText
-	wl.visibilityQuery = workflowIDFilterQuery(searchTerm)
-	wl.filterText = ""
+	wl.visibilityQuery = workflowIDFilterQuery(wl.filterText)
 	wl.updatePanelTitle()
 	wl.loadData()
+}
+
+func (wl *WorkflowList) searchFilterTerm() string {
+	if wl.filterText != "" {
+		return wl.filterText
+	}
+	return searchTermFromVisibilityQuery(wl.visibilityQuery)
+}
+
+func searchTermFromVisibilityQuery(query string) string {
+	const prefix = "WorkflowId STARTS_WITH '"
+	if !strings.HasPrefix(query, prefix) || !strings.HasSuffix(query, "'") {
+		return ""
+	}
+	term := strings.TrimSuffix(strings.TrimPrefix(query, prefix), "'")
+	if term == "" || strings.ContainsAny(term, "'") {
+		return ""
+	}
+	return term
 }
 
 func (wl *WorkflowList) showFilter() {
 	wl.originalWorkflows = wl.allWorkflows
 
-	wl.app.ShowFilterMode(wl.filterText, FilterModeCallbacks{
+	wl.app.ShowFilterMode(wl.searchFilterTerm(), FilterModeCallbacks{
 		OnSubmit: func(text string) {
-			wl.filterText = text
-			if text != "" {
-				// Apply filter with server fallback if no local results
-				wl.applyFilterWithFallback(true)
-			} else {
-				wl.applyFilter()
-			}
-			wl.updatePanelTitle()
+			wl.commitFilter(text)
 		},
 		OnCancel: func() {
-			wl.closeFilter()
+			wl.clearAllFilters()
 		},
 		OnChange: func(text string) {
 			wl.filterText = text
+			if text == "" {
+				if wl.visibilityQuery != "" {
+					wl.clearAllFilters()
+					return
+				}
+				wl.applyFilterWithServerSearch("")
+				return
+			}
 			wl.applyFilterWithServerSearch(text)
 		},
 	})
+}
+
+func (wl *WorkflowList) commitFilter(text string) {
+	if text == "" {
+		wl.clearAllFilters()
+		return
+	}
+	wl.filterText = text
+	wl.applyFilterWithFallback(true)
+	wl.updatePanelTitle()
 }
 
 // applyFilterWithServerSearch filters locally, and if no results, triggers server search.
@@ -168,36 +196,31 @@ func (wl *WorkflowList) updateFilterTitle(filter, hint string) {
 	}
 }
 
-func (wl *WorkflowList) closeFilter() {
-	wl.serverCompletions = nil
-	wl.lastCompletionQuery = ""
-
-	if wl.filterText == "" && wl.visibilityQuery == "" && wl.originalWorkflows != nil {
-		wl.allWorkflows = wl.originalWorkflows
-		wl.workflows = wl.originalWorkflows
-		wl.originalWorkflows = nil
-		wl.populateTable()
-		wl.updateStats()
-		wl.updatePanelTitle()
-	}
-}
-
 func (wl *WorkflowList) clearAllFilters() {
+	server := wl.visibilityQuery != ""
 	wl.filterText = ""
 	wl.visibilityQuery = ""
 	wl.serverCompletions = nil
 	wl.lastCompletionQuery = ""
-
-	if wl.originalWorkflows != nil {
-		wl.allWorkflows = wl.originalWorkflows
-		wl.workflows = wl.originalWorkflows
-		wl.originalWorkflows = nil
-		wl.populateTable()
-		wl.updateStats()
+	orig := wl.originalWorkflows
+	wl.originalWorkflows = nil
+	if !server {
+		if orig != nil {
+			wl.allWorkflows = orig
+		}
+		wl.applyFilter()
 		wl.updatePanelTitle()
-	} else {
-		wl.loadData()
+		return
 	}
+	wl.updatePanelTitle()
+	if wl.preloaded {
+		if orig != nil {
+			wl.allWorkflows = orig
+		}
+		wl.applyFilter()
+		return
+	}
+	wl.loadData()
 }
 
 func workflowIDFilterQuery(term string) string {

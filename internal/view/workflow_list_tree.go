@@ -9,7 +9,11 @@ import (
 	"github.com/gdamore/tcell/v2"
 )
 
-const workflowTreeIndent = 3
+const (
+	workflowTreeIndent    = 4
+	workflowTreeExpanded  = "◇"
+	workflowTreeCollapsed = "◆"
+)
 
 func treeModeHint(tree bool) string {
 	if tree {
@@ -30,9 +34,6 @@ func (wl *WorkflowList) toggleWorkflowTree() {
 				break
 			}
 		}
-	}
-	if wl.app != nil && wl.app.JigApp() != nil {
-		wl.app.JigApp().Menu().SetHints(wl.Hints())
 	}
 }
 
@@ -102,9 +103,9 @@ func (wl *WorkflowList) workflowRowPrefix(index int) string {
 	if !wl.workflowTreeMode || !wl.workflowHasChildAt(index) || index >= len(wl.workflows) {
 		return prefix
 	}
-	mark := theme.IconTreeExpanded
+	mark := workflowTreeExpanded
 	if wl.workflowCollapsed[workflowIdentityKey(wl.workflows[index])] {
-		mark = theme.IconTreeCollapsed
+		mark = workflowTreeCollapsed
 	}
 	return prefix + mark + " "
 }
@@ -121,11 +122,7 @@ func (wl *WorkflowList) anyWorkflowFolded() bool {
 	return false
 }
 
-func (wl *WorkflowList) refreshWorkflowTreeHints() {
-	if wl.app != nil && wl.app.JigApp() != nil && wl.app.JigApp().Menu() != nil {
-		wl.app.JigApp().Menu().SetHints(wl.Hints())
-	}
-}
+func (wl *WorkflowList) refreshWorkflowTreeHints() {}
 
 func (wl *WorkflowList) toggleWorkflowTreeFold() bool {
 	if wl == nil || !wl.workflowTreeMode || wl.selectionMode {
@@ -196,20 +193,27 @@ func workflowTreePrefix(isLastAtLevel []bool) string {
 	var b strings.Builder
 	for i, last := range isLastAtLevel {
 		if i == len(isLastAtLevel)-1 {
-			if last {
-				b.WriteString(" " + theme.IconTreeLast + theme.IconTreeHoriz)
-			} else {
-				b.WriteString(" " + theme.IconTreeBranch + theme.IconTreeHoriz)
-			}
+			b.WriteString(workflowTreeElbow(last))
 			continue
 		}
-		if last {
-			b.WriteString(strings.Repeat(" ", workflowTreeIndent))
-		} else {
-			b.WriteString(" " + theme.IconTreeVert + " ")
-		}
+		b.WriteString(workflowTreeGuide(last))
 	}
 	return b.String()
+}
+
+func workflowTreeElbow(last bool) string {
+	head := theme.IconTreeBranch
+	if last {
+		head = theme.IconTreeLast
+	}
+	return head + theme.IconTreeHoriz + theme.IconTreeHoriz + " "
+}
+
+func workflowTreeGuide(last bool) string {
+	if last {
+		return strings.Repeat(" ", workflowTreeIndent)
+	}
+	return theme.IconTreeVert + strings.Repeat(" ", workflowTreeIndent-1)
 }
 
 func workflowChildLinks(workflows []temporal.Workflow) (children [][]int, isChild []bool) {

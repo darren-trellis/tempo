@@ -9,6 +9,7 @@ import (
 	"github.com/atterpac/jig/components"
 	"github.com/atterpac/jig/theme"
 	"github.com/atterpac/jig/validators"
+	"github.com/galaxy-io/tempo/internal/config"
 	"github.com/galaxy-io/tempo/internal/temporal"
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
@@ -372,9 +373,11 @@ func executeSignalWorkflow(app *App, t workflowActionTarget, signalName, input s
 }
 
 func showQueryWorkflowModal(app *App, t workflowActionTarget) {
+	queryTypes := []string{"__stack_trace", "custom"}
+	queryField := newOrderedDropdownField("queryType", "Query Type", queryTypes).
+		SetValue(queryTypes[0])
 	form := components.NewFormBuilder().
-		Select("queryType", "Query Type", []string{"__stack_trace", "custom"}).
-		Done().
+		AddField(queryField).
 		Text("customQuery", "Custom Query Name").
 		Placeholder("Enter custom query name").
 		Done().
@@ -382,7 +385,7 @@ func showQueryWorkflowModal(app *App, t workflowActionTarget) {
 		Placeholder("{}").
 		Done().
 		OnSubmit(func(values map[string]any) {
-			queryType := stringValue(values, "queryType")
+			queryType := queryField.GetValue()
 			if queryType == "custom" {
 				queryType = stringValue(values, "customQuery")
 			}
@@ -393,6 +396,9 @@ func showQueryWorkflowModal(app *App, t workflowActionTarget) {
 			executeQueryWorkflow(app, t, queryType, stringValue(values, "args"))
 		}).
 		OnCancel(func() {
+			if collapseOpenDropdowns(queryField) {
+				return
+			}
 			dismissAppModal(app)
 		}).
 		Build()
@@ -400,9 +406,10 @@ func showQueryWorkflowModal(app *App, t workflowActionTarget) {
 	modal := newModal(components.ModalConfig{
 		Title:    fmt.Sprintf("%s Query Workflow", theme.IconInfo),
 		Width:    70,
-		Height:   18,
+		Height:   22,
 		Backdrop: true,
 	})
+	modal.bindDropdowns(form, queryField)
 	modal.SetContent(form)
 	modal.SetHints([]components.KeyHint{
 		{Key: "Tab", Description: "Next field"},
@@ -540,98 +547,91 @@ func showResetWorkflowModal(app *App, t workflowActionTarget, onDone func(newRun
 				showResetErrorModal(app, "No valid reset points found for this workflow.")
 				return
 			}
-			showResetPickerModal(app, t, resetPoints, onDone)
+			showResetFormModal(app, t, resetPoints, onDone)
 		})
 	}()
 }
 
-func showResetPickerModal(app *App, t workflowActionTarget, resetPoints []temporal.ResetPoint, onDone func(string)) {
-	modal := newModal(components.ModalConfig{
-		Title:     fmt.Sprintf("%s Select Reset Point", theme.IconInfo),
-		Width:     90,
-		Height:    20,
-		MinHeight: 15,
-		Backdrop:  true,
-	})
-	table := components.NewTable()
-	table.SetHeaders("EVENT ID", "TYPE", "TIME", "DESCRIPTION")
-	table.SetBackgroundColor(theme.Bg())
-	for _, rp := range resetPoints {
-		table.AddRow(
-			fmt.Sprintf("%d", rp.EventID),
-			truncateStr(rp.EventType, 25),
-			rp.Timestamp.Format("15:04:05"),
-			truncateStr(rp.Description, 35),
-		)
+func formatResetPointLabel(rp temporal.ResetPoint) string {
+	desc := rp.Description
+	if desc == "" {
+		desc = rp.EventType
 	}
-	table.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
-		switch event.Key() {
-		case tcell.KeyEnter:
-			row := table.SelectedRow()
-			if row >= 0 && row < len(resetPoints) {
-				dismissAppModal(app)
-				showResetConfirmModal(app, t, resetPoints[row], onDone)
-			}
-			return nil
-		case tcell.KeyEscape:
-			dismissAppModal(app)
-			return nil
-		}
-		return event
-	})
-	modal.SetContent(table)
-	modal.SetHints([]components.KeyHint{
-		{Key: "Enter", Description: "Select"},
-		{Key: "Esc", Description: "Cancel"},
-	})
-	modal.SetOnCancel(func() { dismissAppModal(app) })
-	app.PushModal(modal)
-	app.JigApp().SetFocus(table)
+	return fmt.Sprintf("#%d  %s  %s", rp.EventID, rp.Timestamp.Format("15:04:05"), desc)
 }
 
-func showResetConfirmModal(app *App, t workflowActionTarget, resetPoint temporal.ResetPoint, onDone func(string)) {
-	eventID := resetPoint.EventID
+func resetPointLabels(points []temporal.ResetPoint) []string {
+	labels := make([]string, len(points))
+	for i, rp := range points {
+		labels[i] = formatResetPointLabel(rp)
+	}
+	return labels
+}
+
+func resetPointIndex(labels []string, value string) int {
+	for i, label := range labels {
+		if label == value {
+			return i
+		}
+	}
+	return -1
+}
+
+func resetFormDefaults(app *App, n int) (selected int, reason string) {
+	reason = config.DefaultResetReason
+	if n < 1 {
+		return 0, reason
+	}
+	selected = 0
+	if app == nil || app.Config() == nil {
+		return selected, reason
+	}
+	cfg := app.Config()
+	if cfg.ResetPointDefault() == config.ResetPointLast {
+		selected = n - 1
+	}
+	return selected, cfg.ResetReasonDefault()
+}
+
+func showResetFormModal(app *App, t workflowActionTarget, resetPoints []temporal.ResetPoint, onDone func(string)) {
+	labels := resetPointLabels(resetPoints)
+	selected, reason := resetFormDefaults(app, len(labels))
+	pointField := newOrderedDropdownField("point", "Reset Point", labels).
+		SetPlaceholder("Select reset point")
+	if selected >= 0 && selected < len(labels) {
+		pointField.SetValue(labels[selected])
+	}
 	form := components.NewFormBuilder().
+		AddField(pointField).
 		Text("reason", "Reason").
-		Value("Reset via tempo").
+		Value(reason).
 		Done().
 		OnSubmit(func(values map[string]any) {
+			idx := resetPointIndex(labels, pointField.GetValue())
+			if idx < 0 || idx >= len(resetPoints) {
+				return
+			}
 			dismissAppModal(app)
-			executeResetWorkflow(app, t, eventID, stringValue(values, "reason"), onDone)
+			executeResetWorkflow(app, t, resetPoints[idx].EventID, stringValue(values, "reason"), onDone)
 		}).
 		OnCancel(func() {
+			if collapseOpenDropdowns(pointField) {
+				return
+			}
 			dismissAppModal(app)
 		}).
 		Build()
 
-	contentFlex := tview.NewFlex().SetDirection(tview.FlexRow)
-	contentFlex.SetBackgroundColor(theme.Bg())
-	infoText := tview.NewTextView().
-		SetDynamicColors(true).
-		SetTextAlign(tview.AlignLeft)
-	infoText.SetBackgroundColor(theme.Bg())
-	infoText.SetText(fmt.Sprintf(`[%s]Reset workflow to event:[-]
-
-[%s]Event ID:[-]    [%s]%d[-]
-[%s]Type:[-]        [%s]%s[-]
-[%s]Time:[-]        [%s]%s[-]
-[%s]Description:[-] [%s]%s[-]`,
-		theme.TagAccent(),
-		theme.TagFgDim(), theme.TagFg(), resetPoint.EventID,
-		theme.TagFgDim(), theme.TagFg(), resetPoint.EventType,
-		theme.TagFgDim(), theme.TagFg(), resetPoint.Timestamp.Format("2006-01-02 15:04:05"),
-		theme.TagFgDim(), theme.TagFg(), resetPoint.Description))
-	contentFlex.AddItem(infoText, 7, 0, false)
-	contentFlex.AddItem(form, 0, 1, true)
-
 	modal := newModal(components.ModalConfig{
-		Title:    fmt.Sprintf("%s Confirm Reset", theme.IconWarning),
-		Width:    70,
-		Height:   16,
+		Title:    fmt.Sprintf("%s Reset Workflow", theme.IconWarning),
+		Width:    80,
+		Height:   22,
 		Backdrop: true,
 	})
-	modal.SetContent(contentFlex)
+	modal.bindDropdowns(form, pointField)
+	modal.SetContent(form)
 	modal.SetHints([]components.KeyHint{
+		{Key: "Tab", Description: "Next field"},
 		{Key: "Enter", Description: "Reset"},
 		{Key: "Esc", Description: "Cancel"},
 	})

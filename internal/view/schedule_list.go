@@ -106,7 +106,13 @@ func (sl *ScheduleList) setup() {
 			sl.app.ShowFilterMode(current, FilterModeCallbacks{
 				OnChange: cb.OnChange,
 				OnSubmit: cb.OnSubmit,
-				OnCancel: cb.OnCancel,
+				OnCancel: func() {
+					sl.ClearSearch()
+					sl.applyFilter("")
+					if cb.OnCancel != nil {
+						cb.OnCancel()
+					}
+				},
 			})
 		}).
 		SetOnSearch(func(query string) {
@@ -136,12 +142,21 @@ func (sl *ScheduleList) togglePreview() {
 func (sl *ScheduleList) RefreshTheme() {
 	bg := theme.Bg()
 
-	// Update table
 	sl.table.SetBackgroundColor(bg)
-
-	// Update detail panes
 	sl.detail.SetBackgroundColor(bg)
 	sl.runsTable.SetBackgroundColor(bg)
+	if sl.tableScroll != nil {
+		sl.tableScroll.SetBackgroundColor(bg)
+	}
+	if sl.detailScroll != nil {
+		sl.detailScroll.SetBackgroundColor(bg)
+	}
+	if sl.runsScroll != nil {
+		sl.runsScroll.SetBackgroundColor(bg)
+	}
+	if sl.detailFlex != nil {
+		sl.detailFlex.SetBackgroundColor(bg)
+	}
 
 	// Re-render table with new theme colors
 	sl.populateTable()
@@ -272,7 +287,7 @@ func (sl *ScheduleList) selectedRun() (temporal.ScheduleRun, bool) {
 	return sl.runs[idx], true
 }
 
-// openSelectedRun pushes the workflow detail for the selected run.
+// openSelectedRun shows the selected run in the Workflows preview pane.
 func (sl *ScheduleList) openSelectedRun() {
 	run, ok := sl.selectedRun()
 	if !ok || sl.app == nil {
@@ -282,7 +297,7 @@ func (sl *ScheduleList) openSelectedRun() {
 		sl.app.ToastWarning("This run has no workflow execution to open")
 		return
 	}
-	sl.app.NavigateToWorkflowDetail(run.WorkflowID, run.RunID)
+	sl.app.OpenWorkflowPreview(run.WorkflowID, run.RunID)
 }
 
 // yankDetailRow copies the selected detail value to the clipboard.

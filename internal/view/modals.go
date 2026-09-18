@@ -72,7 +72,7 @@ with a keyboard-driven interface.[-]
 	m.SetHints([]components.KeyHint{
 		{Key: "any key", Description: "Continue"},
 	})
-	m.Modal.SetOnCancel(func() {
+	m.SetOnCancel(func() {
 		if m.onClose != nil {
 			m.onClose()
 		}
@@ -245,10 +245,11 @@ func (m *ThemeSelectorModal) setup() {
 	m.themes = config.ThemeNames()
 
 	m.table.SetSelectionChangedFunc(func(row, col int) {
-		if row >= 0 && row < len(m.themes) {
-			m.currentIdx = row
+		idx := m.table.SelectedRow()
+		if idx >= 0 && idx < len(m.themes) {
+			m.currentIdx = idx
 			if m.onPreview != nil {
-				m.onPreview(m.themes[row])
+				m.onPreview(m.themes[idx])
 			}
 		}
 	})
@@ -266,7 +267,7 @@ func (m *ThemeSelectorModal) setup() {
 		{Key: "Enter", Description: "Select"},
 		{Key: "Esc", Description: "Cancel"},
 	})
-	m.Modal.SetOnCancel(func() {
+	m.shadowedModal.SetOnCancel(func() {
 		// Restore original theme on cancel
 		if m.onPreview != nil && m.originalIdx >= 0 && m.originalIdx < len(m.themes) {
 			m.onPreview(m.themes[m.originalIdx])
@@ -378,7 +379,14 @@ func (m *ProfileModal) setup() {
 	})
 
 	m.SetContent(m.table)
-	m.Modal.SetOnCancel(func() {
+	m.SetHints([]components.KeyHint{
+		{Key: "Enter", Description: "Switch"},
+		{Key: "n", Description: "New"},
+		{Key: "e", Description: "Edit"},
+		{Key: "d", Description: "Delete"},
+		{Key: "Esc", Description: "Close"},
+	})
+	m.SetOnCancel(func() {
 		if m.onClose != nil {
 			m.onClose()
 		}
@@ -533,11 +541,10 @@ func (f *ProfileForm) buildForm(name string, cfg config.ConnectionConfig, isEdit
 	if cfg.TLS.SkipVerify {
 		skipVerifyDefault = "Yes"
 	}
-	builder.Select("tlsSkipVerify", "Skip TLS Verify", []string{"No", "Yes"}).
-		Default(skipVerifyDefault).
-		Done()
+	tlsField := newOrderedDropdownField("tlsSkipVerify", "Skip TLS Verify", []string{"No", "Yes"}).
+		SetValue(skipVerifyDefault)
+	builder.AddField(tlsField)
 
-	// Set callbacks
 	builder.OnSubmit(func(values map[string]any) {
 		saveName := name
 		if !isEdit {
@@ -547,7 +554,7 @@ func (f *ProfileForm) buildForm(name string, cfg config.ConnectionConfig, isEdit
 			return
 		}
 
-		skipVerify := values["tlsSkipVerify"].(string) == "Yes"
+		skipVerify := tlsField.GetValue() == "Yes"
 
 		newCfg := config.ConnectionConfig{
 			Address:   values["address"].(string),
@@ -572,12 +579,17 @@ func (f *ProfileForm) buildForm(name string, cfg config.ConnectionConfig, isEdit
 	})
 
 	builder.OnCancel(func() {
+		if collapseOpenDropdowns(tlsField) {
+			return
+		}
 		if f.onCancel != nil {
 			f.onCancel()
 		}
 	})
 
-	return builder.Build()
+	form := builder.Build()
+	f.bindDropdowns(form, tlsField)
+	return form
 }
 
 func (f *ProfileForm) SetProfile(name string, cfg config.ConnectionConfig) {
@@ -654,7 +666,7 @@ func (m *DeleteConfirmModal) setup() {
 		{Key: "y", Description: "Yes, delete"},
 		{Key: "n/Esc", Description: "Cancel"},
 	})
-	m.Modal.SetOnCancel(func() {
+	m.shadowedModal.SetOnCancel(func() {
 		if m.onCancel != nil {
 			m.onCancel()
 		}
@@ -719,7 +731,7 @@ func (m *ErrorModal) setup() {
 	m.SetHints([]components.KeyHint{
 		{Key: "any key", Description: "Close"},
 	})
-	m.Modal.SetOnCancel(func() {
+	m.SetOnCancel(func() {
 		if m.onClose != nil {
 			m.onClose()
 		}
@@ -769,7 +781,7 @@ func (m *InfoModal) setup(message string) {
 	m.SetHints([]components.KeyHint{
 		{Key: "any key", Description: "Close"},
 	})
-	m.Modal.SetOnCancel(func() {
+	m.SetOnCancel(func() {
 		if m.onClose != nil {
 			m.onClose()
 		}

@@ -84,7 +84,13 @@ func (nl *NamespaceList) setup() {
 			nl.app.ShowFilterMode(current, FilterModeCallbacks{
 				OnChange: cb.OnChange,
 				OnSubmit: cb.OnSubmit,
-				OnCancel: cb.OnCancel,
+				OnCancel: func() {
+					nl.ClearSearch()
+					nl.applyFilter("")
+					if cb.OnCancel != nil {
+						cb.OnCancel()
+					}
+				},
 			})
 		}).
 		SetOnSearch(func(query string) {
@@ -96,7 +102,6 @@ func (nl *NamespaceList) setup() {
 		dataRow := row - 1
 		if dataRow >= 0 && dataRow < len(nl.namespaces) {
 			nl.updatePreview(nl.namespaces[dataRow])
-			nl.app.JigApp().Menu().SetHints(nl.Hints())
 		}
 	})
 
@@ -117,12 +122,12 @@ func (nl *NamespaceList) togglePreview() {
 func (nl *NamespaceList) RefreshTheme() {
 	bg := theme.Bg()
 
-	// Update table
 	nl.table.SetBackgroundColor(bg)
-
-	// Update preview
 	nl.preview.SetBackgroundColor(bg)
 	nl.preview.SetTextColor(theme.Fg())
+	if nl.tableScroll != nil {
+		nl.tableScroll.SetBackgroundColor(bg)
+	}
 
 	// Re-render table with new theme colors
 	nl.populateTable()
@@ -172,7 +177,22 @@ func valueOrEmpty(s, fallback string) string {
 }
 
 func (nl *NamespaceList) setLoading(loading bool) {
+	nl.setLoadIndicator(loading, false)
+}
+
+func (nl *NamespaceList) setRefreshing(loading bool) {
+	nl.setLoadIndicator(loading, true)
+}
+
+func (nl *NamespaceList) setLoadIndicator(loading, quiet bool) {
 	nl.loading = loading
+	if nl.app == nil {
+		return
+	}
+	if quiet {
+		nl.app.SetViewRefreshing("namespaces", loading)
+		return
+	}
 	nl.app.SetViewLoading("namespaces", loading)
 }
 
@@ -187,7 +207,7 @@ func (nl *NamespaceList) fetchNamespaces(live bool) {
 		return
 	}
 
-	nl.setLoading(true)
+	nl.setLoadIndicator(true, live)
 	async.NewLoader[[]temporal.Namespace]().
 		WithTimeout(10 * time.Second).
 		OnSuccess(func(namespaces []temporal.Namespace) {
@@ -285,6 +305,15 @@ func (nl *NamespaceList) applyFilter(query string) {
 		}
 	}
 	nl.populateTable()
+}
+
+func (nl *NamespaceList) HandleEscape() bool {
+	if nl.GetSearchText() != "" {
+		nl.ClearSearch()
+		nl.applyFilter("")
+		return true
+	}
+	return false
 }
 
 func (nl *NamespaceList) toggleAutoRefresh() {

@@ -148,16 +148,19 @@ func (wl *WorkflowList) showDateRangePicker() {
 		"Today",
 		"Yesterday",
 	}
+	presetField := newOrderedDropdownField("preset", "Time Range", presets).
+		SetValue(presets[0])
 
 	form := components.NewFormBuilder().
-		Select("preset", "Time Range", presets).
-		Done().
+		AddField(presetField).
 		OnSubmit(func(values map[string]any) {
-			preset := values["preset"].(string)
 			wl.closeModal()
-			wl.applyDatePreset(preset)
+			wl.applyDatePreset(presetField.GetValue())
 		}).
 		OnCancel(func() {
+			if collapseOpenDropdowns(presetField) {
+				return
+			}
 			wl.closeModal()
 		}).
 		Build()
@@ -165,9 +168,10 @@ func (wl *WorkflowList) showDateRangePicker() {
 	modal := newModal(components.ModalConfig{
 		Title:    fmt.Sprintf("%s Date Range Filter", theme.IconInfo),
 		Width:    55,
-		Height:   14,
+		Height:   20,
 		Backdrop: true,
 	})
+	modal.bindDropdowns(form, presetField)
 	modal.SetContent(form)
 	modal.SetHints([]components.KeyHint{
 		{Key: "Enter", Description: "Apply"},
@@ -332,7 +336,6 @@ func (wl *WorkflowList) clearVisibilityQuery() {
 	wl.visibilityQuery = ""
 	wl.updatePanelTitle()
 	wl.loadData()
-	wl.app.JigApp().Menu().SetHints(wl.Hints())
 }
 
 func (wl *WorkflowList) updatePanelTitle() {

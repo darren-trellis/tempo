@@ -1,6 +1,7 @@
 package view
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/atterpac/jig/components"
@@ -59,7 +60,7 @@ func TestOverlayModalHints(t *testing.T) {
 		t.Fatalf("hints=%+v", hints)
 	}
 	if bar := modal.GetHintBar(); bar != nil && len(bar.Hints) != 0 {
-		t.Fatalf("overlay hints should stay in the footer, got in-modal %+v", bar.Hints)
+		t.Fatalf("jig hint bar should stay unused, got %+v", bar.Hints)
 	}
 }
 
@@ -85,6 +86,77 @@ func TestOverlayModalFramelessHidesParentPane(t *testing.T) {
 	cx, cy, cw, ch := inner.GetRect()
 	if cx != px || cy != py || cw != pw || ch != ph {
 		t.Fatalf("content should fill the modal without a parent pane, panel=%d,%d %dx%d content=%d,%d %dx%d", px, py, pw, ph, cx, cy, cw, ch)
+	}
+}
+
+func TestWorkflowIOModalOmitsButtons(t *testing.T) {
+	modal := newOverlayModal(components.ModalConfig{
+		Title:     "Input/Output",
+		MinWidth:  40,
+		MinHeight: 12,
+	}, tview.NewBox())
+	modal.frameless = true
+	modal.SetContent(tview.NewTextView().SetText("payload"))
+	modal.SetHints(workflowIOHints(false))
+	if hintDescription(modal.Hints(), "y") != "Copy" || hintDescription(modal.Hints(), "esc") != "Close" {
+		t.Fatalf("IO hints should still be available, got %+v", modal.Hints())
+	}
+
+	screen := tcell.NewSimulationScreen("UTF-8")
+	if err := screen.Init(); err != nil {
+		t.Fatal(err)
+	}
+	screen.SetSize(80, 24)
+	modal.SetRect(0, 0, 80, 24)
+	modal.Draw(screen)
+	var b strings.Builder
+	for y := 0; y < 24; y++ {
+		for x := 0; x < 80; x++ {
+			ch, _, _, _ := screen.GetContent(x, y)
+			if ch != 0 {
+				b.WriteRune(ch)
+			}
+		}
+	}
+	got := b.String()
+	if strings.Contains(got, "Copy") || strings.Contains(got, "Close") {
+		t.Fatalf("Copy/Close should not be drawn in the IO window, got %q", got)
+	}
+}
+
+func TestFramelessModalDoesNotDuplicateButtons(t *testing.T) {
+	modal := newOverlayModal(components.ModalConfig{
+		Title:     "Input/Output",
+		MinWidth:  40,
+		MinHeight: 12,
+	}, tview.NewBox())
+	modal.frameless = true
+	modal.SetContent(tview.NewTextView().SetText("payload"))
+	modal.SetHints([]components.KeyHint{
+		{Key: "y", Description: "Copy"},
+		{Key: "esc", Description: "Close"},
+	})
+	modal.SetRect(0, 0, 80, 24)
+
+	screen := tcell.NewSimulationScreen("UTF-8")
+	if err := screen.Init(); err != nil {
+		t.Fatal(err)
+	}
+	screen.SetSize(80, 24)
+	modal.Draw(screen)
+
+	var b strings.Builder
+	for y := 0; y < 24; y++ {
+		for x := 0; x < 80; x++ {
+			ch, _, _, _ := screen.GetContent(x, y)
+			if ch != 0 {
+				b.WriteRune(ch)
+			}
+		}
+	}
+	got := b.String()
+	if strings.Contains(got, "Copy") || strings.Contains(got, "Close") {
+		t.Fatalf("Copy/Close should not be drawn in the IO window, got %q", got)
 	}
 }
 
@@ -123,13 +195,13 @@ func TestShadowedModalHintsStayInFooter(t *testing.T) {
 		{Key: "Esc", Description: "Cancel"},
 	})
 	if hintDescription(modal.Hints(), "Enter") != "Confirm" {
-		t.Fatalf("footer hints: %+v", modal.Hints())
+		t.Fatalf("hints: %+v", modal.Hints())
 	}
 	if hintDescription(modal.Hints(), "Ctrl+S") != "" {
 		t.Fatal("ctrl+s should not be advertised")
 	}
 	if bar := modal.GetHintBar(); bar != nil && len(bar.Hints) != 0 {
-		t.Fatalf("dialog hints should stay in the footer, got in-modal %+v", bar.Hints)
+		t.Fatalf("jig hint bar should stay unused, got %+v", bar.Hints)
 	}
 }
 
@@ -142,7 +214,7 @@ func TestProfileFormHintsStayInFooter(t *testing.T) {
 		t.Fatal("ctrl+s should not be advertised")
 	}
 	if bar := form.GetHintBar(); bar != nil && len(bar.Hints) != 0 {
-		t.Fatalf("profile form hints should stay in the footer, got in-modal %+v", bar.Hints)
+		t.Fatalf("jig hint bar should stay unused, got %+v", bar.Hints)
 	}
 }
 
@@ -153,6 +225,6 @@ func TestProfileModalHintsStayInFooter(t *testing.T) {
 		t.Fatalf("profile hints: %+v", hints)
 	}
 	if bar := modal.GetHintBar(); bar != nil && len(bar.Hints) != 0 {
-		t.Fatalf("profile hints should stay in the footer, got in-modal %+v", bar.Hints)
+		t.Fatalf("jig hint bar should stay unused, got %+v", bar.Hints)
 	}
 }

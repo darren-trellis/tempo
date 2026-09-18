@@ -6,7 +6,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/atterpac/jig/components"
 	"github.com/atterpac/jig/theme"
 	"github.com/galaxy-io/tempo/internal/config"
 	"github.com/galaxy-io/tempo/internal/temporal"
@@ -27,7 +26,22 @@ func (wl *WorkflowList) previewLoadDelay() time.Duration {
 }
 
 func (wl *WorkflowList) setLoading(loading bool) {
+	wl.setLoadIndicator(loading, false)
+}
+
+func (wl *WorkflowList) setRefreshing(loading bool) {
+	wl.setLoadIndicator(loading, true)
+}
+
+func (wl *WorkflowList) setLoadIndicator(loading, quiet bool) {
 	wl.loading = loading
+	if wl.app == nil {
+		return
+	}
+	if quiet {
+		wl.app.SetViewRefreshing("workflows", loading)
+		return
+	}
 	wl.app.SetViewLoading("workflows", loading)
 }
 
@@ -84,7 +98,7 @@ func (wl *WorkflowList) fetchWorkflows(live bool) {
 	}
 
 	if live {
-		if wl.filterText != "" {
+		if wl.filterText != "" && wl.visibilityQuery == "" {
 			wl.refreshCounts()
 			return
 		}
@@ -120,9 +134,7 @@ func (wl *WorkflowList) startWindow(live bool) {
 	gen := wl.pageGen
 	wl.pager.reset(resolvedQuery)
 	wl.pageBusy = true
-	if !live {
-		wl.setLoading(true)
-	}
+	wl.setLoadIndicator(true, live)
 
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -192,6 +204,7 @@ func (wl *WorkflowList) refreshLoadedPages() {
 	query := wl.pager.query
 	gen := wl.pageGen
 	wl.pageBusy = true
+	wl.setRefreshing(true)
 
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -232,6 +245,7 @@ func (wl *WorkflowList) refreshLoadedPages() {
 			}
 			wl.liveBusy = false
 			wl.pageBusy = false
+			wl.setLoading(false)
 			for _, result := range results {
 				if result.err != nil {
 					continue
@@ -264,6 +278,7 @@ func (wl *WorkflowList) refreshCounts() {
 		query = resolved
 	}
 	gen := wl.pageGen
+	wl.setRefreshing(true)
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
@@ -273,6 +288,7 @@ func (wl *WorkflowList) refreshCounts() {
 				return
 			}
 			wl.liveBusy = false
+			wl.setLoading(false)
 			if err == nil {
 				wl.applyServerCounts(counts)
 			}
@@ -333,7 +349,7 @@ func (wl *WorkflowList) maybeFetchPages() {
 	if wl == nil || wl.preloaded || wl.pageBusy || wl.liveBusy || wl.listEdgePin != listEdgeNone {
 		return
 	}
-	if wl.filterText != "" {
+	if wl.filterText != "" && wl.visibilityQuery == "" {
 		return
 	}
 	if !wl.workflowsActive() || wl.app == nil || wl.app.Provider() == nil {
@@ -550,11 +566,7 @@ func (wl *WorkflowList) renderColumns() {
 	applyWorkflowColumnHeaders(wl.table, cols)
 	now := time.Now()
 	for i, w := range wl.workflows {
-		cells := make([]components.TableCell, len(cols))
-		for j, col := range cols {
-			cells[j] = col.cell(now, w, wl.workflowRowPrefix(i))
-		}
-		wl.table.AddStyledRow(cells)
+		wl.table.AddStyledRow(wl.styledWorkflowCells(now, w, i))
 	}
 	if row >= 0 && row < wl.table.RowCount() {
 		wl.selectWorkflowRow(row)
@@ -655,11 +667,7 @@ func (wl *WorkflowList) populateTable() {
 
 	now := time.Now()
 	for i, w := range wl.workflows {
-		cells := make([]components.TableCell, len(cols))
-		for j, col := range cols {
-			cells[j] = col.cell(now, w, wl.workflowRowPrefix(i))
-		}
-		wl.table.AddStyledRow(cells)
+		wl.table.AddStyledRow(wl.styledWorkflowCells(now, w, i))
 	}
 
 	idx := workflowIndexByIdentity(wl.workflows, id, runID)
@@ -719,6 +727,10 @@ func (wl *WorkflowList) displayedStats() WorkflowStats {
 
 func (wl *WorkflowList) updateStats() {
 	if wl.app == nil {
+		return
+	}
+	if !wl.workflowsActive() {
+		wl.app.ClearWorkflowStats()
 		return
 	}
 	wl.app.SetWorkflowStats(wl.displayedStats())

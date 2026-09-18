@@ -57,12 +57,16 @@ func (a *App) pollConfigFile() {
 }
 
 func (a *App) applyReloadedConfig(cfg *config.Config) {
+	a.applyLoadedConfig(cfg, false)
+}
+
+func (a *App) applyLoadedConfig(cfg *config.Config, force bool) {
 	if cfg == nil {
 		return
 	}
 
 	old := a.config
-	if old != nil && !old.ShouldAutoreload() && !cfg.ShouldAutoreload() {
+	if !force && old != nil && !old.ShouldAutoreload() && !cfg.ShouldAutoreload() {
 		return
 	}
 
@@ -71,9 +75,15 @@ func (a *App) applyReloadedConfig(cfg *config.Config) {
 	oldPageSize := 0
 	var oldConn config.ConnectionConfig
 	var oldCols []config.WorkflowColumnConfig
+	var oldActivityCols []config.WorkflowColumnConfig
+	oldWorkflowTime := ""
+	oldActivityTime := ""
 	if old != nil {
 		oldTheme = old.Theme
 		oldCols = old.WorkflowColumnLayout()
+		oldActivityCols = old.ActivityColumnLayout()
+		oldWorkflowTime = old.ResolvedWorkflowTimeFormat()
+		oldActivityTime = old.ResolvedActivityTimeFormat()
 		oldPageSize = old.WorkflowPageLimit()
 		if conn, ok := old.GetProfile(oldProfile); ok {
 			oldConn = conn
@@ -88,6 +98,9 @@ func (a *App) applyReloadedConfig(cfg *config.Config) {
 	needReconnect := hasConn && (newProfile != oldProfile || !config.ConnectionSettingsEqual(oldConn, newConn))
 	needTheme := cfg.Theme != "" && cfg.Theme != oldTheme
 	needColumns := !workflowColumnsEqual(cfg.WorkflowColumnLayout(), oldCols)
+	needActivityColumns := !workflowColumnsEqual(cfg.ActivityColumnLayout(), oldActivityCols)
+	needWorkflowTime := cfg.ResolvedWorkflowTimeFormat() != oldWorkflowTime
+	needActivityTime := cfg.ResolvedActivityTimeFormat() != oldActivityTime
 
 	a.config = cfg
 
@@ -103,13 +116,19 @@ func (a *App) applyReloadedConfig(cfg *config.Config) {
 				if wl.taskQueues != nil && wl.taskQueues.cache != nil {
 					wl.taskQueues.cache.setLimit(cfg.PreviewCacheLimit())
 				}
-				if needColumns {
+				if needColumns || needWorkflowTime {
 					wl.populateTable()
+				}
+				if needActivityColumns || needActivityTime {
+					wl.renderActivityColumns()
 				}
 				if cfg.WorkflowPageLimit() != oldPageSize {
 					wl.refresh()
 				}
 				wl.syncAutoRefresh()
+				if wl.taskQueuesActive() && wl.taskQueues != nil {
+					wl.taskQueues.syncAutoRefresh()
+				}
 			}
 			if nl, ok := current.(*NamespaceList); ok {
 				nl.syncAutoRefresh()

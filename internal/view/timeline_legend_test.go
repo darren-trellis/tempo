@@ -79,16 +79,10 @@ func TestTimelineHasFocusWithoutApp(t *testing.T) {
 func TestTimelineHintsIncludeLegend(t *testing.T) {
 	wl := NewWorkflowList(&App{}, "default")
 	wl.focusPane = focusTimeline
-	if desc := hintDescription(wl.Hints(), "?"); desc != "Legend" {
+	if desc := hintDescription(wl.Hints(), "L"); desc != "Legend" {
 		t.Fatalf("timeline hint: %q", desc)
 	}
 	if desc := hintDescription(wl.Hints(), "z"); desc != "" {
 		t.Fatalf("timeline should not offer z, got %q", desc)
-	}
-
-	eh := NewEventHistory(&App{}, "wf", "run")
-	eh.viewMode = ViewModeTimeline
-	if desc := hintDescription(eh.Hints(), "?"); desc != "Legend" {
-		t.Fatalf("event history timeline hint: %q", desc)
 	}
 }

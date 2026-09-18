@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/galaxy-io/tempo/internal/config"
+	"github.com/google/uuid"
 	commonpb "go.temporal.io/api/common/v1"
 	"go.temporal.io/api/enums/v1"
 	failurepb "go.temporal.io/api/failure/v1"
@@ -1465,58 +1466,65 @@ func (c *Client) DescribeTaskQueue(ctx context.Context, namespace, taskQueue str
 	if err != nil {
 		return nil, nil, err
 	}
-	// Query workflow task queue
-	wfResp, err := cl.WorkflowService().DescribeTaskQueue(ctx, &workflowservice.DescribeTaskQueueRequest{
-		Namespace: namespace,
-		TaskQueue: &taskqueue.TaskQueue{
-			Name: taskQueue,
-			Kind: enums.TASK_QUEUE_KIND_NORMAL,
-		},
-		TaskQueueType: enums.TASK_QUEUE_TYPE_WORKFLOW,
-	})
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to describe workflow task queue: %w", err)
+	type descResult struct {
+		resp *workflowservice.DescribeTaskQueueResponse
+		err  error
+	}
+	describe := func(tqType enums.TaskQueueType) descResult {
+		resp, err := cl.WorkflowService().DescribeTaskQueue(ctx, &workflowservice.DescribeTaskQueueRequest{
+			Namespace: namespace,
+			TaskQueue: &taskqueue.TaskQueue{
+				Name: taskQueue,
+				Kind: enums.TASK_QUEUE_KIND_NORMAL,
+			},
+			TaskQueueType: tqType,
+		})
+		return descResult{resp: resp, err: err}
 	}
 
-	// Query activity task queue
-	actResp, err := cl.WorkflowService().DescribeTaskQueue(ctx, &workflowservice.DescribeTaskQueueRequest{
-		Namespace: namespace,
-		TaskQueue: &taskqueue.TaskQueue{
-			Name: taskQueue,
-			Kind: enums.TASK_QUEUE_KIND_NORMAL,
-		},
-		TaskQueueType: enums.TASK_QUEUE_TYPE_ACTIVITY,
-	})
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to describe activity task queue: %w", err)
+	var wf, act descResult
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		wf = describe(enums.TASK_QUEUE_TYPE_WORKFLOW)
+	}()
+	go func() {
+		defer wg.Done()
+		act = describe(enums.TASK_QUEUE_TYPE_ACTIVITY)
+	}()
+	wg.Wait()
+	if wf.err != nil && act.err != nil {
+		return nil, nil, fmt.Errorf("failed to describe workflow task queue: %w", wf.err)
 	}
 
-	// Combine poller info
 	var pollers []Poller
-
-	for _, p := range wfResp.GetPollers() {
-		pollers = append(pollers, Poller{
-			Identity:       p.GetIdentity(),
-			LastAccessTime: p.GetLastAccessTime().AsTime(),
-			TaskQueueType:  TaskQueueTypeWorkflow,
-			RatePerSecond:  p.GetRatePerSecond(),
-		})
+	if wf.resp != nil {
+		for _, p := range wf.resp.GetPollers() {
+			pollers = append(pollers, Poller{
+				Identity:       p.GetIdentity(),
+				LastAccessTime: p.GetLastAccessTime().AsTime(),
+				TaskQueueType:  TaskQueueTypeWorkflow,
+				RatePerSecond:  p.GetRatePerSecond(),
+			})
+		}
 	}
-
-	for _, p := range actResp.GetPollers() {
-		pollers = append(pollers, Poller{
-			Identity:       p.GetIdentity(),
-			LastAccessTime: p.GetLastAccessTime().AsTime(),
-			TaskQueueType:  TaskQueueTypeActivity,
-			RatePerSecond:  p.GetRatePerSecond(),
-		})
+	if act.resp != nil {
+		for _, p := range act.resp.GetPollers() {
+			pollers = append(pollers, Poller{
+				Identity:       p.GetIdentity(),
+				LastAccessTime: p.GetLastAccessTime().AsTime(),
+				TaskQueueType:  TaskQueueTypeActivity,
+				RatePerSecond:  p.GetRatePerSecond(),
+			})
+		}
 	}
 
 	info := &TaskQueueInfo{
 		Name:        taskQueue,
 		Type:        "Combined",
 		PollerCount: len(pollers),
-		Backlog:     0, // Backlog info requires enhanced visibility or approximation
+		Backlog:     0,
 	}
 
 	return info, pollers, nil
@@ -1672,7 +1680,15 @@ func (c *Client) ResetWorkflow(ctx context.Context, namespace, workflowID, runID
 	if err != nil {
 		return "", err
 	}
-	resp, err := cl.WorkflowService().ResetWorkflowExecution(ctx, &workflowservice.ResetWorkflowExecutionRequest{
+	resp, err := cl.WorkflowService().ResetWorkflowExecution(ctx, resetWorkflowRequest(namespace, workflowID, runID, eventID, reason))
+	if err != nil {
+		return "", err
+	}
+	return resp.GetRunId(), nil
+}
+
+func resetWorkflowRequest(namespace, workflowID, runID string, eventID int64, reason string) *workflowservice.ResetWorkflowExecutionRequest {
+	return &workflowservice.ResetWorkflowExecutionRequest{
 		Namespace: namespace,
 		WorkflowExecution: &commonpb.WorkflowExecution{
 			WorkflowId: workflowID,
@@ -1680,11 +1696,8 @@ func (c *Client) ResetWorkflow(ctx context.Context, namespace, workflowID, runID
 		},
 		Reason:                    reason,
 		WorkflowTaskFinishEventId: eventID,
-	})
-	if err != nil {
-		return "", err
+		RequestId:                 uuid.NewString(),
 	}
-	return resp.GetRunId(), nil
 }
 
 // ListSchedules returns all schedules in a namespace.

@@ -10,9 +10,9 @@ import (
 	"github.com/rivo/tview"
 )
 
-const typeaheadMaxSuggestions = 8
+const dropdownMaxSuggestions = 8
 
-type typeaheadField struct {
+type dropdownField struct {
 	*tview.Box
 	name        string
 	label       string
@@ -30,24 +30,28 @@ type typeaheadField struct {
 	validator   func(any) error
 }
 
-func newTypeaheadField(name, label string, options []string) *typeaheadField {
-	f := &typeaheadField{
+func newDropdownField(name, label string, options []string) *dropdownField {
+	return newOrderedDropdownField(name, label, uniqueSortedStrings(options))
+}
+
+func newOrderedDropdownField(name, label string, options []string) *dropdownField {
+	f := &dropdownField{
 		Box:      tview.NewBox(),
 		name:     name,
 		label:    label,
-		options:  uniqueSortedStrings(options),
+		options:  compactStrings(options),
 		selected: -1,
 	}
 	f.refreshMatches()
 	return f
 }
 
-func (f *typeaheadField) SetPlaceholder(text string) *typeaheadField {
+func (f *dropdownField) SetPlaceholder(text string) *dropdownField {
 	f.placeholder = text
 	return f
 }
 
-func (f *typeaheadField) SetValue(value string) *typeaheadField {
+func (f *dropdownField) SetValue(value string) *dropdownField {
 	f.value = value
 	f.cursor = utf8.RuneCountInString(value)
 	f.browseAll = false
@@ -55,8 +59,12 @@ func (f *typeaheadField) SetValue(value string) *typeaheadField {
 	return f
 }
 
-func (f *typeaheadField) SetOptions(options []string) *typeaheadField {
-	f.options = uniqueSortedStrings(options)
+func (f *dropdownField) SetOptions(options []string) *dropdownField {
+	return f.SetOptionsOrdered(uniqueSortedStrings(options))
+}
+
+func (f *dropdownField) SetOptionsOrdered(options []string) *dropdownField {
+	f.options = compactStrings(options)
 	if f.browseAll {
 		f.openList()
 		return f
@@ -65,31 +73,31 @@ func (f *typeaheadField) SetOptions(options []string) *typeaheadField {
 	return f
 }
 
-func (f *typeaheadField) SetValidator(v func(any) error) *typeaheadField {
+func (f *dropdownField) SetValidator(v func(any) error) *dropdownField {
 	f.validator = v
 	return f
 }
 
-func (f *typeaheadField) GetName() string { return f.name }
+func (f *dropdownField) GetName() string { return f.name }
 
-func (f *typeaheadField) GetValue() string { return f.value }
+func (f *dropdownField) GetValue() string { return f.value }
 
-func (f *typeaheadField) Validate() error {
+func (f *dropdownField) Validate() error {
 	if f.validator == nil {
 		return nil
 	}
 	return f.validator(f.value)
 }
 
-func (f *typeaheadField) visibleSuggestionCount() int {
+func (f *dropdownField) visibleSuggestionCount() int {
 	n := len(f.matches)
-	if n > typeaheadMaxSuggestions {
-		return typeaheadMaxSuggestions
+	if n > dropdownMaxSuggestions {
+		return dropdownMaxSuggestions
 	}
 	return n
 }
 
-func (f *typeaheadField) GetFieldHeight() int {
+func (f *dropdownField) GetFieldHeight() int {
 	height := 3
 	if f.label != "" {
 		height++
@@ -100,23 +108,23 @@ func (f *typeaheadField) GetFieldHeight() int {
 	return height
 }
 
-func (f *typeaheadField) Focus(delegate func(tview.Primitive)) {
+func (f *dropdownField) Focus(delegate func(tview.Primitive)) {
 	f.focused = true
 	f.Box.Focus(delegate)
 }
 
-func (f *typeaheadField) Blur() {
+func (f *dropdownField) Blur() {
 	f.focused = false
 	f.expanded = false
 	f.browseAll = false
 	f.Box.Blur()
 }
 
-func (f *typeaheadField) HasFocus() bool {
+func (f *dropdownField) HasFocus() bool {
 	return f.focused
 }
 
-func (f *typeaheadField) collapse() bool {
+func (f *dropdownField) collapse() bool {
 	if f == nil || !f.expanded {
 		return false
 	}
@@ -125,7 +133,7 @@ func (f *typeaheadField) collapse() bool {
 	return true
 }
 
-func (f *typeaheadField) acceptSuggestion() bool {
+func (f *dropdownField) acceptSuggestion() bool {
 	if f == nil || !f.expanded || len(f.matches) == 0 {
 		return false
 	}
@@ -142,8 +150,8 @@ func (f *typeaheadField) acceptSuggestion() bool {
 	return true
 }
 
-func (f *typeaheadField) refreshMatches() {
-	f.matches = filterTypeaheadOptions(f.options, f.value)
+func (f *dropdownField) refreshMatches() {
+	f.matches = filterDropdownOptions(f.options, f.value)
 	f.selected = 0
 	for i, opt := range f.matches {
 		if opt == f.value {
@@ -160,7 +168,7 @@ func (f *typeaheadField) refreshMatches() {
 	f.ensureListVisible()
 }
 
-func (f *typeaheadField) ensureListVisible() {
+func (f *dropdownField) ensureListVisible() {
 	visible := f.visibleSuggestionCount()
 	if visible <= 0 {
 		f.listOffset = 0
@@ -184,7 +192,7 @@ func (f *typeaheadField) ensureListVisible() {
 	}
 }
 
-func filterTypeaheadOptions(options []string, query string) []string {
+func filterDropdownOptions(options []string, query string) []string {
 	if query == "" {
 		return options
 	}
@@ -202,14 +210,21 @@ func filterTypeaheadOptions(options []string, query string) []string {
 	return append(prefix, rest...)
 }
 
-func uniqueSortedStrings(values []string) []string {
-	seen := make(map[string]struct{}, len(values))
+func compactStrings(values []string) []string {
 	out := make([]string, 0, len(values))
 	for _, v := range values {
 		v = strings.TrimSpace(v)
-		if v == "" {
-			continue
+		if v != "" {
+			out = append(out, v)
 		}
+	}
+	return out
+}
+
+func uniqueSortedStrings(values []string) []string {
+	seen := make(map[string]struct{}, len(values))
+	out := make([]string, 0, len(values))
+	for _, v := range compactStrings(values) {
 		if _, ok := seen[v]; ok {
 			continue
 		}
@@ -222,11 +237,11 @@ func uniqueSortedStrings(values []string) []string {
 	return out
 }
 
-func (f *typeaheadField) runeValue() []rune {
+func (f *dropdownField) runeValue() []rune {
 	return []rune(f.value)
 }
 
-func (f *typeaheadField) setRunes(runes []rune) {
+func (f *dropdownField) setRunes(runes []rune) {
 	f.value = string(runes)
 	if f.cursor < 0 {
 		f.cursor = 0
@@ -241,7 +256,7 @@ func (f *typeaheadField) setRunes(runes []rune) {
 	}
 }
 
-func (f *typeaheadField) openList() {
+func (f *dropdownField) openList() {
 	f.browseAll = true
 	f.matches = append([]string(nil), f.options...)
 	f.selected = 0
@@ -261,7 +276,7 @@ func (f *typeaheadField) openList() {
 	f.ensureListVisible()
 }
 
-func (f *typeaheadField) moveSelection(delta int) {
+func (f *dropdownField) moveSelection(delta int) {
 	if !f.expanded {
 		f.openList()
 		return
@@ -279,7 +294,7 @@ func (f *typeaheadField) moveSelection(delta int) {
 	f.ensureListVisible()
 }
 
-func (f *typeaheadField) visibleMatches() (start, end int) {
+func (f *dropdownField) visibleMatches() (start, end int) {
 	visible := f.visibleSuggestionCount()
 	start = f.listOffset
 	if start < 0 {
@@ -292,7 +307,7 @@ func (f *typeaheadField) visibleMatches() (start, end int) {
 	return start, end
 }
 
-func (f *typeaheadField) Draw(screen tcell.Screen) {
+func (f *dropdownField) Draw(screen tcell.Screen) {
 	f.Box.DrawForSubclass(screen, f)
 	x, y, width, height := f.GetInnerRect()
 	if width <= 0 || height <= 0 {
@@ -460,7 +475,7 @@ func (f *typeaheadField) Draw(screen tcell.Screen) {
 	}, true)
 }
 
-func (f *typeaheadField) InputHandler() func(*tcell.EventKey, func(tview.Primitive)) {
+func (f *dropdownField) InputHandler() func(*tcell.EventKey, func(tview.Primitive)) {
 	return f.WrapInputHandler(func(event *tcell.EventKey, setFocus func(tview.Primitive)) {
 		runes := f.runeValue()
 		switch event.Key() {
@@ -502,4 +517,34 @@ func (f *typeaheadField) InputHandler() func(*tcell.EventKey, func(tview.Primiti
 			f.setRunes(runes)
 		}
 	})
+}
+
+func collapseOpenDropdowns(fields ...*dropdownField) bool {
+	for _, field := range fields {
+		if field != nil && field.collapse() {
+			return true
+		}
+	}
+	return false
+}
+
+func dropdownFormCapture(fields ...*dropdownField) func(*tcell.EventKey) *tcell.EventKey {
+	return func(event *tcell.EventKey) *tcell.EventKey {
+		if event == nil {
+			return event
+		}
+		switch event.Key() {
+		case tcell.KeyEscape:
+			if collapseOpenDropdowns(fields...) {
+				return nil
+			}
+		case tcell.KeyTab:
+			for _, field := range fields {
+				if field != nil && field.HasFocus() && field.acceptSuggestion() {
+					return nil
+				}
+			}
+		}
+		return event
+	}
 }

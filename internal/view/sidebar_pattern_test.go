@@ -182,14 +182,6 @@ func TestEveryScrollablePaneTakesAHorizontalWheel(t *testing.T) {
 	if nl.tableScroll == nil || nl.table.GetMouseCapture() == nil {
 		t.Fatal("namespaces: no horizontal mouse scrolling")
 	}
-	eh := NewEventHistory(&App{}, "wf", "run")
-	if eh.tableScroll == nil || eh.table.GetMouseCapture() == nil {
-		t.Fatal("event history: no horizontal mouse scrolling")
-	}
-	wd := NewWorkflowDetail(&App{}, "wf", "run")
-	if wd.eventTableScroll == nil || wd.eventTable.GetMouseCapture() == nil {
-		t.Fatal("workflow detail events: no horizontal mouse scrolling")
-	}
 }
 
 func TestGraphPanePansWithHorizontalWheel(t *testing.T) {

@@ -3,6 +3,7 @@ package view
 import (
 	"testing"
 
+	"github.com/atterpac/jig/components"
 	"github.com/galaxy-io/tempo/internal/temporal"
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
@@ -10,14 +11,14 @@ import (
 
 func TestFilterTypeaheadOptionsPrefersPrefix(t *testing.T) {
 	opts := []string{"OrderWorkflow", "PaymentWorkflow", "ReorderWorkflow"}
-	got := filterTypeaheadOptions(opts, "ord")
+	got := filterDropdownOptions(opts, "ord")
 	if len(got) != 2 || got[0] != "OrderWorkflow" || got[1] != "ReorderWorkflow" {
 		t.Fatalf("prefix should sort first, got %v", got)
 	}
 }
 
 func TestTypeaheadTabCompletesSelectedSuggestion(t *testing.T) {
-	field := newTypeaheadField("workflowType", "Workflow Type", []string{"OrderWorkflow", "PaymentWorkflow"})
+	field := newDropdownField("workflowType", "Workflow Type", []string{"OrderWorkflow", "PaymentWorkflow"})
 	field.Focus(func(tview.Primitive) {})
 	field.SetValue("Ord")
 	field.openList()
@@ -33,12 +34,12 @@ func TestTypeaheadTabCompletesSelectedSuggestion(t *testing.T) {
 }
 
 func TestTypeaheadEscapeClosesDropdownNotForm(t *testing.T) {
-	field := newTypeaheadField("workflowType", "Workflow Type", []string{"OrderWorkflow", "PaymentWorkflow"})
+	field := newDropdownField("workflowType", "Workflow Type", []string{"OrderWorkflow", "PaymentWorkflow"})
 	field.moveSelection(1)
 	if !field.expanded {
 		t.Fatal("dropdown should be open")
 	}
-	capture := typeaheadFormTabCapture(field)
+	capture := dropdownFormCapture(field)
 	if ev := capture(tcell.NewEventKey(tcell.KeyEscape, 0, tcell.ModNone)); ev != nil {
 		t.Fatal("esc should close the dropdown even if the field is not marked focused")
 	}
@@ -51,11 +52,11 @@ func TestTypeaheadEscapeClosesDropdownNotForm(t *testing.T) {
 }
 
 func TestTypeaheadFormTabCapture(t *testing.T) {
-	field := newTypeaheadField("taskQueue", "Task Queue", []string{"orders", "payments"})
+	field := newDropdownField("taskQueue", "Task Queue", []string{"orders", "payments"})
 	field.Focus(func(tview.Primitive) {})
 	field.SetValue("ord")
 	field.openList()
-	capture := typeaheadFormTabCapture(field)
+	capture := dropdownFormCapture(field)
 	if ev := capture(tcell.NewEventKey(tcell.KeyTab, 0, tcell.ModNone)); ev != nil {
 		t.Fatal("tab should complete the suggestion")
 	}
@@ -68,13 +69,13 @@ func TestTypeaheadFormTabCapture(t *testing.T) {
 }
 
 func TestTypeaheadTabWhenClosedMovesToNextField(t *testing.T) {
-	field := newTypeaheadField("taskQueue", "Task Queue", []string{"orders", "payments"})
+	field := newDropdownField("taskQueue", "Task Queue", []string{"orders", "payments"})
 	field.Focus(func(tview.Primitive) {})
 	field.SetValue("ord")
 	if field.expanded {
 		t.Fatal("dropdown should stay closed after SetValue")
 	}
-	capture := typeaheadFormTabCapture(field)
+	capture := dropdownFormCapture(field)
 	if ev := capture(tcell.NewEventKey(tcell.KeyTab, 0, tcell.ModNone)); ev == nil {
 		t.Fatal("tab should move to the next field when the dropdown is closed")
 	}
@@ -84,7 +85,7 @@ func TestTypeaheadTabWhenClosedMovesToNextField(t *testing.T) {
 }
 
 func TestTypeaheadTypesJKAsLetters(t *testing.T) {
-	field := newTypeaheadField("workflowType", "Workflow Type", []string{"ProjectWorkflow"})
+	field := newDropdownField("workflowType", "Workflow Type", []string{"ProjectWorkflow"})
 	field.Focus(func(tview.Primitive) {})
 	handler := field.InputHandler()
 	handler(tcell.NewEventKey(tcell.KeyRune, 'j', tcell.ModNone), func(tview.Primitive) {})
@@ -95,39 +96,39 @@ func TestTypeaheadTypesJKAsLetters(t *testing.T) {
 }
 
 func TestTypeaheadDropdownScrollsThroughAllMatches(t *testing.T) {
-	opts := make([]string, typeaheadMaxSuggestions+4)
+	opts := make([]string, dropdownMaxSuggestions+4)
 	for i := range opts {
 		opts[i] = string(rune('A'+i)) + "Workflow"
 	}
-	field := newTypeaheadField("workflowType", "Workflow Type", opts)
+	field := newDropdownField("workflowType", "Workflow Type", opts)
 	field.Focus(func(tview.Primitive) {})
 	field.moveSelection(1)
 	if !field.expanded {
 		t.Fatal("down should open the dropdown")
 	}
-	if field.GetFieldHeight() != 4+typeaheadMaxSuggestions+2 {
-		t.Fatalf("dropdown should stay %d rows tall, height=%d", 4+typeaheadMaxSuggestions+2, field.GetFieldHeight())
+	if field.GetFieldHeight() != 4+dropdownMaxSuggestions+2 {
+		t.Fatalf("dropdown should stay %d rows tall, height=%d", 4+dropdownMaxSuggestions+2, field.GetFieldHeight())
 	}
 	if len(field.matches) != len(opts) {
 		t.Fatalf("matches should keep every option, got %d", len(field.matches))
 	}
 
 	start, end := field.visibleMatches()
-	if start != 0 || end != typeaheadMaxSuggestions {
+	if start != 0 || end != dropdownMaxSuggestions {
 		t.Fatalf("initial window [%d,%d)", start, end)
 	}
 
-	for i := 0; i < typeaheadMaxSuggestions; i++ {
+	for i := 0; i < dropdownMaxSuggestions; i++ {
 		field.moveSelection(1)
 	}
-	if field.selected != typeaheadMaxSuggestions {
+	if field.selected != dropdownMaxSuggestions {
 		t.Fatalf("selected=%d", field.selected)
 	}
 	start, end = field.visibleMatches()
-	if start != 1 || end != typeaheadMaxSuggestions+1 {
+	if start != 1 || end != dropdownMaxSuggestions+1 {
 		t.Fatalf("window should follow the selection, got [%d,%d)", start, end)
 	}
-	if field.matches[field.selected] != opts[typeaheadMaxSuggestions] {
+	if field.matches[field.selected] != opts[dropdownMaxSuggestions] {
 		t.Fatalf("selected %q", field.matches[field.selected])
 	}
 
@@ -138,22 +139,22 @@ func TestTypeaheadDropdownScrollsThroughAllMatches(t *testing.T) {
 		t.Fatalf("up from the top should wrap, selected=%d", field.selected)
 	}
 	start, end = field.visibleMatches()
-	if end != len(opts) || start != len(opts)-typeaheadMaxSuggestions {
+	if end != len(opts) || start != len(opts)-dropdownMaxSuggestions {
 		t.Fatalf("wrapped window [%d,%d)", start, end)
 	}
 }
 
 func TestTypeaheadSetOptionsReplacesValues(t *testing.T) {
-	field := newTypeaheadField("workflowType", "Workflow Type", []string{"PageWorkflow"})
+	field := newDropdownField("workflowType", "Workflow Type", []string{"PageWorkflow"})
 	field.SetOptions([]string{"OrderWorkflow", "PaymentWorkflow"})
-	got := filterTypeaheadOptions(field.options, "")
+	got := filterDropdownOptions(field.options, "")
 	if len(got) != 2 || got[0] != "OrderWorkflow" || got[1] != "PaymentWorkflow" {
 		t.Fatalf("options=%v", got)
 	}
 }
 
 func TestTypeaheadOpenShowsAllOptionsWhenValueSet(t *testing.T) {
-	field := newTypeaheadField("workflowType", "Workflow Type", []string{"OrderWorkflow", "PaymentWorkflow", "ShippingWorkflow"})
+	field := newDropdownField("workflowType", "Workflow Type", []string{"OrderWorkflow", "PaymentWorkflow", "ShippingWorkflow"})
 	field.SetValue("OrderWorkflow")
 	if len(field.matches) != 1 || field.matches[0] != "OrderWorkflow" {
 		t.Fatalf("a filled value should filter matches, got %v", field.matches)
@@ -171,7 +172,7 @@ func TestTypeaheadOpenShowsAllOptionsWhenValueSet(t *testing.T) {
 }
 
 func TestTypeaheadSetOptionsKeepsFullListWhenOpen(t *testing.T) {
-	field := newTypeaheadField("workflowType", "Workflow Type", []string{"OrderWorkflow"})
+	field := newDropdownField("workflowType", "Workflow Type", []string{"OrderWorkflow"})
 	field.SetValue("OrderWorkflow")
 	field.openList()
 	field.SetOptions([]string{"PaymentWorkflow", "ShippingWorkflow"})
@@ -193,5 +194,39 @@ func TestStartWorkflowSuggestionsFromLoadedLists(t *testing.T) {
 	}
 	if len(queues) != 2 || queues[0] != "orders" || queues[1] != "payments" {
 		t.Fatalf("queues=%v", queues)
+	}
+}
+
+func TestOrderedDropdownKeepsInsertionOrder(t *testing.T) {
+	opts := []string{"Last Hour", "Last 24 Hours", "Today", "Yesterday"}
+	field := newOrderedDropdownField("preset", "Time Range", opts)
+	if len(field.options) != 4 || field.options[0] != "Last Hour" || field.options[3] != "Yesterday" {
+		t.Fatalf("ordered options=%v", field.options)
+	}
+	sorted := newDropdownField("preset", "Time Range", opts)
+	if sorted.options[0] != "Last 24 Hours" {
+		t.Fatalf("searchable dropdown should sort, got %v", sorted.options)
+	}
+}
+
+func TestDropdownModalEscDismissesWhenClosed(t *testing.T) {
+	field := newOrderedDropdownField("point", "Reset Point", []string{"#1  first"})
+	field.SetValue("#1  first")
+	form := components.NewFormBuilder().AddField(field).Build()
+	modal := newModal(components.ModalConfig{Title: "Reset Workflow", Width: 40, Height: 12})
+	modal.bindDropdowns(form, field)
+	if !modal.GetBehavior().DismissOnEsc {
+		t.Fatal("esc should still dismiss the modal when the dropdown is closed")
+	}
+
+	field.moveSelection(1)
+	if modal.OnDismiss() {
+		t.Fatal("esc should close the open dropdown first")
+	}
+	if field.expanded {
+		t.Fatal("dropdown should be closed")
+	}
+	if !modal.OnDismiss() {
+		t.Fatal("a second esc should dismiss the modal")
 	}
 }

@@ -81,11 +81,11 @@ func showStartWorkflowModal(app *App, prefill startWorkflowPrefill) {
 		namespace = app.CurrentNamespace()
 	}
 	types, queues := startWorkflowSuggestions(app, namespace)
-	typeField := newTypeaheadField("workflowType", "Workflow Type", types).
+	typeField := newDropdownField("workflowType", "Workflow Type", types).
 		SetPlaceholder("Enter workflow type").
 		SetValue(prefill.WorkflowType).
 		SetValidator(validators.Required())
-	queueField := newTypeaheadField("taskQueue", "Task Queue", queues).
+	queueField := newDropdownField("taskQueue", "Task Queue", queues).
 		SetPlaceholder("Enter task queue").
 		SetValue(prefill.TaskQueue).
 		SetValidator(validators.Required())
@@ -144,36 +144,33 @@ func showStartWorkflowModal(app *App, prefill startWorkflowPrefill) {
 			executeStartWorkflow(app, req)
 		}).
 		OnCancel(func() {
-			if collapseOpenTypeahead(typeField, queueField) {
+			if collapseOpenDropdowns(typeField, queueField) {
 				return
 			}
 			stopWatchingStartCatalog(app, namespace)
 			app.JigApp().Pages().DismissModal()
 		}).
 		Build()
-	form.SetInputCapture(startWorkflowFormCapture(inputField, typeField, queueField))
 
 	modal := newOverlayModal(components.ModalConfig{
 		Title:  fmt.Sprintf("%s Start Workflow", theme.IconInfo),
 		Width:  70,
 		Height: startWorkflowModalHeight,
 	}, nil)
-	modal.SetDismissOnEsc(false)
+	modal.bindDropdowns(form, typeField, queueField)
+	form.SetInputCapture(startWorkflowFormCapture(inputField, typeField, queueField))
 	modal.SetContent(form)
 	hints := startWorkflowHints()
 	modal.SetHints(hints)
-	modal.interceptEscape = func() bool {
-		return collapseOpenTypeahead(typeField, queueField)
-	}
 	modal.SetOnDismiss(func() bool {
-		if collapseOpenTypeahead(typeField, queueField) {
+		if collapseOpenDropdowns(typeField, queueField) {
 			return false
 		}
 		stopWatchingStartCatalog(app, namespace)
 		return true
 	})
 	modal.SetOnCancel(func() {
-		if collapseOpenTypeahead(typeField, queueField) {
+		if collapseOpenDropdowns(typeField, queueField) {
 			return
 		}
 		stopWatchingStartCatalog(app, namespace)
@@ -181,9 +178,6 @@ func showStartWorkflowModal(app *App, prefill startWorkflowPrefill) {
 	})
 
 	app.PushModal(modal)
-	if app.JigApp().Menu() != nil {
-		app.JigApp().Menu().SetHints(hints)
-	}
 	app.JigApp().SetFocus(form)
 	if app != nil {
 		if !app.catalog.has(namespace) {
@@ -200,44 +194,19 @@ func stopWatchingStartCatalog(app *App, namespace string) {
 	app.catalog.unlisten(namespace)
 }
 
-func collapseOpenTypeahead(fields ...*typeaheadField) bool {
-	for _, field := range fields {
-		if field != nil && field.collapse() {
-			return true
-		}
-	}
-	return false
-}
-
-func typeaheadFormTabCapture(fields ...*typeaheadField) func(*tcell.EventKey) *tcell.EventKey {
-	return startWorkflowFormCapture(nil, fields...)
-}
-
-func startWorkflowFormCapture(input *components.TextArea, fields ...*typeaheadField) func(*tcell.EventKey) *tcell.EventKey {
+func startWorkflowFormCapture(input *components.TextArea, fields ...*dropdownField) func(*tcell.EventKey) *tcell.EventKey {
+	dropdowns := dropdownFormCapture(fields...)
 	return func(event *tcell.EventKey) *tcell.EventKey {
 		if event == nil {
 			return event
 		}
-		switch event.Key() {
-		case tcell.KeyEscape:
-			if collapseOpenTypeahead(fields...) {
-				return nil
+		if event.Key() == tcell.KeyEnter && input != nil && input.HasFocus() {
+			if handler := input.InputHandler(); handler != nil {
+				handler(event, func(tview.Primitive) {})
 			}
-		case tcell.KeyTab:
-			for _, field := range fields {
-				if field != nil && field.HasFocus() && field.acceptSuggestion() {
-					return nil
-				}
-			}
-		case tcell.KeyEnter:
-			if input != nil && input.HasFocus() {
-				if handler := input.InputHandler(); handler != nil {
-					handler(event, func(tview.Primitive) {})
-				}
-				return nil
-			}
+			return nil
 		}
-		return event
+		return dropdowns(event)
 	}
 }
 
@@ -359,7 +328,7 @@ func executeStartWorkflow(app *App, req startWorkflowSubmit) {
 			}
 
 			app.ToastSuccess(fmt.Sprintf("Workflow %s started", req.WorkflowID))
-			app.NavigateToWorkflowDetail(req.WorkflowID, runID)
+			app.OpenWorkflowPreview(req.WorkflowID, runID)
 		})
 	}()
 }

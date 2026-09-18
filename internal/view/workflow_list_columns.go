@@ -73,12 +73,18 @@ func workflowColumnHeader(id string) (string, bool) {
 	}
 }
 
-func (c workflowColumn) cell(now time.Time, w temporal.Workflow, prefix string) components.TableCell {
-	text, status := workflowColumnValue(c.id, now, w)
-	if c.id == config.WorkflowColumnWorkflowID && prefix != "" {
-		text = colorizeWorkflowTreePrefix(fitWidth(prefix+text, c.width), prefix)
+func (c workflowColumn) cell(now time.Time, w temporal.Workflow, prefix, timeFmt string) components.TableCell {
+	var text string
+	var status *theme.Status
+	if c.id == config.WorkflowColumnStatus {
+		text, status = workflowStatusText(w, c.width)
 	} else {
-		text = fitWidth(text, c.width)
+		text, status = workflowColumnValue(c.id, now, w, timeFmt)
+		if c.id == config.WorkflowColumnWorkflowID && prefix != "" {
+			text = colorizeWorkflowTreePrefix(fitWidth(prefix+text, c.width), prefix)
+		} else {
+			text = fitWidth(text, c.width)
+		}
 	}
 	return components.TableCell{
 		Text:       text,
@@ -89,7 +95,80 @@ func (c workflowColumn) cell(now time.Time, w temporal.Workflow, prefix string) 
 	}
 }
 
-func workflowColumnValue(id string, now time.Time, w temporal.Workflow) (string, *theme.Status) {
+func workflowStatusText(w temporal.Workflow, width int) (string, *theme.Status) {
+	label, status := temporal.WorkflowDisplayStatus(w)
+	if w.HasTaskFailure() {
+		label = "Unhandled"
+	}
+	return statusColumnText(label, status, width), status
+}
+
+func statusColumnText(label string, status *theme.Status, width int) string {
+	icon := statusIconForWidth(status, width)
+	if width == 1 && icon != "" {
+		return icon
+	}
+	full := label
+	if icon != "" {
+		full = icon + " " + label
+	}
+	if width <= 0 {
+		return full
+	}
+	runes := []rune(full)
+	if len(runes) <= width {
+		return fitWidth(full, width)
+	}
+	iconLen := len([]rune(icon))
+	if icon != "" && width < iconLen+2 {
+		return icon
+	}
+	if icon != "" {
+		return icon + " " + fitWidth(label, width-iconLen-1)
+	}
+	return fitWidth(label, width)
+}
+
+func statusIconForWidth(status *theme.Status, width int) string {
+	if status == nil {
+		return ""
+	}
+	if width == 1 {
+		return compactStatusIcon(status)
+	}
+	return status.Icon()
+}
+
+func compactStatusIcon(status *theme.Status) string {
+	if status == nil {
+		return ""
+	}
+	switch status {
+	case temporal.StatusRunning:
+		return theme.IconPlay
+	case temporal.StatusCompleted:
+		return theme.IconCheck
+	case temporal.StatusFailed:
+		return theme.IconFailed
+	case temporal.StatusCanceled:
+		return theme.IconCanceled
+	case temporal.StatusTerminated:
+		return theme.IconStop
+	case temporal.StatusTimedOut:
+		return theme.IconClock
+	case temporal.StatusUnhandledFailure:
+		return theme.IconWarning
+	case temporal.StatusScheduled, temporal.StatusUnknown:
+		return theme.IconDot
+	default:
+		if icon := status.Icon(); icon != "" {
+			return icon
+		}
+		return theme.IconDot
+	}
+}
+
+func workflowColumnValue(id string, now time.Time, w temporal.Workflow, timeFmt string) (string, *theme.Status) {
 	switch id {
 	case config.WorkflowColumnWorkflowID:
 		return w.ID, nil
@@ -111,9 +190,9 @@ func workflowColumnValue(id string, now time.Time, w temporal.Workflow) (string,
 	case config.WorkflowColumnType:
 		return w.Type, nil
 	case config.WorkflowColumnStarted:
-		return formatRelativeTime(now, w.StartTime), nil
+		return formatDisplayTime(now, w.StartTime, timeFmt), nil
 	case config.WorkflowColumnEnded:
-		return workflowEndTime(now, w), nil
+		return workflowEndTime(now, w, timeFmt), nil
 	case config.WorkflowColumnDuration:
 		return workflowDuration(now, w), nil
 	case config.WorkflowColumnTaskQueue:
@@ -131,8 +210,6 @@ func applyWorkflowColumnHeaders(table *components.Table, cols []workflowColumn) 
 		headers[i] = col.header
 	}
 	table.SetHeaders(headers...)
-	// SetHeaders only writes the columns it is given, so a narrower layout would
-	// leave the extra columns of the previous one on screen.
 	for col := table.GetColumnCount() - 1; col >= len(cols); col-- {
 		table.RemoveColumn(col)
 	}
@@ -144,6 +221,16 @@ func applyWorkflowColumnHeaders(table *components.Table, cols []workflowColumn) 
 		cell.SetText(fitWidth(col.header, col.width))
 		cell.SetMaxWidth(col.width)
 		cell.SetExpansion(0)
+	}
+}
+
+func setTableHeaders(table *components.Table, headers ...string) {
+	if table == nil {
+		return
+	}
+	table.SetHeaders(headers...)
+	for col := table.GetColumnCount() - 1; col >= len(headers); col-- {
+		table.RemoveColumn(col)
 	}
 }
 
@@ -159,6 +246,156 @@ func fitWidth(s string, width int) string {
 		return s + padSpaces(width-n)
 	}
 	return s
+}
+
+func (wl *WorkflowList) styledWorkflowCells(now time.Time, w temporal.Workflow, rowIdx int) []components.TableCell {
+	cols := wl.columnLayout()
+	timeFmt := wl.workflowTimeFormat()
+	cells := make([]components.TableCell, len(cols))
+	for j, col := range cols {
+		cells[j] = col.cell(now, w, wl.workflowRowPrefix(rowIdx), timeFmt)
+	}
+	if !wl.shouldColorCodeWorkflows() {
+		return cells
+	}
+	_, status := temporal.WorkflowDisplayStatus(w)
+	for i := range cells {
+		cells[i].Color = status.Color()
+		cells[i].Status = status
+	}
+	return cells
+}
+
+func (wl *WorkflowList) shouldColorCodeWorkflows() bool {
+	return wl != nil && wl.app != nil && wl.app.Config() != nil && wl.app.Config().ShouldColorCodeWorkflows()
+}
+
+func (wl *WorkflowList) shouldColorCodeActivities() bool {
+	return wl != nil && wl.app != nil && wl.app.Config() != nil && wl.app.Config().ShouldColorCodeActivities()
+}
+
+func (wl *WorkflowList) workflowTimeFormat() string {
+	if wl != nil && wl.app != nil && wl.app.Config() != nil {
+		return wl.app.Config().ResolvedWorkflowTimeFormat()
+	}
+	return config.TimeFormatRelative
+}
+
+func (wl *WorkflowList) activityTimeFormat() string {
+	if wl != nil && wl.app != nil && wl.app.Config() != nil {
+		return wl.app.Config().ResolvedActivityTimeFormat()
+	}
+	return config.TimeFormatRelative
+}
+
+func (wl *WorkflowList) activityColumnLayout() []workflowColumn {
+	var raw []config.WorkflowColumnConfig
+	if cfg := wl.app.Config(); cfg != nil {
+		raw = cfg.ActivityColumnLayout()
+	} else {
+		raw = config.DefaultActivityColumns()
+	}
+
+	cols := make([]workflowColumn, 0, len(raw))
+	for _, col := range raw {
+		header, ok := activityColumnHeader(col.ID)
+		if !ok {
+			continue
+		}
+		cols = append(cols, workflowColumn{
+			id:     col.ID,
+			header: header,
+			width:  col.Width,
+		})
+	}
+	if len(cols) == 0 {
+		for _, col := range config.DefaultActivityColumns() {
+			header, _ := activityColumnHeader(col.ID)
+			cols = append(cols, workflowColumn{id: col.ID, header: header, width: col.Width})
+		}
+	}
+	return cols
+}
+
+func activityColumnHeader(id string) (string, bool) {
+	switch id {
+	case config.ActivityColumnStatus:
+		return "STATUS", true
+	case config.ActivityColumnName:
+		return "NAME", true
+	case config.ActivityColumnStarted:
+		return "STARTED", true
+	case config.ActivityColumnEnded:
+		return "ENDED", true
+	case config.ActivityColumnDuration:
+		return "DURATION", true
+	default:
+		return "", false
+	}
+}
+
+func activityColumnValue(id string, now time.Time, a previewActivity, timeFmt string) string {
+	switch id {
+	case config.ActivityColumnName:
+		if a.Type != "" {
+			return a.Type
+		}
+		return "Activity"
+	case config.ActivityColumnStarted:
+		return formatDisplayTime(now, a.StartTime, timeFmt)
+	case config.ActivityColumnEnded:
+		if a.EndTime != nil {
+			return formatDisplayTime(now, *a.EndTime, timeFmt)
+		}
+		return "-"
+	case config.ActivityColumnDuration:
+		return a.durationAt(now)
+	default:
+		return ""
+	}
+}
+
+func (c workflowColumn) activityCell(now time.Time, a previewActivity, timeFmt string) components.TableCell {
+	var text string
+	var status *theme.Status
+	if c.id == config.ActivityColumnStatus {
+		status = temporal.GetActivityStatus(a.Status)
+		text = statusColumnText(a.Status, status, c.width)
+	} else {
+		text = fitWidth(activityColumnValue(c.id, now, a, timeFmt), c.width)
+	}
+	return components.TableCell{
+		Text:       text,
+		Status:     status,
+		Expansion:  0,
+		MaxWidth:   c.width,
+		Selectable: true,
+	}
+}
+
+func (wl *WorkflowList) styledActivityCells(now time.Time, a previewActivity) []components.TableCell {
+	cols := wl.activityColumnLayout()
+	timeFmt := wl.activityTimeFormat()
+	cells := make([]components.TableCell, len(cols))
+	for j, col := range cols {
+		cells[j] = col.activityCell(now, a, timeFmt)
+	}
+	if !wl.shouldColorCodeActivities() {
+		return cells
+	}
+	status := temporal.GetActivityStatus(a.Status)
+	for i := range cells {
+		cells[i].Color = status.Color()
+		cells[i].Status = status
+	}
+	return cells
+}
+
+func (wl *WorkflowList) applyActivityTableHeaders() {
+	if wl.eventTable == nil {
+		return
+	}
+	applyWorkflowColumnHeaders(wl.eventTable, wl.activityColumnLayout())
 }
 
 func padSpaces(n int) string {
@@ -178,12 +415,67 @@ type columnEditorItem struct {
 	hidden bool
 }
 
+type tableColumnEditor struct {
+	title    string
+	success  string
+	header   func(string) (string, bool)
+	items    func() []columnEditorItem
+	defaults func() []columnEditorItem
+	snapshot func() []config.WorkflowColumnConfig
+	preview  func([]config.WorkflowColumnConfig)
+	restore  func([]config.WorkflowColumnConfig)
+	commit   func([]config.WorkflowColumnConfig) error
+	redraw   func()
+}
+
 func (wl *WorkflowList) showColumnEditor() {
-	items := wl.columnEditorItems()
+	wl.showTableColumnEditor(tableColumnEditor{
+		title:    fmt.Sprintf("%s Workflow Columns", theme.IconWorkflow),
+		success:  "Saved workflow columns",
+		header:   workflowColumnHeader,
+		items:    wl.columnEditorItems,
+		defaults: defaultColumnEditorItems,
+		snapshot: wl.columnSnapshot,
+		preview:  wl.previewColumns,
+		restore:  wl.restoreColumns,
+		commit: func(cols []config.WorkflowColumnConfig) error {
+			if cfg := wl.app.Config(); cfg != nil {
+				cfg.SetWorkflowColumns(cols)
+				return wl.app.SaveConfig()
+			}
+			return nil
+		},
+		redraw: wl.populateTable,
+	})
+}
+
+func (wl *WorkflowList) showActivityColumnEditor() {
+	wl.showTableColumnEditor(tableColumnEditor{
+		title:    fmt.Sprintf("%s Activity Columns", theme.IconActivity),
+		success:  "Saved activity columns",
+		header:   activityColumnHeader,
+		items:    wl.activityColumnEditorItems,
+		defaults: defaultActivityColumnEditorItems,
+		snapshot: wl.activityColumnSnapshot,
+		preview:  wl.previewActivityColumns,
+		restore:  wl.restoreActivityColumns,
+		commit: func(cols []config.WorkflowColumnConfig) error {
+			if cfg := wl.app.Config(); cfg != nil {
+				cfg.SetActivityColumns(cols)
+				return wl.app.SaveConfig()
+			}
+			return nil
+		},
+		redraw: wl.renderActivityColumns,
+	})
+}
+
+func (wl *WorkflowList) showTableColumnEditor(spec tableColumnEditor) {
+	items := spec.items()
 	table := components.NewTable()
 	table.SetBorder(false)
 
-	original := wl.columnSnapshot()
+	original := spec.snapshot()
 
 	editedColumns := func() []config.WorkflowColumnConfig {
 		var cols []config.WorkflowColumnConfig
@@ -197,7 +489,7 @@ func (wl *WorkflowList) showColumnEditor() {
 	}
 
 	preview := func() {
-		wl.previewColumns(editedColumns())
+		spec.preview(editedColumns())
 	}
 
 	committed := false
@@ -206,7 +498,7 @@ func (wl *WorkflowList) showColumnEditor() {
 		if committed {
 			return
 		}
-		wl.restoreColumns(original)
+		spec.restore(original)
 	}
 
 	var refresh func()
@@ -215,7 +507,7 @@ func (wl *WorkflowList) showColumnEditor() {
 		table.ClearRows()
 		table.SetHeaders("COLUMN", "WIDTH", "VISIBLE")
 		for _, item := range items {
-			header, _ := workflowColumnHeader(item.id)
+			header, _ := spec.header(item.id)
 			visible := "yes"
 			if item.hidden {
 				visible = "no"
@@ -264,7 +556,7 @@ func (wl *WorkflowList) showColumnEditor() {
 		if row < 0 || row >= len(items) {
 			return
 		}
-		items[row].width = config.ClampWorkflowColumnWidth(items[row].width + delta)
+		items[row].width = config.ClampWorkflowColumnWidth(items[row].id, items[row].width+delta)
 		refresh()
 		preview()
 		table.SelectRow(row)
@@ -291,18 +583,15 @@ func (wl *WorkflowList) showColumnEditor() {
 			return
 		}
 		saving = true
-		if cfg := wl.app.Config(); cfg != nil {
-			cfg.SetWorkflowColumns(editedColumns())
-			if err := wl.app.SaveConfig(); err != nil {
-				saving = false
-				wl.app.ToastError("Failed to save columns: " + err.Error())
-				return
-			}
+		if err := spec.commit(editedColumns()); err != nil {
+			saving = false
+			wl.app.ToastError("Failed to save columns: " + err.Error())
+			return
 		}
 		committed = true
 		wl.closeModal()
-		wl.populateTable()
-		wl.app.ToastSuccess("Saved workflow columns")
+		spec.redraw()
+		wl.app.ToastSuccess(spec.success)
 	}
 
 	bindings := input.NewKeyBindings().
@@ -339,7 +628,7 @@ func (wl *WorkflowList) showColumnEditor() {
 			return true
 		}).
 		OnRune('r', func(e *tcell.EventKey) bool {
-			items = defaultColumnEditorItems()
+			items = spec.defaults()
 			refresh()
 			preview()
 			table.SelectRow(0)
@@ -374,7 +663,7 @@ func (wl *WorkflowList) showColumnEditor() {
 
 	wl.keepDataOnStart = true
 	modal := newOverlayModal(components.ModalConfig{
-		Title:  fmt.Sprintf("%s Workflow Columns", theme.IconWorkflow),
+		Title:  spec.title,
 		Width:  56,
 		Height: 20,
 	}, wl)
@@ -389,8 +678,6 @@ func (wl *WorkflowList) showColumnEditor() {
 	}
 	modal.SetHints(hints)
 	modal.SetOnSubmit(save)
-	// The app dismisses a modal on escape before the content's own capture runs,
-	// and that route skips OnCancel, so the revert hangs off OnDismiss too.
 	modal.SetOnDismiss(func() bool {
 		restore()
 		return true
@@ -401,9 +688,6 @@ func (wl *WorkflowList) showColumnEditor() {
 	})
 
 	wl.app.PushModal(modal)
-	if wl.app.JigApp().Menu() != nil {
-		wl.app.JigApp().Menu().SetHints(hints)
-	}
 	wl.app.JigApp().SetFocus(table)
 }
 
@@ -472,6 +756,82 @@ func (wl *WorkflowList) columnEditorItems() []columnEditorItem {
 func defaultColumnEditorItems() []columnEditorItem {
 	items := make([]columnEditorItem, 0, len(config.DefaultWorkflowColumns()))
 	for _, col := range config.DefaultWorkflowColumns() {
+		items = append(items, columnEditorItem{id: col.ID, width: col.Width})
+	}
+	return items
+}
+
+func (wl *WorkflowList) activityColumnSnapshot() []config.WorkflowColumnConfig {
+	cfg := wl.app.Config()
+	if cfg == nil || cfg.ActivityColumns == nil {
+		return nil
+	}
+	return append([]config.WorkflowColumnConfig(nil), cfg.ActivityColumns...)
+}
+
+func (wl *WorkflowList) previewActivityColumns(cols []config.WorkflowColumnConfig) {
+	cfg := wl.app.Config()
+	if cfg == nil {
+		return
+	}
+	cfg.SetActivityColumns(cols)
+	wl.renderActivityColumns()
+}
+
+func (wl *WorkflowList) restoreActivityColumns(snapshot []config.WorkflowColumnConfig) {
+	if cfg := wl.app.Config(); cfg != nil {
+		cfg.ActivityColumns = snapshot
+	}
+	wl.renderActivityColumns()
+}
+
+func (wl *WorkflowList) renderActivityColumns() {
+	if wl.previewKind != previewActivities || wl.eventTable == nil {
+		return
+	}
+	if w, ok := wl.currentPreviewWorkflow(); ok && len(wl.previewActivities) > 0 {
+		wl.renderPreviewActivities(w)
+		return
+	}
+	wl.applyActivityTableHeaders()
+}
+
+func (wl *WorkflowList) activityColumnEditorItems() []columnEditorItem {
+	visible := make(map[string]config.WorkflowColumnConfig)
+	order := make([]string, 0)
+	if cfg := wl.app.Config(); cfg != nil {
+		for _, col := range cfg.ActivityColumnLayout() {
+			visible[col.ID] = col
+			order = append(order, col.ID)
+		}
+	} else {
+		for _, col := range config.DefaultActivityColumns() {
+			visible[col.ID] = col
+			order = append(order, col.ID)
+		}
+	}
+
+	items := make([]columnEditorItem, 0, len(config.KnownActivityColumnIDs()))
+	for _, id := range order {
+		col := visible[id]
+		items = append(items, columnEditorItem{id: col.ID, width: col.Width})
+	}
+	for _, id := range config.KnownActivityColumnIDs() {
+		if _, ok := visible[id]; ok {
+			continue
+		}
+		items = append(items, columnEditorItem{
+			id:     id,
+			width:  config.DefaultActivityColumnWidth(id),
+			hidden: true,
+		})
+	}
+	return items
+}
+
+func defaultActivityColumnEditorItems() []columnEditorItem {
+	items := make([]columnEditorItem, 0, len(config.DefaultActivityColumns()))
+	for _, col := range config.DefaultActivityColumns() {
 		items = append(items, columnEditorItem{id: col.ID, width: col.Width})
 	}
 	return items

@@ -24,6 +24,8 @@ func TestSaveConfigRefusesToOverwriteAnUnreadableFile(t *testing.T) {
 	}
 
 	a := NewAppWithProvider(nil, "default", config.DefaultConfig(), "default")
+	on := true
+	a.config.Autosave = &on
 	a.MarkConfigUnreadable()
 	if err := a.SaveConfig(); err != nil {
 		t.Fatal(err)
@@ -50,11 +52,51 @@ func TestSaveConfigRefusesToOverwriteAnUnreadableFile(t *testing.T) {
 	}
 }
 
+func TestApplyThemeDoesNotWriteWhenAutosaveIsOff(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", dir)
+	if err := os.MkdirAll(filepath.Join(dir, "tempo"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(dir, "tempo", "config.yaml")
+	original := "theme: nord\nactive_profile: default\nprofiles:\n    default:\n        address: localhost:7233\n        namespace: default\n"
+	if err := os.WriteFile(path, []byte(original), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	a := NewAppWithProvider(nil, "default", config.DefaultConfig(), "default")
+	a.applyTheme("kanagawa")
+	if a.config.Theme != "kanagawa" {
+		t.Fatal("the theme should still apply for this session")
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(data) != original {
+		t.Fatalf("autosave off should leave the file alone, got:\n%s", data)
+	}
+}
+
+func TestSaveConfigNoopsWhenAutosaveIsOff(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", dir)
+	a := NewAppWithProvider(nil, "default", config.DefaultConfig(), "default")
+	if err := a.SaveConfig(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "tempo", "config.yaml")); !os.IsNotExist(err) {
+		t.Fatalf("autosave off should not create a config file, stat err = %v", err)
+	}
+}
+
 func TestSaveConfigWritesWhenTheFileIsFine(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", dir)
 
 	cfg := config.DefaultConfig()
+	on := true
+	cfg.Autosave = &on
 	cfg.Profiles = map[string]config.ConnectionConfig{
 		"prod": {Address: "temporal.prod:7233", Namespace: "orders"},
 	}

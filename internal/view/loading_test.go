@@ -21,6 +21,30 @@ func TestLoadingLabelCyclesFrames(t *testing.T) {
 	if !strings.Contains(first, "Loading") {
 		t.Fatalf("hint bar label should say Loading, got %q", first)
 	}
+	if loadingSpinner(0) == "" || strings.Contains(loadingSpinner(0), "Loading") {
+		t.Fatalf("spinner should be the glyph only, got %q", loadingSpinner(0))
+	}
+}
+
+func TestQuietRefreshOmitsLoadingWord(t *testing.T) {
+	a := &App{}
+	a.SetViewRefreshing("workflows", true)
+	got := a.loadingText()
+	if got == "" || strings.Contains(got, "Loading") {
+		t.Fatalf("auto-refresh should show only the spinner, got %q", got)
+	}
+	a.SetViewLoading("workers", true)
+	if !strings.Contains(a.loadingText(), "Loading") {
+		t.Fatal("an explicit load should still say Loading")
+	}
+	a.SetViewLoading("workers", false)
+	if strings.Contains(a.loadingText(), "Loading") {
+		t.Fatal("quiet refresh should return to spinner-only after labeled loads finish")
+	}
+	a.SetViewRefreshing("workflows", false)
+	if a.loadingText() != "" {
+		t.Fatal("spinner should stop once every refresh is done")
+	}
 }
 
 func TestRenderLoadingStaysOnHintBar(t *testing.T) {

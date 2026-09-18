@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/atterpac/jig/components"
+	"github.com/galaxy-io/tempo/internal/config"
 	"github.com/gdamore/tcell/v2"
 )
 
@@ -25,7 +26,7 @@ func TestDrawModalShadowDarkensOffsetCells(t *testing.T) {
 
 	panel := components.NewPanel()
 	panel.SetRect(5, 3, 10, 6)
-	drawModalShadow(screen, panel)
+	drawModalShadow(screen, panel, config.ModalShadowDirectional)
 
 	insideMain, _, insideStyle, _ := screen.GetContent(6, 4)
 	if insideMain != 'A' {
@@ -64,12 +65,76 @@ func TestDrawModalShadowSkipsFullscreenPanel(t *testing.T) {
 
 	panel := components.NewPanel()
 	panel.SetRect(0, 0, 20, 10)
-	drawModalShadow(screen, panel)
+	drawModalShadow(screen, panel, config.ModalShadowDirectional)
 
 	_, _, style, _ := screen.GetContent(19, 9)
 	_, bg, _ := style.Decompose()
 	r, g, b := bg.RGB()
 	if r != 80 || g != 80 || b != 80 {
 		t.Fatalf("fullscreen panel should not paint a shadow, bg=%d,%d,%d", r, g, b)
+	}
+}
+
+func TestDrawModalShadowNoneLeavesBackground(t *testing.T) {
+	screen, _ := filledShadowScreen(t)
+	panel := components.NewPanel()
+	panel.SetRect(5, 3, 10, 6)
+	drawModalShadow(screen, panel, config.ModalShadowNone)
+	assertRGB(t, screen, 15, 4, 80, 80, 80)
+	assertRGB(t, screen, 4, 5, 80, 80, 80)
+}
+
+func TestDrawModalShadowUniformDarkensAllSides(t *testing.T) {
+	screen, _ := filledShadowScreen(t)
+	panel := components.NewPanel()
+	panel.SetRect(5, 3, 10, 6)
+	drawModalShadow(screen, panel, config.ModalShadowUniform)
+	assertRGB(t, screen, 6, 4, 80, 80, 80)
+	assertRGB(t, screen, 4, 5, 40, 40, 40)
+	assertRGB(t, screen, 8, 2, 40, 40, 40)
+	assertRGB(t, screen, 15, 5, 40, 40, 40)
+	assertRGB(t, screen, 8, 9, 40, 40, 40)
+}
+
+func TestResolvedModalShadowDefaultsDirectional(t *testing.T) {
+	if got := (*config.Config)(nil).ResolvedModalShadow(); got != config.ModalShadowDirectional {
+		t.Fatalf("nil=%q", got)
+	}
+	if got := (&config.Config{}).ResolvedModalShadow(); got != config.ModalShadowDirectional {
+		t.Fatalf("empty=%q", got)
+	}
+	if got := (&config.Config{ModalShadow: "UNIFORM"}).ResolvedModalShadow(); got != config.ModalShadowUniform {
+		t.Fatalf("uniform=%q", got)
+	}
+	if got := (&config.Config{ModalShadow: "none"}).ResolvedModalShadow(); got != config.ModalShadowNone {
+		t.Fatalf("none=%q", got)
+	}
+}
+
+func filledShadowScreen(t *testing.T) (tcell.SimulationScreen, tcell.Style) {
+	t.Helper()
+	screen := tcell.NewSimulationScreen("UTF-8")
+	if err := screen.Init(); err != nil {
+		t.Fatal(err)
+	}
+	screen.SetSize(40, 20)
+	fill := tcell.StyleDefault.
+		Background(tcell.NewRGBColor(80, 80, 80)).
+		Foreground(tcell.NewRGBColor(200, 200, 200))
+	for row := 0; row < 20; row++ {
+		for col := 0; col < 40; col++ {
+			screen.SetContent(col, row, 'A', nil, fill)
+		}
+	}
+	return screen, fill
+}
+
+func assertRGB(t *testing.T, screen tcell.SimulationScreen, x, y int, wantR, wantG, wantB int32) {
+	t.Helper()
+	_, _, style, _ := screen.GetContent(x, y)
+	_, bg, _ := style.Decompose()
+	r, g, b := bg.RGB()
+	if r != wantR || g != wantG || b != wantB {
+		t.Fatalf("cell %d,%d bg=%d,%d,%d want %d,%d,%d", x, y, r, g, b, wantR, wantG, wantB)
 	}
 }

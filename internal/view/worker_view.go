@@ -36,6 +36,8 @@ type WorkerView struct {
 	cpuBar       *utilizationBar
 	memBar       *utilizationBar
 	utilPanel    *components.Panel
+	utilFlex     *tview.Flex
+	utilSpacer   *tview.Box
 	detailFlex   *tview.Flex
 	allWorkers   []temporal.Worker
 	workers      []temporal.Worker // Filtered instances, in display order
@@ -93,13 +95,14 @@ func (wv *WorkerView) setup() {
 
 	wv.cpuBar = newUtilizationBar("CPU")
 	wv.memBar = newUtilizationBar("MEM")
-	utilFlex := tview.NewFlex().SetDirection(tview.FlexRow)
-	utilFlex.SetBackgroundColor(theme.Bg())
-	utilFlex.AddItem(wv.cpuBar, 1, 0, false)
-	utilFlex.AddItem(tview.NewBox().SetBackgroundColor(theme.Bg()), 1, 0, false)
-	utilFlex.AddItem(wv.memBar, 1, 0, false)
+	wv.utilSpacer = tview.NewBox().SetBackgroundColor(theme.Bg())
+	wv.utilFlex = tview.NewFlex().SetDirection(tview.FlexRow)
+	wv.utilFlex.SetBackgroundColor(theme.Bg())
+	wv.utilFlex.AddItem(wv.cpuBar, 1, 0, false)
+	wv.utilFlex.AddItem(wv.utilSpacer, 1, 0, false)
+	wv.utilFlex.AddItem(wv.memBar, 1, 0, false)
 	wv.utilPanel = components.NewPanel().SetTitle(fmt.Sprintf("%s Utilization", theme.IconBolt))
-	wv.utilPanel.SetContent(utilFlex)
+	wv.utilPanel.SetContent(wv.utilFlex)
 
 	wv.detailFlex = tview.NewFlex().SetDirection(tview.FlexRow)
 	wv.detailFlex.SetBackgroundColor(theme.Bg())
@@ -112,8 +115,30 @@ func workerTableHeaders() []string {
 }
 
 func (wv *WorkerView) RefreshTheme() {
-	wv.table.SetBackgroundColor(theme.Bg())
-	wv.detail.SetBackgroundColor(theme.Bg())
+	bg := theme.Bg()
+	wv.table.SetBackgroundColor(bg)
+	wv.detail.SetBackgroundColor(bg)
+	if wv.tableScroll != nil {
+		wv.tableScroll.SetBackgroundColor(bg)
+	}
+	if wv.detailScroll != nil {
+		wv.detailScroll.SetBackgroundColor(bg)
+	}
+	if wv.detailFlex != nil {
+		wv.detailFlex.SetBackgroundColor(bg)
+	}
+	if wv.utilFlex != nil {
+		wv.utilFlex.SetBackgroundColor(bg)
+	}
+	if wv.utilSpacer != nil {
+		wv.utilSpacer.SetBackgroundColor(bg)
+	}
+	if wv.previewPanel != nil {
+		wv.previewPanel.SetBackgroundColor(bg)
+	}
+	if wv.utilPanel != nil {
+		wv.utilPanel.SetBackgroundColor(bg)
+	}
 	wv.populateTable()
 }
 
@@ -135,7 +160,9 @@ func (wv *WorkerView) showSearch() {
 		OnSubmit: func(text string) {
 			wv.applyFilter(text)
 		},
-		OnCancel: func() {},
+		OnCancel: func() {
+			wv.applyFilter("")
+		},
 	})
 }
 
@@ -187,7 +214,7 @@ func (wv *WorkerView) loadData() {
 
 // workerQueueSweepConcurrency bounds the DescribeTaskQueue calls that collect
 // poll registries, so a namespace with many queues stays roughly one round trip.
-const workerQueueSweepConcurrency = 8
+const workerQueueSweepConcurrency = 16
 
 // workerQuietWindowsFromApp reads the configured staleness windows.
 func workerQuietWindowsFromApp(app *App) temporal.WorkerQuietWindows {

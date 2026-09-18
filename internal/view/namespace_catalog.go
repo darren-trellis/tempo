@@ -222,7 +222,7 @@ func (a *App) catalogSuggestions(namespace string) (types, queues []string, ok b
 	return c.types, c.queues, ok
 }
 
-func (a *App) watchStartCatalog(namespace string, typeField, queueField *typeaheadField) {
+func (a *App) watchStartCatalog(namespace string, typeField, queueField *dropdownField) {
 	if a == nil || namespace == "" {
 		return
 	}
@@ -241,7 +241,7 @@ func (a *App) watchStartCatalog(namespace string, typeField, queueField *typeahe
 	}
 }
 
-func applyStartCatalog(typeField, queueField *typeaheadField, c startCatalog) {
+func applyStartCatalog(typeField, queueField *dropdownField, c startCatalog) {
 	if typeField != nil {
 		typeField.SetOptions(c.types)
 	}

@@ -46,6 +46,10 @@ type TaskQueueView struct {
 	pollerGen      uint64
 	statsGen       uint64
 	pollerTimer    *time.Timer
+	autoRefresh    bool
+	liveBusy       bool
+	refreshTicker  *time.Ticker
+	stopRefresh    chan struct{}
 }
 
 // NewTaskQueueView creates a new task queue view.
@@ -58,6 +62,7 @@ func NewTaskQueueView(app *App) *TaskQueueView {
 		queues:      []taskQueueEntry{},
 		pollers:     []temporal.Poller{},
 		cache:       newTaskQueueCache(previewCacheLimit(app)),
+		stopRefresh: make(chan struct{}, 1),
 	}
 	tq.setup()
 
@@ -104,7 +109,22 @@ func (tq *TaskQueueView) setup() {
 }
 
 func (tq *TaskQueueView) setLoading(loading bool) {
+	tq.setLoadIndicator(loading, false)
+}
+
+func (tq *TaskQueueView) setRefreshing(loading bool) {
+	tq.setLoadIndicator(loading, true)
+}
+
+func (tq *TaskQueueView) setLoadIndicator(loading, quiet bool) {
 	tq.loading = loading
+	if tq.app == nil {
+		return
+	}
+	if quiet {
+		tq.app.SetViewRefreshing("task-queues", loading)
+		return
+	}
 	tq.app.SetViewLoading("task-queues", loading)
 }
 
@@ -142,7 +162,9 @@ func (tq *TaskQueueView) showSearch() {
 		OnSubmit: func(text string) {
 			tq.applyFilter(text)
 		},
-		OnCancel: func() {},
+		OnCancel: func() {
+			tq.applyFilter("")
+		},
 	})
 }
 
@@ -150,12 +172,15 @@ func (tq *TaskQueueView) showSearch() {
 func (tq *TaskQueueView) RefreshTheme() {
 	bg := theme.Bg()
 
-	// Update main container
 	tq.SetBackgroundColor(bg)
-
-	// Update tables
 	tq.queueTable.SetBackgroundColor(bg)
 	tq.pollerTable.SetBackgroundColor(bg)
+	if tq.queueScroll != nil {
+		tq.queueScroll.SetBackgroundColor(bg)
+	}
+	if tq.pollerScroll != nil {
+		tq.pollerScroll.SetBackgroundColor(bg)
+	}
 
 	// Re-render tables with new theme colors
 	tq.populateQueueTable()
@@ -165,9 +190,18 @@ func (tq *TaskQueueView) RefreshTheme() {
 }
 
 func (tq *TaskQueueView) loadData() {
+	tq.loadQueueList(false)
+}
+
+func (tq *TaskQueueView) loadQueueList(force bool) {
 	provider := tq.app.Provider()
 	if provider == nil {
 		tq.loadMockQueues()
+		return
+	}
+
+	if !force && tq.applyCachedCatalogQueues() {
+		tq.prefetchQueueStats()
 		return
 	}
 
@@ -184,39 +218,115 @@ func (tq *TaskQueueView) loadData() {
 				tq.showQueueError(err)
 				return
 			}
-
-			tq.allQueues = []taskQueueEntry{}
-			for _, name := range names {
-				tq.allQueues = append(tq.allQueues, taskQueueEntry{
-					Name:        name,
-					Type:        "Combined",
-					PollerCount: 0,
-					Backlog:     0,
-				})
-			}
-
-			if len(tq.allQueues) == 0 {
-				tq.allQueues = append(tq.allQueues, taskQueueEntry{
-					Name:        "(no task queues found)",
-					Type:        "-",
-					PollerCount: 0,
-					Backlog:     0,
-				})
-			}
-
-			atomic.AddUint64(&tq.statsGen, 1)
-			tq.applyFilter(tq.searchText)
-
-			if len(tq.queues) > 0 && tq.queues[0].Name != "(no task queues found)" {
-				row := tq.queueTable.SelectedRow()
-				if row < 0 || row >= len(tq.queues) {
-					row = 0
-				}
-				tq.loadPollers(row)
-			}
+			tq.applyQueueNames(names)
 			tq.prefetchQueueStats()
 		})
 	}()
+}
+
+func (tq *TaskQueueView) applyCachedCatalogQueues() bool {
+	if tq == nil || tq.app == nil {
+		return false
+	}
+	_, queues, ok := tq.app.catalogSuggestions(tq.namespace())
+	if !ok || len(queues) == 0 {
+		return false
+	}
+	tq.applyQueueNames(queues)
+	return true
+}
+
+const noTaskQueuesName = "(no task queues found)"
+
+func isPlaceholderQueue(name string) bool {
+	return name == "" || name == noTaskQueuesName
+}
+
+func (tq *TaskQueueView) applyQueueNames(names []string) {
+	tq.replaceQueueNames(names, false)
+	if len(tq.queues) > 0 && !isPlaceholderQueue(tq.queues[0].Name) {
+		row := tq.queueTable.SelectedRow()
+		if row < 0 || row >= len(tq.queues) {
+			row = 0
+		}
+		tq.loadPollers(row)
+	}
+}
+
+func (tq *TaskQueueView) mergeQueueNames(names []string) {
+	tq.replaceQueueNames(names, true)
+}
+
+func (tq *TaskQueueView) replaceQueueNames(names []string, keepStats bool) {
+	selected := tq.selectedQueueName()
+	existing := map[string]taskQueueEntry{}
+	if keepStats {
+		for _, q := range tq.allQueues {
+			if !isPlaceholderQueue(q.Name) {
+				existing[q.Name] = q
+			}
+		}
+	}
+
+	tq.allQueues = tq.allQueues[:0]
+	for _, name := range names {
+		if isPlaceholderQueue(name) {
+			continue
+		}
+		if q, ok := existing[name]; ok {
+			tq.allQueues = append(tq.allQueues, q)
+			continue
+		}
+		tq.allQueues = append(tq.allQueues, taskQueueEntry{
+			Name: name,
+			Type: "Combined",
+		})
+	}
+	if len(tq.allQueues) == 0 {
+		tq.allQueues = append(tq.allQueues, taskQueueEntry{
+			Name: noTaskQueuesName,
+			Type: "-",
+		})
+	}
+
+	atomic.AddUint64(&tq.statsGen, 1)
+	wasSuppress := tq.suppressSelect
+	tq.suppressSelect = true
+	tq.applyFilter(tq.searchText)
+	tq.selectQueueByName(selected)
+	if idx := tq.queueTable.SelectedRow(); idx >= 0 && idx < len(tq.queues) {
+		tq.selectedQueue = tq.queues[idx].Name
+	}
+	if !wasSuppress {
+		tq.suppressSelect = false
+	}
+}
+
+func (tq *TaskQueueView) selectedQueueName() string {
+	if tq.queueTable == nil {
+		return tq.selectedQueue
+	}
+	if idx := tq.queueTable.SelectedRow(); idx >= 0 && idx < len(tq.queues) {
+		return tq.queues[idx].Name
+	}
+	return tq.selectedQueue
+}
+
+func (tq *TaskQueueView) selectQueueByName(name string) {
+	if isPlaceholderQueue(name) || tq.queueTable == nil {
+		return
+	}
+	for i, q := range tq.queues {
+		if q.Name == name {
+			wasSuppress := tq.suppressSelect
+			tq.suppressSelect = true
+			tq.queueTable.SelectRow(i)
+			if !wasSuppress {
+				tq.suppressSelect = false
+			}
+			return
+		}
+	}
 }
 
 func (tq *TaskQueueView) showQueueError(err error) {
@@ -241,8 +351,9 @@ func (tq *TaskQueueView) loadMockQueues() {
 }
 
 func (tq *TaskQueueView) populateQueueTable() {
-	// Preserve current selection
 	currentRow := tq.queueTable.SelectedRow()
+	wasSuppress := tq.suppressSelect
+	tq.suppressSelect = true
 
 	tq.queueTable.ClearRows()
 	tq.queueTable.SetHeaders("NAME", "TYPE", "POLLERS", "BACKLOG")
@@ -256,20 +367,14 @@ func (tq *TaskQueueView) populateQueueTable() {
 	}
 
 	if tq.queueTable.RowCount() > 0 {
-		// Only manage suppressSelect if it's not already being managed by caller
-		wasSuppress := tq.suppressSelect
-		if !wasSuppress {
-			tq.suppressSelect = true
-		}
-		// Restore previous selection if valid, otherwise select first row
 		if currentRow >= 0 && currentRow < len(tq.queues) {
 			tq.queueTable.SelectRow(currentRow)
 		} else {
 			tq.queueTable.SelectRow(0)
 		}
-		if !wasSuppress {
-			tq.suppressSelect = false
-		}
+	}
+	if !wasSuppress {
+		tq.suppressSelect = false
 	}
 }
 
@@ -330,7 +435,7 @@ func (tq *TaskQueueView) schedulePollers(queueIndex int, force bool) {
 	}
 
 	queue := tq.queues[queueIndex]
-	if queue.Name == "" || queue.Name == "(no task queues found)" {
+	if isPlaceholderQueue(queue.Name) {
 		return
 	}
 	tq.selectedQueue = queue.Name
@@ -372,8 +477,14 @@ func (tq *TaskQueueView) fetchPollers(gen uint64, queue taskQueueEntry) {
 		return
 	}
 
-	tq.app.SetViewLoading("task-queue-pollers", true)
-	defer tq.app.SetViewLoading("task-queue-pollers", false)
+	if entry, ok := tq.cache.get(tq.namespace(), queue.Name); ok {
+		tq.onUI(func() {
+			if tq.selectedQueue == queue.Name {
+				tq.applyPollerCache(queue.Name, entry)
+			}
+		})
+		return
+	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -393,7 +504,7 @@ func (tq *TaskQueueView) queuesNeedingStats() []taskQueueEntry {
 	out := make([]taskQueueEntry, 0, len(tq.allQueues))
 	ns := tq.namespace()
 	for _, q := range tq.allQueues {
-		if q.Name == "" || q.Name == "(no task queues found)" {
+		if isPlaceholderQueue(q.Name) {
 			continue
 		}
 		if _, ok := tq.cache.get(ns, q.Name); ok {
@@ -593,7 +704,7 @@ func (tq *TaskQueueView) showPollerError(err error) {
 // every cached queue first.
 func (tq *TaskQueueView) refresh() {
 	tq.cache.clear()
-	tq.loadData()
+	tq.loadQueueList(true)
 }
 
 func (tq *TaskQueueView) refreshCurrentQueue() {
@@ -608,8 +719,96 @@ func (tq *TaskQueueView) Name() string {
 	return "task-queues"
 }
 
+func (tq *TaskQueueView) toggleAutoRefresh() {
+	tq.autoRefresh = !tq.autoRefresh
+	if tq.autoRefresh {
+		tq.startAutoRefresh()
+	} else {
+		tq.stopAutoRefresh()
+	}
+	if tq.app != nil {
+		tq.app.ToastSuccess(autoRefreshMessage(tq.autoRefresh))
+	}
+}
+
+func (tq *TaskQueueView) syncAutoRefresh() {
+	if !tq.autoRefresh {
+		return
+	}
+	tq.stopAutoRefresh()
+	tq.startAutoRefresh()
+}
+
+func (tq *TaskQueueView) startAutoRefresh() {
+	tq.stopAutoRefresh()
+	select {
+	case <-tq.stopRefresh:
+	default:
+	}
+
+	ticker := time.NewTicker(refreshRate(tq.app))
+	tq.refreshTicker = ticker
+	stop := tq.stopRefresh
+	go func() {
+		for {
+			select {
+			case <-ticker.C:
+				tq.onUI(func() {
+					tq.liveRefresh()
+				})
+			case <-stop:
+				return
+			}
+		}
+	}()
+}
+
+func (tq *TaskQueueView) stopAutoRefresh() {
+	if tq.refreshTicker != nil {
+		tq.refreshTicker.Stop()
+		tq.refreshTicker = nil
+	}
+	if tq.stopRefresh == nil {
+		return
+	}
+	select {
+	case tq.stopRefresh <- struct{}{}:
+	default:
+	}
+}
+
+func (tq *TaskQueueView) liveRefresh() {
+	if tq.liveBusy || tq.app == nil {
+		return
+	}
+	provider := tq.app.Provider()
+	if provider == nil {
+		return
+	}
+	tq.liveBusy = true
+	tq.setRefreshing(true)
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		names, err := provider.ListTaskQueueNames(ctx, tq.namespace())
+		tq.onUI(func() {
+			defer func() { tq.liveBusy = false }()
+			tq.setLoading(false)
+			if err != nil {
+				return
+			}
+			tq.mergeQueueNames(names)
+			tq.cache.clear()
+			tq.prefetchQueueStats()
+		})
+	}()
+}
+
 // Start is called when the view becomes active.
 func (tq *TaskQueueView) Start() {
+	if tq.autoRefresh {
+		tq.startAutoRefresh()
+	}
 	if len(tq.allQueues) > 0 {
 		tq.applyFilter(tq.searchText)
 		row := tq.queueTable.SelectedRow()
@@ -627,6 +826,7 @@ func (tq *TaskQueueView) Stop() {
 	if tq.pollerTimer != nil {
 		tq.pollerTimer.Stop()
 	}
+	tq.stopAutoRefresh()
 	tq.queueTable.SetInputCapture(nil)
 	tq.pollerTable.SetInputCapture(nil)
 }
@@ -636,6 +836,7 @@ func (tq *TaskQueueView) Hints() []KeyHint {
 	return []KeyHint{
 		{Key: "/", Description: "Search"},
 		{Key: "r", Description: "Refresh"},
+		{Key: "a", Description: "Auto-refresh"},
 		{Key: "T", Description: "Theme"},
 		{Key: "esc", Description: "Back"},
 	}

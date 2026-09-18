@@ -3,7 +3,6 @@ package view
 import (
 	"time"
 
-	"github.com/atterpac/jig/components"
 	"github.com/galaxy-io/tempo/internal/temporal"
 )
 
@@ -125,7 +124,9 @@ func (wl *WorkflowList) showPreviewEventSearch() {
 		OnSubmit: func(text string) {
 			wl.applyPreviewEventSearch(text)
 		},
-		OnCancel: func() {},
+		OnCancel: func() {
+			wl.applyPreviewEventSearch("")
+		},
 	})
 }
 
@@ -140,7 +141,9 @@ func (wl *WorkflowList) showPreviewActivitySearch() {
 		OnSubmit: func(text string) {
 			wl.applyPreviewActivitySearch(text)
 		},
-		OnCancel: func() {},
+		OnCancel: func() {
+			wl.applyPreviewActivitySearch("")
+		},
 	})
 }
 
@@ -190,15 +193,7 @@ func (wl *WorkflowList) jumpToPreviewChild() {
 	if !ok || ev.ChildWorkflowID == "" || ev.ChildRunID == "" {
 		return
 	}
-	if wl.selectWorkflowByID(ev.ChildWorkflowID) {
-		if w, ok := wl.selectedWorkflow(); ok && wl.historyNeeded() {
-			wl.schedulePreview(w, false)
-		}
-		return
-	}
-	if wl.app != nil {
-		wl.app.NavigateToWorkflowDetail(ev.ChildWorkflowID, ev.ChildRunID)
-	}
+	wl.revealWorkflow(ev.ChildWorkflowID, ev.ChildRunID)
 }
 
 func (wl *WorkflowList) updateWorkflowRunID(id, oldRunID, newRunID string) {
@@ -240,11 +235,7 @@ func (wl *WorkflowList) refreshWorkflowRow(w temporal.Workflow) {
 		return
 	}
 	now := time.Now()
-	cells := make([]components.TableCell, len(cols))
-	for j, col := range cols {
-		cells[j] = col.cell(now, w, wl.workflowRowPrefix(idx))
-	}
-	_ = wl.table.UpdateStyledRow(idx, cells)
+	_ = wl.table.UpdateStyledRow(idx, wl.styledWorkflowCells(now, w, idx))
 }
 
 func (wl *WorkflowList) actionHints(w temporal.Workflow) []KeyHint {

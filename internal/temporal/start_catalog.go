@@ -2,7 +2,10 @@ package temporal
 
 import (
 	"context"
+	"sync"
 )
+
+const startCatalogMaxWorkflowPages = 5
 
 func collectStartCatalog(typeGroups, queueGroups []string, workflows []Workflow, workers []Worker, schedules []Schedule) (types, queues []string) {
 	typeSet := map[string]struct{}{}
@@ -21,66 +24,83 @@ func collectStartCatalog(typeGroups, queueGroups []string, workflows []Workflow,
 	return sortedTaskQueueNames(typeSet), sortedTaskQueueNames(queueSet)
 }
 
+func startCatalogNeedsWorkflowScan(typeErr, queueErr error) bool {
+	return typeErr != nil || queueErr != nil
+}
+
 func (c *Client) ListStartCatalog(ctx context.Context, namespace string) (types, queues []string, err error) {
-	var typeGroups, queueGroups []string
+	var (
+		typeGroups, queueGroups []string
+		typeErr, queueErr       error
+		workers                 []Worker
+		workerErr               error
+		schedules               []Schedule
+		schedErr                error
+		wg                      sync.WaitGroup
+	)
+
+	wg.Add(4)
+	go func() {
+		defer wg.Done()
+		typeGroups, typeErr = c.listVisibilityDistinct(ctx, namespace, "WorkflowType")
+	}()
+	go func() {
+		defer wg.Done()
+		queueGroups, queueErr = c.listVisibilityDistinct(ctx, namespace, "TaskQueue")
+	}()
+	go func() {
+		defer wg.Done()
+		workers, workerErr = c.ListWorkers(ctx, namespace)
+	}()
+	go func() {
+		defer wg.Done()
+		var listErr error
+		schedules, _, listErr = c.ListSchedules(ctx, namespace, ListOptions{PageSize: 100})
+		schedErr = listErr
+	}()
+	wg.Wait()
+
 	var workflows []Workflow
-	var workers []Worker
-	var schedules []Schedule
-	ok := false
-	var firstErr error
-
-	if groups, groupErr := c.listVisibilityDistinct(ctx, namespace, "WorkflowType"); groupErr == nil {
-		ok = true
-		typeGroups = groups
-	} else if firstErr == nil {
-		firstErr = groupErr
-	}
-	if groups, groupErr := c.listVisibilityDistinct(ctx, namespace, "TaskQueue"); groupErr == nil {
-		ok = true
-		queueGroups = groups
-	} else if firstErr == nil {
-		firstErr = groupErr
+	if startCatalogNeedsWorkflowScan(typeErr, queueErr) {
+		workflows = c.scanWorkflowsForCatalog(ctx, namespace)
 	}
 
-	token := ""
-	for {
-		if ctx.Err() != nil {
-			break
-		}
-		page, next, pageErr := c.ListWorkflows(ctx, namespace, ListOptions{PageSize: 1000, PageToken: token})
-		if pageErr != nil {
-			if firstErr == nil {
-				firstErr = pageErr
-			}
-			break
-		}
-		ok = true
-		workflows = append(workflows, page...)
-		if next == "" {
-			break
-		}
-		token = next
-	}
-
-	if listed, listErr := c.ListWorkers(ctx, namespace); listErr == nil {
-		ok = true
-		workers = listed
-	} else if firstErr == nil {
-		firstErr = listErr
-	}
-
-	if listed, _, listErr := c.ListSchedules(ctx, namespace, ListOptions{PageSize: 100}); listErr == nil {
-		ok = true
-		schedules = listed
-	} else if firstErr == nil {
-		firstErr = listErr
-	}
-
+	ok := typeErr == nil || queueErr == nil || workerErr == nil || schedErr == nil || len(workflows) > 0
+	firstErr := firstCatalogErr(typeErr, queueErr, workerErr, schedErr)
 	types, queues = collectStartCatalog(typeGroups, queueGroups, workflows, workers, schedules)
 	if !ok && firstErr != nil {
 		return nil, nil, firstErr
 	}
 	return types, queues, nil
+}
+
+func firstCatalogErr(errs ...error) error {
+	for _, err := range errs {
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (c *Client) scanWorkflowsForCatalog(ctx context.Context, namespace string) []Workflow {
+	var workflows []Workflow
+	token := ""
+	for page := 0; page < startCatalogMaxWorkflowPages; page++ {
+		if ctx.Err() != nil {
+			break
+		}
+		batch, next, err := c.ListWorkflows(ctx, namespace, ListOptions{PageSize: 1000, PageToken: token})
+		if err != nil {
+			break
+		}
+		workflows = append(workflows, batch...)
+		if next == "" {
+			break
+		}
+		token = next
+	}
+	return workflows
 }
 
 func (c *Client) ListTaskQueueNames(ctx context.Context, namespace string) ([]string, error) {

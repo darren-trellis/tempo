@@ -115,18 +115,6 @@ func (m *TimelineLegendModal) setup(statusItems, typeItems []timelineLegendItem)
 	right.SetBackgroundColor(theme.Bg())
 	right.SetText(formatTimelineLegendColumn("Event Types", typeItems, true))
 
-	capture := func(event *tcell.EventKey) *tcell.EventKey {
-		if event.Rune() == '?' {
-			if m.closeFunc != nil {
-				m.closeFunc()
-			}
-			return nil
-		}
-		return event
-	}
-	left.SetInputCapture(capture)
-	right.SetInputCapture(capture)
-
 	columns := tview.NewFlex().SetDirection(tview.FlexColumn)
 	columns.SetBackgroundColor(theme.Bg())
 	columns.AddItem(left, 0, 1, true)
@@ -134,7 +122,7 @@ func (m *TimelineLegendModal) setup(statusItems, typeItems []timelineLegendItem)
 
 	m.SetContent(columns)
 	m.SetHints([]components.KeyHint{
-		{Key: "Esc/?", Description: "Close"},
+		{Key: "Esc", Description: "Close"},
 	})
 }
 

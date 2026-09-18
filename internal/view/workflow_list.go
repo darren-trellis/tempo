@@ -233,6 +233,33 @@ func (wl *WorkflowList) setup() {
 func (wl *WorkflowList) RefreshTheme() {
 	bg := theme.Bg()
 	wl.SetBackgroundColor(bg)
+	if wl.mainFlex != nil {
+		wl.mainFlex.SetBackgroundColor(bg)
+	}
+	if wl.primaryStack != nil {
+		wl.primaryStack.SetBackgroundColor(bg)
+	}
+	if wl.listTabs != nil {
+		wl.listTabs.SetBackgroundColor(bg)
+	}
+	if wl.previewTabs != nil {
+		wl.previewTabs.SetBackgroundColor(bg)
+	}
+	if wl.activityDetailTabs != nil {
+		wl.activityDetailTabs.SetBackgroundColor(bg)
+	}
+	if wl.tableScroll != nil {
+		wl.tableScroll.SetBackgroundColor(bg)
+	}
+	if wl.eventTableScroll != nil {
+		wl.eventTableScroll.SetBackgroundColor(bg)
+	}
+	if wl.activityDetailScroll != nil {
+		wl.activityDetailScroll.SetBackgroundColor(bg)
+	}
+	if wl.workflowsPanel != nil {
+		wl.workflowsPanel.SetBackgroundColor(bg)
+	}
 	wl.table.SetBackgroundColor(bg)
 	wl.eventTable.SetBackgroundColor(bg)
 	if wl.eventTreeView != nil {
@@ -624,11 +651,13 @@ func (wl *WorkflowList) Hints() []KeyHint {
 			return []KeyHint{
 				{Key: "Enter", Description: "Show Worker"},
 				{Key: "r", Description: "Refresh"},
+				{Key: "a", Description: "Auto-refresh"},
 			}
 		}
 		return []KeyHint{
 			{Key: "/", Description: "Search"},
 			{Key: "r", Description: "Refresh"},
+			{Key: "a", Description: "Auto-refresh"},
 		}
 	}
 	if wl.workersActive() {
@@ -724,6 +753,9 @@ func (wl *WorkflowList) previewListHints() []KeyHint {
 	if wl.previewKind == previewEvents || wl.previewKind == previewActivities {
 		hints = append(hints, KeyHint{Key: "/", Description: "Search"})
 	}
+	if wl.previewKind == previewActivities {
+		hints = append(hints, KeyHint{Key: "|", Description: "Columns"})
+	}
 	if wl.previewKind == previewEvents {
 		if wl.eventTreeMode {
 			hints = append(hints, KeyHint{Key: "space", Description: "Collapse/Expand"})
@@ -748,6 +780,7 @@ func (wl *WorkflowList) previewSideHints() []KeyHint {
 		return append([]KeyHint{
 			{Key: "y", Description: "Yank"},
 			{Key: "/", Description: "Search"},
+			{Key: "|", Description: "Columns"},
 		},
 			KeyHint{Key: "r", Description: "Refresh"},
 			KeyHint{Key: "p", Description: "Preview"},
@@ -775,12 +808,13 @@ func (wl *WorkflowList) timelineHints() []KeyHint {
 		{Key: "+/-", Description: "Zoom"},
 		{Key: "m", Description: timelineSizeHint(wl.timelineNarrow)},
 		{Key: "p", Description: "Preview"},
-		{Key: "?", Description: "Legend"},
+		{Key: "L", Description: "Legend"},
 	}
 }
 
 func (wl *WorkflowList) workflowPaneHints() []KeyHint {
 	hints := []KeyHint{
+		{Key: "Enter", Description: "Preview"},
 		{Key: "i", Description: "Input/Output"},
 	}
 	if wl.previewModeEnabled() {
@@ -858,6 +892,19 @@ func (wl *WorkflowList) HandleEscape() bool {
 		wl.setFocusPane(focusWorkflows)
 		return true
 	}
+	if wl.taskQueuesActive() && wl.taskQueues != nil && wl.taskQueues.searchText != "" {
+		wl.taskQueues.applyFilter("")
+		return true
+	}
+	if wl.schedulesActive() && wl.schedules != nil && wl.schedules.GetSearchText() != "" {
+		wl.schedules.ClearSearch()
+		wl.schedules.applyFilter("")
+		return true
+	}
+	if wl.workersActive() && wl.workers != nil && wl.workers.searchText != "" {
+		wl.workers.applyFilter("")
+		return true
+	}
 	if wl.workflowsActive() && (wl.filterText != "" || wl.visibilityQuery != "" || wl.originalWorkflows != nil) {
 		wl.clearAllFilters()
 		return true
@@ -931,6 +978,33 @@ func (wl *WorkflowList) Focus(delegate func(p tview.Primitive)) {
 func (wl *WorkflowList) Draw(screen tcell.Screen) {
 	bg := theme.Bg()
 	wl.SetBackgroundColor(bg)
+	if wl.mainFlex != nil {
+		wl.mainFlex.SetBackgroundColor(bg)
+	}
+	if wl.primaryStack != nil {
+		wl.primaryStack.SetBackgroundColor(bg)
+	}
+	if wl.listTabs != nil {
+		wl.listTabs.SetBackgroundColor(bg)
+	}
+	if wl.previewTabs != nil {
+		wl.previewTabs.SetBackgroundColor(bg)
+	}
+	if wl.activityDetailTabs != nil {
+		wl.activityDetailTabs.SetBackgroundColor(bg)
+	}
+	if wl.tableScroll != nil {
+		wl.tableScroll.SetBackgroundColor(bg)
+	}
+	if wl.eventTableScroll != nil {
+		wl.eventTableScroll.SetBackgroundColor(bg)
+	}
+	if wl.activityDetailScroll != nil {
+		wl.activityDetailScroll.SetBackgroundColor(bg)
+	}
+	if wl.workflowsPanel != nil {
+		wl.workflowsPanel.SetBackgroundColor(bg)
+	}
 	if wl.previewPanel != nil {
 		wl.previewPanel.SetBackgroundColor(bg)
 	}

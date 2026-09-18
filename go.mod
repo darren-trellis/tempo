@@ -4,9 +4,11 @@ go 1.25.2
 
 require (
 	github.com/BurntSushi/toml v1.6.0
+	github.com/Masterminds/semver/v3 v3.4.0
 	github.com/atterpac/jig v0.1.5
 	github.com/creativeprojects/go-selfupdate v1.5.2
 	github.com/gdamore/tcell/v2 v2.13.4
+	github.com/google/uuid v1.6.0
 	github.com/rivo/tview v0.42.0
 	go.temporal.io/api v1.59.0
 	go.temporal.io/sdk v1.38.0
@@ -20,7 +22,6 @@ require (
 require (
 	code.gitea.io/sdk/gitea v0.22.1 // indirect
 	github.com/42wim/httpsig v1.2.3 // indirect
-	github.com/Masterminds/semver/v3 v3.4.0 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/davidmz/go-pageant v1.0.2 // indirect
 	github.com/facebookgo/clock v0.0.0-20150410010913-600d898af40a // indirect
@@ -30,7 +31,6 @@ require (
 	github.com/golang/mock v1.6.0 // indirect
 	github.com/google/go-github/v74 v74.0.0 // indirect
 	github.com/google/go-querystring v1.1.0 // indirect
-	github.com/google/uuid v1.6.0 // indirect
 	github.com/grpc-ecosystem/go-grpc-middleware/v2 v2.3.2 // indirect
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.22.0 // indirect
 	github.com/hashicorp/go-cleanhttp v0.5.2 // indirect

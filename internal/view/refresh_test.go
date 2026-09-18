@@ -229,6 +229,28 @@ func TestToggleAutoRefreshShowsStatus(t *testing.T) {
 	}
 }
 
+func TestTaskQueueToggleAutoRefreshShowsStatus(t *testing.T) {
+	a := &App{menu: layout.NewMenu()}
+	tq := NewTaskQueueView(a)
+	t.Cleanup(tq.stopAutoRefresh)
+
+	tq.toggleAutoRefresh()
+	if !tq.autoRefresh {
+		t.Fatal("expected auto-refresh on")
+	}
+	if a.hintBarMessage() != "Auto-refresh on" {
+		t.Fatalf("on: %q", a.hintBarMessage())
+	}
+
+	tq.toggleAutoRefresh()
+	if tq.autoRefresh {
+		t.Fatal("expected auto-refresh off")
+	}
+	if a.hintBarMessage() != "Auto-refresh off" {
+		t.Fatalf("off: %q", a.hintBarMessage())
+	}
+}
+
 func TestNamespaceToggleAutoRefreshShowsStatus(t *testing.T) {
 	a := &App{menu: layout.NewMenu()}
 	nl := NewNamespaceList(a)

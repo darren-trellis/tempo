@@ -32,13 +32,13 @@ func TestStartWorkflowModalKeepsEscForDropdown(t *testing.T) {
 		t.Fatal("esc should reach the form so an open dropdown can close first")
 	}
 
-	field := newTypeaheadField("workflowType", "Workflow Type", []string{"OrderWorkflow"})
+	field := newDropdownField("workflowType", "Workflow Type", []string{"OrderWorkflow"})
 	field.moveSelection(1)
 	modal.interceptEscape = func() bool {
-		return collapseOpenTypeahead(field)
+		return collapseOpenDropdowns(field)
 	}
 	modal.SetOnDismiss(func() bool {
-		return !collapseOpenTypeahead(field)
+		return !collapseOpenDropdowns(field)
 	})
 	if !modal.InterceptEscape() {
 		t.Fatal("esc should close the open dropdown")
@@ -59,10 +59,10 @@ func TestStartWorkflowModalHintsStayInFooter(t *testing.T) {
 	}, tview.NewBox())
 	modal.SetHints(startWorkflowHints())
 	if hintDescription(modal.Hints(), "Enter") != "Execute" {
-		t.Fatalf("footer hints: %+v", modal.Hints())
+		t.Fatalf("hints: %+v", modal.Hints())
 	}
 	if bar := modal.GetHintBar(); bar != nil && len(bar.Hints) != 0 {
-		t.Fatalf("hints should stay in the footer, got in-modal %+v", bar.Hints)
+		t.Fatalf("jig hint bar should stay unused, got %+v", bar.Hints)
 	}
 }
 

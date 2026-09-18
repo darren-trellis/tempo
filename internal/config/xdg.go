@@ -31,6 +31,29 @@ func ConfigPath() string {
 	return filepath.Join(ConfigDir(), "config.yaml")
 }
 
+// StateDir returns the directory for session state such as command history.
+// Priority: $XDG_STATE_HOME/tempo > ~/.local/state/tempo
+func StateDir() string {
+	if xdg := os.Getenv("XDG_STATE_HOME"); xdg != "" {
+		return filepath.Join(xdg, "tempo")
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return ".tempo"
+	}
+	return filepath.Join(home, ".local", "state", "tempo")
+}
+
+// HistoryPath returns the command history file path.
+func HistoryPath() string {
+	return filepath.Join(StateDir(), "history")
+}
+
+// SearchHistoryPath returns the / search history file path.
+func SearchHistoryPath() string {
+	return filepath.Join(StateDir(), "search_history")
+}
+
 // ThemesDir returns the directory for custom themes.
 func ThemesDir() string {
 	return filepath.Join(ConfigDir(), "themes")

@@ -110,12 +110,8 @@ func TestColumnEditorEnterSavesEdits(t *testing.T) {
 	if len(cfg.WorkflowColumns) != staged {
 		t.Fatalf("enter should keep the edit: %+v", cfg.WorkflowColumns)
 	}
-	written, err := os.ReadFile(filepath.Join(dir, "tempo", "config.yaml"))
-	if err != nil {
-		t.Fatalf("enter should save the config: %v", err)
-	}
-	if len(written) == 0 {
-		t.Fatal("saved config is empty")
+	if _, err := os.Stat(filepath.Join(dir, "tempo", "config.yaml")); !os.IsNotExist(err) {
+		t.Fatalf("enter should not write the config when autosave is off, stat err = %v", err)
 	}
 }
 
@@ -218,5 +214,46 @@ func TestColumnEditorDismissKeepsSavedEdits(t *testing.T) {
 	a.app.Pages().DismissModal()
 	if len(cfg.WorkflowColumns) != len(saved) {
 		t.Fatalf("a saved layout must survive: %+v", cfg.WorkflowColumns)
+	}
+}
+
+func TestActivityColumnEditorEscapeDiscardsEdits(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", dir)
+	cfg := config.DefaultConfig()
+	a := NewAppWithProvider(nil, "default", cfg, "local")
+	wl := NewWorkflowList(a, "default")
+	a.app.Pages().Push(wl)
+
+	wl.showActivityColumnEditor()
+	if !a.app.Pages().CurrentIsModal() {
+		t.Fatal("the activity column editor should be a modal page")
+	}
+
+	pressModal(a, tcell.NewEventKey(tcell.KeyRune, '+', tcell.ModNone))
+	pressModal(a, tcell.NewEventKey(tcell.KeyRune, ' ', tcell.ModNone))
+	if cfg.ActivityColumns == nil {
+		t.Fatal("edits should apply to the table behind the modal")
+	}
+
+	pressModal(a, tcell.NewEventKey(tcell.KeyEscape, 0, tcell.ModNone))
+	if cfg.ActivityColumns != nil {
+		t.Fatalf("escape should discard the edits, got %+v", cfg.ActivityColumns)
+	}
+}
+
+func TestActivityColumnEditorOpensFromPreview(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	cfg := config.DefaultConfig()
+	a := NewAppWithProvider(nil, "default", cfg, "local")
+	wl := NewWorkflowList(a, "default")
+	a.app.Pages().Push(wl)
+	wl.previewKind = previewActivities
+
+	if ev := wl.handlePreviewKeys(tcell.NewEventKey(tcell.KeyRune, '|', 0)); ev != nil {
+		t.Fatal("pipe should open the activity column editor")
+	}
+	if !a.app.Pages().CurrentIsModal() {
+		t.Fatal("the activity column editor should be a modal page")
 	}
 }

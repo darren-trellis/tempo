@@ -9,8 +9,7 @@ import (
 
 type overlayModal struct {
 	*resizableModal
-	background      tview.Primitive
-	interceptEscape func() bool
+	background tview.Primitive
 }
 
 func newOverlayModal(cfg components.ModalConfig, background tview.Primitive) *overlayModal {
@@ -44,32 +43,11 @@ func (m *overlayModal) SetContent(content tview.Primitive) *overlayModal {
 	return m
 }
 
-func (m *overlayModal) InterceptEscape() bool {
-	return m != nil && m.interceptEscape != nil && m.interceptEscape()
-}
-
-func (m *overlayModal) InputHandler() func(*tcell.EventKey, func(tview.Primitive)) {
-	return func(event *tcell.EventKey, setFocus func(tview.Primitive)) {
-		if event != nil && event.Key() == tcell.KeyEscape && m.InterceptEscape() {
-			return
-		}
-		if m.Modal == nil {
-			return
-		}
-		if handler := m.Modal.InputHandler(); handler != nil {
-			handler(event, setFocus)
-		}
-	}
-}
-
 func (a *App) PushModal(modal nav.Component) {
 	if a == nil || a.app == nil {
 		return
 	}
 	pushOverlayModal(a.app.Pages(), modal)
-	if a.app.Menu() != nil && modal != nil {
-		a.app.Menu().SetHints(modal.Hints())
-	}
 }
 
 func pushOverlayModal(pages *nav.Pages, modal nav.Component) {
@@ -101,6 +79,11 @@ func (o *overlayModalPage) Draw(screen tcell.Screen) {
 		x, y, w, h := o.GetRect()
 		o.background.SetRect(x, y, w, h)
 		o.background.Draw(screen)
+	}
+	if g, ok := o.Modal.(interface{ GetPanel() *components.Panel }); ok {
+		if panel := g.GetPanel(); panel != nil {
+			panel.SetFocused(true)
+		}
 	}
 	o.Modal.Draw(screen)
 }

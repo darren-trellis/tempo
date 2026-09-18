@@ -151,6 +151,9 @@ func (wl *WorkflowList) bindTaskQueueKeys() {
 		case 'r':
 			tq.refresh()
 			return nil
+		case 'a':
+			tq.toggleAutoRefresh()
+			return nil
 		}
 		return event
 	})
@@ -165,8 +168,12 @@ func (wl *WorkflowList) bindTaskQueueKeys() {
 			wl.showPollerWorker()
 			return nil
 		}
-		if event.Rune() == 'r' {
+		switch event.Rune() {
+		case 'r':
 			tq.refreshCurrentQueue()
+			return nil
+		case 'a':
+			tq.toggleAutoRefresh()
 			return nil
 		}
 		return event
@@ -369,12 +376,16 @@ func (wl *WorkflowList) setListKind(kind listKind) {
 		return
 	}
 	changing := wl.listKind != kind
+	prev := wl.listKind
 	wl.listKind = kind
 	if wl.listTabs != nil && wl.listTabs.GetActive() != int(kind) {
 		wl.listTabs.SetActive(int(kind))
 	}
 	if !changing {
 		return
+	}
+	if prev == listTaskQueues && wl.taskQueues != nil {
+		wl.taskQueues.Stop()
 	}
 	switch kind {
 	case listTaskQueues:
@@ -395,6 +406,7 @@ func (wl *WorkflowList) setListKind(kind listKind) {
 	if wl.app != nil && wl.app.JigApp() != nil {
 		wl.app.updateCrumbs()
 	}
+	wl.updateStats()
 	wl.applyPreviewLayout()
 }
 

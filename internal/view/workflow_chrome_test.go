@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/atterpac/jig/components"
 	"github.com/atterpac/jig/theme"
 	"github.com/galaxy-io/tempo/internal/config"
 	"github.com/gdamore/tcell/v2"
@@ -55,6 +56,24 @@ func TestLeavingWorkflowsClearsStatusCounts(t *testing.T) {
 	}
 }
 
+func TestWorkflowCountsHideOffWorkflowsTab(t *testing.T) {
+	a := &App{}
+	wl := NewWorkflowList(a, "default")
+	a.SetWorkflowStats(WorkflowStats{Running: 4, Completed: 9})
+	wl.setListKind(listTaskQueues)
+	if a.chromeStatsOn {
+		t.Fatal("task queues should hide workflow counts")
+	}
+	a.syncWorkflowStats(wl)
+	if a.chromeStatsOn {
+		t.Fatal("staying on task queues should keep counts hidden")
+	}
+	wl.setListKind(listWorkflows)
+	if !a.chromeStatsOn {
+		t.Fatal("returning to workflows should show counts again")
+	}
+}
+
 func TestWorkflowCountChromeOmitsLabels(t *testing.T) {
 	a := &App{
 		chromeProfile: "local",
@@ -63,7 +82,7 @@ func TestWorkflowCountChromeOmitsLabels(t *testing.T) {
 		chromeStats:   WorkflowStats{Running: 4, Completed: 9, Failed: 1},
 	}
 	var b strings.Builder
-	for _, seg := range a.tabChromeSegments() {
+	for _, seg := range a.statusBarSegments() {
 		b.WriteString(seg.text)
 	}
 	got := b.String()
@@ -78,17 +97,17 @@ func TestWorkflowCountChromeOmitsLabels(t *testing.T) {
 	}
 }
 
-func TestCrumbStatBadgesUseLabels(t *testing.T) {
-	got := crumbStatBadges(WorkflowStats{Running: 1234, Completed: 23, Failed: 2, TimedOut: 4, ContinuedAsNew: 1000000})
+func TestWorkflowStatBadgesUseLabels(t *testing.T) {
+	got := workflowStatBadges(WorkflowStats{Running: 1234, Completed: 23, Failed: 2, TimedOut: 4, ContinuedAsNew: 1000000})
 	if len(got) != 5 || got[0].Text != "1,234 Running" || got[1].Text != "23 Completed" || got[2].Text != "2 Failed" || got[3].Text != "4 Timed Out" || got[4].Text != "1,000,000 Continued as New" {
 		t.Fatalf("badges=%v", got)
 	}
-	if len(crumbStatBadges(WorkflowStats{})) != 0 {
+	if len(workflowStatBadges(WorkflowStats{})) != 0 {
 		t.Fatal("zero counts should not render badges")
 	}
 }
 
-func TestPaneChromeDrawsConnectionNotCounts(t *testing.T) {
+func TestPaneChromeOmitsConnectionAndCounts(t *testing.T) {
 	a := &App{connected: true, chromeStatsOn: true, chromeStats: WorkflowStats{Running: 3}}
 	panel := newChromePanel(a)
 	panel.SetTitle("prod (3)")
@@ -113,41 +132,102 @@ func TestPaneChromeDrawsConnectionNotCounts(t *testing.T) {
 	if strings.Contains(got, "Running") || strings.Contains(got, "3 | 0 | 0") {
 		t.Fatalf("counts should not be on the pane border, got %q", got)
 	}
-	if !strings.Contains(got, theme.IconConnected) {
-		t.Fatalf("connection glyph should stay on the pane border, got %q", got)
+	if strings.Contains(got, theme.IconConnected) {
+		t.Fatalf("connection glyph should not be on the pane border, got %q", got)
 	}
 }
 
-func TestCrumbStatsDrawsBadges(t *testing.T) {
+func TestStatBadgesDrawOnBottomBar(t *testing.T) {
 	a := NewAppWithProvider(nil, "default", config.DefaultConfig(), "local")
 	a.SetWorkflowStats(WorkflowStats{Running: 100, Completed: 23})
 	a.updateCrumbs()
 	crumbs := a.app.Crumbs()
 	crumbs.SetRect(0, 0, 80, 1)
+	a.menu.SetRect(0, 1, 80, 1)
+	screen := tcell.NewSimulationScreen("UTF-8")
+	if err := screen.Init(); err != nil {
+		t.Fatal(err)
+	}
+	screen.SetSize(80, 2)
+	crumbs.Draw(screen)
+	a.menu.Draw(screen)
+	a.drawBottomChrome(screen)
+	top := rowText(screen, 0, 80)
+	bottom := rowText(screen, 1, 80)
+	if strings.Contains(top, "Running") || strings.Contains(top, "Completed") {
+		t.Fatalf("counts should not be on the breadcrumb bar, got %q", top)
+	}
+	if !strings.Contains(bottom, "100 Running") || !strings.Contains(bottom, "23 Completed") {
+		t.Fatalf("bottom bar should show labeled badges, got %q", bottom)
+	}
+
+	a.setStatusMessage("Copied workflow ID")
+	a.menu.Draw(screen)
+	a.drawHintStatus(screen)
+	a.drawBottomChrome(screen)
+	bottom = rowText(screen, 1, 80)
+	if !strings.Contains(bottom, "Copied workflow ID") {
+		t.Fatalf("status should stay on the left, got %q", bottom)
+	}
+	if !strings.Contains(bottom, "100 Running") {
+		t.Fatalf("counts should stay on the right with a status message, got %q", bottom)
+	}
+
+	a.modalHintsOn = true
+	a.menu.Draw(screen)
+	a.drawBottomChrome(screen)
+	bottom = rowText(screen, 1, 80)
+	if strings.Contains(bottom, "Running") {
+		t.Fatalf("counts should hide while modal hints are on, got %q", bottom)
+	}
+}
+
+func TestBottomBarDrawsConnectionAndCodec(t *testing.T) {
+	a := NewAppWithProvider(nil, "default", config.DefaultConfig(), "local")
+	a.connected = true
+	a.chromeCodecIcon = theme.IconCloud
+	a.SetWorkflowStats(WorkflowStats{Running: 4})
+	a.menu.SetRect(0, 0, 80, 1)
 	screen := tcell.NewSimulationScreen("UTF-8")
 	if err := screen.Init(); err != nil {
 		t.Fatal(err)
 	}
 	screen.SetSize(80, 1)
-	crumbs.Draw(screen)
-	a.drawCrumbStats(screen)
-	var b strings.Builder
-	for x := 0; x < 80; x++ {
-		ch, _, _, _ := screen.GetContent(x, 0)
-		if ch != 0 {
-			b.WriteRune(ch)
-		}
+	a.menu.Draw(screen)
+	a.drawBottomChrome(screen)
+	got := rowText(screen, 0, 80)
+	if !strings.Contains(got, theme.IconConnected) {
+		t.Fatalf("bottom bar should show the connection glyph, got %q", got)
 	}
-	got := b.String()
-	if !strings.Contains(got, "100 Running") || !strings.Contains(got, "23 Completed") {
-		t.Fatalf("breadcrumb bar should show labeled badges, got %q", got)
+	if !strings.Contains(got, theme.IconCloud) {
+		t.Fatalf("bottom bar should show the codec glyph, got %q", got)
+	}
+	if !strings.Contains(got, "4 Running") {
+		t.Fatalf("counts should sit with the status glyphs, got %q", got)
+	}
+	if !strings.Contains(got, theme.IconCloud+" | ") || !strings.Contains(got, "4 Running") {
+		t.Fatalf("codec glyph should be pipe-separated from counts, got %q", got)
+	}
+	if !strings.Contains(got, theme.IconRefresh) {
+		t.Fatalf("bottom bar should show the auto-refresh glyph, got %q", got)
+	}
+
+	a.modalHintsOn = true
+	a.menu.Draw(screen)
+	a.drawBottomChrome(screen)
+	got = rowText(screen, 0, 80)
+	if !strings.Contains(got, theme.IconConnected) {
+		t.Fatalf("connection should stay visible with modal hints, got %q", got)
+	}
+	if strings.Contains(got, "Running") {
+		t.Fatalf("counts should hide while modal hints are on, got %q", got)
 	}
 }
 
 func TestTabChromeUsesConnectionGlyphs(t *testing.T) {
 	a := &App{connected: true, chromeCodecIcon: theme.IconCloud}
 	var b strings.Builder
-	for _, seg := range a.tabChromeSegments() {
+	for _, seg := range a.statusBarSegments() {
 		b.WriteString(seg.text)
 	}
 	got := b.String()
@@ -160,7 +240,67 @@ func TestTabChromeUsesConnectionGlyphs(t *testing.T) {
 	if !strings.Contains(got, theme.IconConnected+" | "+theme.IconCloud) {
 		t.Fatalf("connectivity icons should be pipe-separated, got %q", got)
 	}
+	if !strings.Contains(got, theme.IconCloud+" | "+theme.IconPause) {
+		t.Fatalf("codec and auto-refresh glyphs should be pipe-separated, got %q", got)
+	}
 	if strings.Contains(got, "connected") || strings.Contains(got, "codec") {
 		t.Fatalf("glyphs should not include labels, got %q", got)
+	}
+}
+
+func TestAutoRefreshGlyphFollowsCurrentView(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	a := NewAppWithProvider(nil, "default", config.DefaultConfig(), "local")
+	wl := NewWorkflowList(a, "default")
+	wl.keepDataOnStart = true
+	a.app.Pages().Push(wl)
+	if a.autoRefreshChromeText() != theme.IconPause {
+		t.Fatal("workflows default to auto-refresh off")
+	}
+	wl.autoRefresh = true
+	if a.autoRefreshChromeText() != theme.IconRefresh {
+		t.Fatal("workflows should show refresh when auto-refresh is on")
+	}
+	wl.setListKind(listTaskQueues)
+	if a.autoRefreshChromeText() != theme.IconPause {
+		t.Fatal("task queues default to auto-refresh off")
+	}
+	wl.taskQueues.autoRefresh = true
+	if a.autoRefreshChromeText() != theme.IconRefresh {
+		t.Fatal("task queues should show refresh when auto-refresh is on")
+	}
+}
+
+func TestModalFocusHighlightsModalPane(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	a := NewAppWithProvider(nil, "default", config.DefaultConfig(), "local")
+	wl := NewWorkflowList(a, "default")
+	wl.keepDataOnStart = true
+	a.app.Pages().Push(wl)
+	wl.focusPane = focusWorkflows
+	wl.applyFocusStyles()
+	if wl.workflowsPanel == nil || !wl.workflowsPanel.IsFocused() {
+		t.Fatal("workflow pane should be highlighted before a modal opens")
+	}
+
+	a.showThemeSelector()
+	wl.applyFocusStyles()
+	if wl.workflowsPanel.IsFocused() {
+		t.Fatal("background pane should not stay highlighted while a modal is focused")
+	}
+
+	current := a.app.Pages().Current()
+	panelOwner, ok := current.(interface{ GetPanel() *components.Panel })
+	if !ok {
+		t.Fatalf("modal type %T should expose a panel", current)
+	}
+	screen := tcell.NewSimulationScreen("UTF-8")
+	if err := screen.Init(); err != nil {
+		t.Fatal(err)
+	}
+	screen.SetSize(80, 24)
+	current.Draw(screen)
+	if panel := panelOwner.GetPanel(); panel == nil || !panel.IsFocused() {
+		t.Fatal("focused modal pane should use the accent border")
 	}
 }
