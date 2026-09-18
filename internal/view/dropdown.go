@@ -28,6 +28,7 @@ type dropdownField struct {
 	browseAll   bool
 	focused     bool
 	validator   func(any) error
+	onChange    func(string)
 }
 
 func newDropdownField(name, label string, options []string) *dropdownField {
@@ -76,6 +77,17 @@ func (f *dropdownField) SetOptionsOrdered(options []string) *dropdownField {
 func (f *dropdownField) SetValidator(v func(any) error) *dropdownField {
 	f.validator = v
 	return f
+}
+
+func (f *dropdownField) SetChangedFunc(fn func(string)) *dropdownField {
+	f.onChange = fn
+	return f
+}
+
+func (f *dropdownField) emitChange() {
+	if f != nil && f.onChange != nil {
+		f.onChange(f.value)
+	}
 }
 
 func (f *dropdownField) GetName() string { return f.name }
@@ -142,11 +154,9 @@ func (f *dropdownField) acceptSuggestion() bool {
 		idx = 0
 	}
 	choice := f.matches[idx]
-	if f.value == choice {
-		return false
-	}
 	f.SetValue(choice)
 	f.expanded = false
+	f.emitChange()
 	return true
 }
 

@@ -4,26 +4,27 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/atterpac/jig/theme"
 	"github.com/galaxy-io/tempo/internal/temporal"
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 )
 
-func TestPrimaryPaneTitleIsProfile(t *testing.T) {
+func TestPrimaryPaneHasNoTitle(t *testing.T) {
 	a := &App{chromeProfile: "prod"}
 	wl := NewWorkflowList(a, "default")
-	if got := wl.primaryPaneTitle(); got != "prod (0)" {
-		t.Fatalf("pane title=%q", got)
+	if got := paneTitle(wl.workflowsPanel); got != "" {
+		t.Fatalf("primary pane should have no title, got %q", got)
 	}
 	a.app = nil
 	a.setProfile("staging")
 	wl.applyProfileTitle()
-	if got := wl.primaryPaneTitle(); got != "staging (0)" {
-		t.Fatalf("updated pane title=%q", got)
+	if got := paneTitle(wl.workflowsPanel); got != "" {
+		t.Fatalf("profile should not return to the pane, got %q", got)
 	}
 }
 
-func TestPrimaryPaneTitleUsesDisplayedCountAndFilter(t *testing.T) {
+func TestPrimaryPaneOmitsCountsAndFilter(t *testing.T) {
 	a := &App{chromeProfile: "prod"}
 	wl := NewWorkflowList(a, "default")
 	wl.allWorkflows = []temporal.Workflow{
@@ -33,13 +34,16 @@ func TestPrimaryPaneTitleUsesDisplayedCountAndFilter(t *testing.T) {
 	}
 	wl.workflows = wl.allWorkflows[:1]
 	wl.populateTable()
-	if got := wl.primaryPaneTitle(); got != "prod (1)" {
-		t.Fatalf("displayed count title=%q", got)
+	if got := paneTitle(wl.workflowsPanel); got != "" {
+		t.Fatalf("counts should not live on the pane, got %q", got)
+	}
+	if wl.loadedWorkflowCount() != 3 || wl.displayedWorkflowCount() != 1 {
+		t.Fatalf("loaded=%d displayed=%d", wl.loadedWorkflowCount(), wl.displayedWorkflowCount())
 	}
 	wl.filterText = "wf-1"
 	wl.applyProfileTitle()
-	if got := wl.primaryPaneTitle(); got != "prod (/wf-1) (1)" {
-		t.Fatalf("filter title=%q", got)
+	if got := paneTitle(wl.workflowsPanel); got != "" {
+		t.Fatalf("filter should not live on the pane, got %q", got)
 	}
 	if wl.workflowTab != nil && strings.Contains(wl.workflowTab.Name, "wf-1") {
 		t.Fatalf("filter should not live on the workflows tab, got %q", wl.workflowTab.Name)
@@ -71,16 +75,22 @@ func paneTitle(panel interface{ Draw(tcell.Screen) }) string {
 
 func TestWorkflowListTitleListMode(t *testing.T) {
 	wl := NewWorkflowList(&App{}, "default")
-	if wl.workflowTab == nil || wl.workflowTab.Name != "Workflows (Tree)" {
+	if wl.workflowTab == nil || wl.workflowTab.Name != "Workflows" {
 		t.Fatalf("tree title: %+v", wl.workflowTab)
 	}
 	wl.toggleWorkflowTree()
-	if wl.workflowTab.Name != "Workflows (List)" {
+	if wl.workflowTab.Name != "Workflows" {
 		t.Fatalf("list title: %q", wl.workflowTab.Name)
 	}
+	if workflowTreeChromeText(wl.workflowTreeMode) != theme.IconList {
+		t.Fatal("list mode should use the list glyph")
+	}
 	wl.toggleWorkflowTree()
-	if wl.workflowTab.Name != "Workflows (Tree)" {
+	if wl.workflowTab.Name != "Workflows" {
 		t.Fatalf("restored tree title: %q", wl.workflowTab.Name)
+	}
+	if workflowTreeChromeText(wl.workflowTreeMode) != theme.IconNamespace {
+		t.Fatal("tree mode should use the tree glyph")
 	}
 }
 
@@ -133,7 +143,7 @@ func TestEmptyWorkflowsStillSwitchListTabs(t *testing.T) {
 	wl.workflows = nil
 	wl.populateTable()
 
-	if wl.workflowTab == nil || wl.workflowTab.Content != wl.tableScroll {
+	if wl.workflowTab == nil || wl.workflowTab.Content != wl.workflowStack {
 		t.Fatal("empty workflows should keep the table mounted so tab keys still work")
 	}
 

@@ -200,6 +200,30 @@ func TestShouldShowScrollbars(t *testing.T) {
 	}
 }
 
+func TestShouldWrapFilters(t *testing.T) {
+	if DefaultConfig().ShouldWrapFilters() {
+		t.Fatal("filter_wrap should default to off")
+	}
+	on := true
+	if !(&Config{FilterWrap: &on}).ShouldWrapFilters() {
+		t.Fatal("filter_wrap: true should wrap chips")
+	}
+	off := false
+	if (&Config{FilterWrap: &off}).ShouldWrapFilters() {
+		t.Fatal("filter_wrap: false should overflow with +N")
+	}
+	if ((*Config)(nil)).ShouldWrapFilters() {
+		t.Fatal("nil config should default to off")
+	}
+	parsed, err := ParseConfigFile([]byte("filter_wrap: true\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !parsed.ShouldWrapFilters() {
+		t.Fatal("yaml filter_wrap: true should wrap chips")
+	}
+}
+
 func TestMouseScrollStepSize(t *testing.T) {
 	if DefaultConfig().MouseScrollStepSize() != DefaultMouseScrollStep {
 		t.Fatalf("default mouse scroll step = %d", DefaultConfig().MouseScrollStepSize())
@@ -605,5 +629,49 @@ func TestWorkerQuietWindowsRoundTripYAML(t *testing.T) {
 	}
 	if got := cfg.WorkerHeartbeatQuietAfter(); got != 4*time.Minute {
 		t.Fatalf("heartbeat window from yaml = %s", got)
+	}
+}
+
+func TestEnsureSavedFiltersSeedsOnlyWhenUnset(t *testing.T) {
+	cfg := DefaultConfig()
+	if cfg.SavedFilters != nil {
+		t.Fatal("DefaultConfig should leave saved filters unset")
+	}
+	cfg.EnsureSavedFilters()
+	if len(cfg.GetSavedFilters()) == 0 {
+		t.Fatal("empty config should get the built-in filters")
+	}
+	n := len(cfg.SavedFilters)
+	cfg.EnsureSavedFilters()
+	if len(cfg.SavedFilters) != n {
+		t.Fatal("seeding twice should not duplicate filters")
+	}
+
+	owned := &Config{SavedFilters: []SavedFilter{}}
+	owned.EnsureSavedFilters()
+	if owned.SavedFilters == nil || len(owned.SavedFilters) != 0 {
+		t.Fatal("an explicit empty list should stay empty")
+	}
+}
+
+func TestMoveSavedFilterReorders(t *testing.T) {
+	cfg := &Config{SavedFilters: []SavedFilter{{Name: "a"}, {Name: "b"}, {Name: "c"}}}
+	cfg.MoveSavedFilter(2, 0)
+	if cfg.SavedFilters[0].Name != "c" || cfg.SavedFilters[1].Name != "a" || cfg.SavedFilters[2].Name != "b" {
+		t.Fatalf("got %+v", cfg.SavedFilters)
+	}
+	cfg.MoveSavedFilter(0, 2)
+	if cfg.SavedFilters[0].Name != "a" || cfg.SavedFilters[2].Name != "c" {
+		t.Fatalf("move down %+v", cfg.SavedFilters)
+	}
+}
+
+func TestParseConfigSeedsSavedFiltersWhenOmitted(t *testing.T) {
+	cfg, err := ParseConfigFile([]byte("theme: nord\nactive_profile: default\nprofiles:\n  default:\n    address: localhost:7233\n    namespace: default\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(cfg.GetSavedFilters()) == 0 {
+		t.Fatal("omitted saved_filters should seed defaults")
 	}
 }

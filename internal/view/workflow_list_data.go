@@ -71,7 +71,7 @@ func (wl *WorkflowList) loadData() {
 }
 
 func (wl *WorkflowList) liveRefresh() {
-	if wl.liveBusy {
+	if wl.selectionMode || wl.liveBusy {
 		return
 	}
 	wl.liveBusy = true
@@ -83,6 +83,9 @@ func (wl *WorkflowList) fetchWorkflows(live bool) {
 		go func() {
 			wl.app.JigApp().QueueUpdateDraw(func() {
 				wl.liveBusy = false
+				if wl.selectionMode {
+					return
+				}
 				wl.populateTable()
 				wl.updateStats()
 			})
@@ -98,6 +101,10 @@ func (wl *WorkflowList) fetchWorkflows(live bool) {
 	}
 
 	if live {
+		if wl.selectionMode {
+			wl.liveBusy = false
+			return
+		}
 		if wl.filterText != "" && wl.visibilityQuery == "" {
 			wl.refreshCounts()
 			return
@@ -167,6 +174,9 @@ func (wl *WorkflowList) startWindow(live bool) {
 			wl.liveBusy = false
 			wl.pageBusy = false
 			wl.setLoading(false)
+			if live && wl.selectionMode {
+				return
+			}
 			if listErr != nil {
 				if !live {
 					wl.showError(listErr)
@@ -246,6 +256,9 @@ func (wl *WorkflowList) refreshLoadedPages() {
 			wl.liveBusy = false
 			wl.pageBusy = false
 			wl.setLoading(false)
+			if wl.selectionMode {
+				return
+			}
 			for _, result := range results {
 				if result.err != nil {
 					continue
@@ -802,6 +815,9 @@ func (wl *WorkflowList) refreshLivePreview() {
 }
 
 func (wl *WorkflowList) startAutoRefresh() {
+	if wl.selectionMode {
+		return
+	}
 	select {
 	case <-wl.stopRefresh:
 	default:

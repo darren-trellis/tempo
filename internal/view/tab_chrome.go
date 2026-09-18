@@ -42,12 +42,37 @@ func (a *App) statusBarSegments() []chromeSeg {
 		add(icon, a.codecChromeColor())
 	}
 	add(a.autoRefreshChromeText(), a.autoRefreshChromeColor())
+	if wl, ok := a.workflowList(); ok && wl.workflowsActive() {
+		add(workflowTreeChromeText(wl.workflowTreeMode), theme.Fg())
+	}
+	add(a.profileTitle(), theme.Fg())
 	return segs
 }
 
 type workflowStatBadge struct {
 	Text    string
 	Variant components.BadgeVariant
+}
+
+func workflowTreeChromeText(tree bool) string {
+	if tree {
+		return theme.IconNamespace
+	}
+	return theme.IconList
+}
+
+func (a *App) workflowChromeBadges() []workflowStatBadge {
+	if a == nil || !a.chromeStatsOn {
+		return nil
+	}
+	var out []workflowStatBadge
+	if wl, ok := a.workflowList(); ok && wl.workflowsActive() {
+		out = append(out,
+			workflowStatBadge{Text: formatCount(wl.loadedWorkflowCount()) + " Loaded", Variant: components.BadgeDefault},
+			workflowStatBadge{Text: formatCount(wl.displayedWorkflowCount()) + " Displayed", Variant: components.BadgePrimary},
+		)
+	}
+	return append(out, workflowStatBadges(a.chromeStats)...)
 }
 
 func workflowStatBadges(stats WorkflowStats) []workflowStatBadge {
@@ -112,8 +137,8 @@ func (a *App) drawBottomChrome(screen tcell.Screen) {
 
 	var badges []*components.Badge
 	badgeWidth := 0
-	if a.chromeStatsOn && !a.modalHintsOn {
-		for i, spec := range workflowStatBadges(a.chromeStats) {
+	if !a.modalHintsOn {
+		for i, spec := range a.workflowChromeBadges() {
 			badge := components.NewBadge(spec.Text).SetVariant(spec.Variant).SetPill(true)
 			if i > 0 {
 				badgeWidth++

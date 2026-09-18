@@ -57,10 +57,6 @@ func (a *App) executeBuiltinCommand(fields []string) bool {
 		a.execSearch()
 	case "filter":
 		a.execFilter(args)
-	case "query":
-		a.execQuery(args)
-	case "date":
-		a.execDate()
 	case "workflow":
 		a.execWorkflow(args)
 	case "namespace":
@@ -583,33 +579,29 @@ func (a *App) execSearch() {
 }
 
 func (a *App) execFilter(args []string) {
-	wl, ok := a.requireWorkflowList("usage: filter save|load")
+	wl, ok := a.requireWorkflowList("usage: filter [manage|load <name>]")
 	if !ok {
 		return
 	}
 	if !wl.workflowsActive() {
-		a.ToastWarning("usage: filter save|load")
+		a.ToastWarning("usage: filter [manage|load <name>]")
 		return
 	}
 	if len(args) == 0 {
-		wl.showFilter()
+		wl.showFilterBuilder()
 		return
 	}
 	switch strings.ToLower(args[0]) {
-	case "save":
-		if wl.visibilityQuery == "" {
-			a.ToastWarning("No query to save")
-			return
-		}
-		wl.showSaveFilter()
+	case "manage":
+		wl.showFilterManager()
 	case "load":
 		if len(args) > 1 {
 			a.loadSavedFilter(wl, strings.Join(args[1:], " "))
 			return
 		}
-		wl.showSavedFilters()
+		wl.showFilterManager()
 	default:
-		a.ToastWarning("usage: filter save|load")
+		a.ToastWarning("usage: filter [manage|load <name>]")
 	}
 }
 
@@ -620,46 +612,11 @@ func (a *App) loadSavedFilter(wl *WorkflowList, name string) {
 	}
 	for _, f := range a.config.GetSavedFilters() {
 		if strings.EqualFold(strings.TrimSpace(f.Name), name) {
-			wl.applyVisibilityQuery(f.Query)
+			wl.applySavedFilter(f)
 			return
 		}
 	}
 	a.ToastWarning("Unknown filter " + name)
-}
-
-func (a *App) execQuery(args []string) {
-	wl, ok := a.requireWorkflowList("usage: query templates|clear")
-	if !ok {
-		return
-	}
-	if !wl.workflowsActive() {
-		a.ToastWarning("usage: query templates|clear")
-		return
-	}
-	if len(args) == 0 {
-		wl.showVisibilityQuery()
-		return
-	}
-	switch strings.ToLower(args[0]) {
-	case "templates":
-		wl.showQueryTemplates()
-	case "clear":
-		wl.clearVisibilityQuery()
-	default:
-		a.ToastWarning("usage: query templates|clear")
-	}
-}
-
-func (a *App) execDate() {
-	wl, ok := a.requireWorkflowList("usage: date")
-	if !ok {
-		return
-	}
-	if !wl.workflowsActive() {
-		a.ToastWarning("usage: date")
-		return
-	}
-	wl.showDateRangePicker()
 }
 
 func (a *App) execWorkflow(args []string) {

@@ -213,8 +213,17 @@ func TestListHintsIncludeWorkflowActions(t *testing.T) {
 	if desc := hintDescription(wl.Hints(), "D"); desc != "Delete" {
 		t.Fatalf("list delete hint: %q", desc)
 	}
-	if desc := hintDescription(wl.Hints(), "d"); desc != "Date Range" {
-		t.Fatalf("list date range hint: %q", desc)
+	if desc := hintDescription(wl.Hints(), "/"); desc != "Search" {
+		t.Fatalf("list search hint: %q", desc)
+	}
+	if desc := hintDescription(wl.Hints(), "F"); desc != "Filter" {
+		t.Fatalf("list filter hint: %q", desc)
+	}
+	if desc := hintDescription(wl.Hints(), "f"); desc != "Filters" {
+		t.Fatalf("list filters hint: %q", desc)
+	}
+	if desc := hintDescription(wl.Hints(), "d"); desc != "" {
+		t.Fatalf("date range should be gone, got %q", desc)
 	}
 
 	resettable := false

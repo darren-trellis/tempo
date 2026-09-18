@@ -18,12 +18,16 @@ func (wl *WorkflowList) toggleSelectionMode() {
 	if wl.selectionMode {
 		wl.table.SetMultiSelect(true)
 		wl.SetMasterTitle(fmt.Sprintf("%s Workflows (Select Mode)", theme.IconWorkflow))
+		wl.stopAutoRefresh()
 	} else {
 		indices := wl.selectedWorkflowIndices()
 		wl.table.SetMultiSelect(false)
 		wl.table.ClearSelection()
 		wl.refreshWorkflowRowStyles(indices...)
 		wl.updatePanelTitle()
+		if wl.autoRefresh {
+			wl.startAutoRefresh()
+		}
 	}
 	wl.refreshSelectHints()
 }

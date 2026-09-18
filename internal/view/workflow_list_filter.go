@@ -37,6 +37,8 @@ func (wl *WorkflowList) convertFilterToVisibilityQuery() {
 		return
 	}
 
+	wl.activeFilterName = ""
+	wl.filterClauses = nil
 	wl.visibilityQuery = workflowIDFilterQuery(wl.filterText)
 	wl.updatePanelTitle()
 	wl.loadData()
@@ -200,6 +202,8 @@ func (wl *WorkflowList) clearAllFilters() {
 	server := wl.visibilityQuery != ""
 	wl.filterText = ""
 	wl.visibilityQuery = ""
+	wl.activeFilterName = ""
+	wl.filterClauses = nil
 	wl.serverCompletions = nil
 	wl.lastCompletionQuery = ""
 	orig := wl.originalWorkflows

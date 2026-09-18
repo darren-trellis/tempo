@@ -134,11 +134,19 @@ func FromTemporalConfig(address, namespace, tlsCert, tlsKey, tlsCA, tlsServerNam
 	}
 }
 
-// SavedFilter represents a saved visibility query.
+type FilterClause struct {
+	Key   string `yaml:"key"`
+	Op    string `yaml:"op"`
+	Value string `yaml:"value"`
+}
+
+// SavedFilter is a named list of AND-ed visibility clauses.
+// Query is kept for older configs that stored a raw visibility string.
 type SavedFilter struct {
-	Name      string `yaml:"name"`
-	Query     string `yaml:"query"`
-	IsDefault bool   `yaml:"is_default,omitempty"`
+	Name      string         `yaml:"name"`
+	Query     string         `yaml:"query,omitempty"`
+	Clauses   []FilterClause `yaml:"clauses,omitempty"`
+	IsDefault bool           `yaml:"is_default,omitempty"`
 }
 
 // ExternalProfilePrefix is the prefix used for profiles imported from the Temporal CLI.
@@ -163,6 +171,7 @@ type Config struct {
 	PreviewCacheSize   *int                        `yaml:"preview_cache_size,omitempty"`
 	MouseScrollStep    *int                        `yaml:"mouse_scroll_step,omitempty"`
 	ShowScrollbars     *bool                       `yaml:"show_scrollbars,omitempty"`
+	FilterWrap         *bool                       `yaml:"filter_wrap,omitempty"`
 	ModalShadow        string                      `yaml:"modal_shadow,omitempty"`
 	WorkflowPageSize   *int                        `yaml:"workflow_page_size,omitempty"`
 	// How long a worker may go unseen before the workers tab calls it stale,
@@ -383,6 +392,13 @@ func (c *Config) ShouldShowScrollbars() bool {
 	return *c.ShowScrollbars
 }
 
+func (c *Config) ShouldWrapFilters() bool {
+	if c == nil || c.FilterWrap == nil {
+		return false
+	}
+	return *c.FilterWrap
+}
+
 const (
 	ModalShadowDirectional = "directional"
 	ModalShadowNone        = "none"
@@ -551,6 +567,7 @@ func Load() (*Config, error) {
 	if err != nil {
 		if os.IsNotExist(err) {
 			cfg := DefaultConfig()
+			cfg.EnsureSavedFilters()
 			cfg.loadExternalProfiles()
 			return cfg, nil
 		}
@@ -808,10 +825,57 @@ func (c *Config) ProfileExists(name string) bool {
 	return ok
 }
 
-// Saved filter management methods
+func (c *Config) EnsureSavedFilters() {
+	if c == nil || c.SavedFilters != nil {
+		return
+	}
+	c.SavedFilters = DefaultSavedFilters()
+}
 
-// GetSavedFilters returns all saved filters.
+func DefaultSavedFilters() []SavedFilter {
+	status := func(name, value string) SavedFilter {
+		return SavedFilter{Name: name, Clauses: []FilterClause{{Key: "ExecutionStatus", Op: "eq", Value: value}}}
+	}
+	started := func(name, value string) SavedFilter {
+		return SavedFilter{Name: name, Clauses: []FilterClause{{Key: "StartTime", Op: "after", Value: value}}}
+	}
+	return []SavedFilter{
+		status("Running Workflows", "Running"),
+		{Name: "Unhandled Failures", Query: "`ExecutionStatus`=\"Running\" AND `TemporalReportedProblems` IN (\"category=WorkflowTaskFailed\", \"category=WorkflowTaskTimedOut\")"},
+		status("Failed Workflows", "Failed"),
+		status("Completed Workflows", "Completed"),
+		status("Cancelled Workflows", "Canceled"),
+		status("Timed Out Workflows", "TimedOut"),
+		started("Started Today", "$TODAY"),
+		{Name: "Started Yesterday", Clauses: []FilterClause{
+			{Key: "StartTime", Op: "after", Value: "$YESTERDAY"},
+			{Key: "StartTime", Op: "before", Value: "$TODAY"},
+		}},
+		started("Started This Week", "$THIS_WEEK"),
+		started("Started Last Hour", "$HOUR_AGO"),
+		started("Started Last 30 Min", "$MINUTES_AGO_30"),
+		started("Started Last 24 Hours", "$HOURS_AGO_24"),
+		started("Started Last 7 Days", "$DAYS_AGO_7"),
+		started("Started Last 30 Days", "$DAYS_AGO_30"),
+		{Name: "Long Running (>1h)", Clauses: []FilterClause{
+			{Key: "ExecutionStatus", Op: "eq", Value: "Running"},
+			{Key: "StartTime", Op: "before", Value: "$HOUR_AGO"},
+		}},
+		{Name: "Long Running (>6h)", Clauses: []FilterClause{
+			{Key: "ExecutionStatus", Op: "eq", Value: "Running"},
+			{Key: "StartTime", Op: "before", Value: "$HOURS_AGO_6"},
+		}},
+		{Name: "Failed Today", Clauses: []FilterClause{
+			{Key: "ExecutionStatus", Op: "eq", Value: "Failed"},
+			{Key: "StartTime", Op: "after", Value: "$TODAY"},
+		}},
+	}
+}
+
 func (c *Config) GetSavedFilters() []SavedFilter {
+	if c == nil {
+		return nil
+	}
 	return c.SavedFilters
 }
 
@@ -876,11 +940,26 @@ func (c *Config) SetDefaultFilter(name string) error {
 	return nil
 }
 
-// ClearDefaultFilter clears the default filter.
 func (c *Config) ClearDefaultFilter() {
+	if c == nil {
+		return
+	}
 	for i := range c.SavedFilters {
 		c.SavedFilters[i].IsDefault = false
 	}
+}
+
+func (c *Config) MoveSavedFilter(from, to int) {
+	if c == nil {
+		return
+	}
+	n := len(c.SavedFilters)
+	if from < 0 || from >= n || to < 0 || to >= n || from == to {
+		return
+	}
+	item := c.SavedFilters[from]
+	c.SavedFilters = append(c.SavedFilters[:from], c.SavedFilters[from+1:]...)
+	c.SavedFilters = append(c.SavedFilters[:to], append([]SavedFilter{item}, c.SavedFilters[to:]...)...)
 }
 
 // loadThemeFile loads a theme from a YAML file.

@@ -6,6 +6,7 @@ import (
 	"github.com/atterpac/jig/components"
 	"github.com/atterpac/jig/theme"
 	"github.com/gdamore/tcell/v2"
+	"github.com/rivo/tview"
 )
 
 type listKind int
@@ -18,11 +19,8 @@ const (
 	listKindCount
 )
 
-func workflowListTabName(tree bool) string {
-	if tree {
-		return "Workflows (Tree)"
-	}
-	return "Workflows (List)"
+func workflowListTabName() string {
+	return "Workflows"
 }
 
 func workflowTabName(title string) string {
@@ -37,10 +35,15 @@ func (wl *WorkflowList) setupListTabs() {
 	wl.ensureTaskQueues()
 	wl.ensureSchedules()
 	wl.ensureWorkers()
+	wl.filterBar = newFilterChipBar(wl)
+	wl.workflowStack = tview.NewFlex().SetDirection(tview.FlexRow)
+	wl.workflowStack.SetBackgroundColor(theme.Bg())
+	wl.workflowBody = wl.tableScroll
+	wl.mountWorkflowContent()
 	wl.listTabs = components.NewTabs().
 		SetShowIcons(true).
 		SetShowBadges(false).
-		AddTabWithIcon(workflowListTabName(wl.workflowTreeMode), theme.IconWorkflow, wl.tableScroll).
+		AddTabWithIcon(workflowListTabName(), theme.IconWorkflow, wl.workflowStack).
 		AddTabWithIcon("Task Queues", theme.IconTaskQueue, wl.taskQueues.queueScroll).
 		AddTabWithIcon("Schedules", theme.IconSchedule, wl.schedules.tableScroll).
 		AddTabWithIcon("Workers", theme.IconUsers, wl.workers.tableScroll).
@@ -464,7 +467,7 @@ func (wl *WorkflowList) listTabAt(x, y int) (listKind, bool) {
 	if tw <= 0 || y != ty || x < tx || x >= tx+tw {
 		return 0, false
 	}
-	names := [listKindCount]string{"Workflows (List)", "Task Queues", "Schedules", "Workers"}
+	names := [listKindCount]string{"Workflows", "Task Queues", "Schedules", "Workers"}
 	if wl.workflowTab != nil && wl.workflowTab.Name != "" {
 		names[0] = wl.workflowTab.Name
 	}

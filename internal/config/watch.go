@@ -35,6 +35,7 @@ func parseConfig(data []byte) (*Config, error) {
 		return nil, fmt.Errorf("parsing config: %w", err)
 	}
 	cfg.ensureDefaults()
+	cfg.EnsureSavedFilters()
 	cfg.loadExternalProfiles()
 	return cfg, nil
 }

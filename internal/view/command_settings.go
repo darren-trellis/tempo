@@ -102,6 +102,9 @@ func tempoSettings() []tempoSetting {
 		boolSetting("show_scrollbars", "Draw scrollbars", func(c *config.Config) bool {
 			return c.ShouldShowScrollbars()
 		}, func(c *config.Config, on bool) { c.ShowScrollbars = &on }),
+		boolSetting("filter_wrap", "Wrap saved-filter chips onto another row", func(c *config.Config) bool {
+			return c.ShouldWrapFilters()
+		}, func(c *config.Config, on bool) { c.FilterWrap = &on }),
 		{
 			name: "modal_shadow",
 			help: "Modal box shadow",
@@ -566,6 +569,10 @@ func (a *App) applySettingSideEffects(name string) {
 		}
 		if nl, ok := a.namespaceListView(); ok {
 			nl.syncAutoRefresh()
+		}
+	case "filter_wrap":
+		if hasWL {
+			wl.syncFilterBarHeight()
 		}
 	}
 }

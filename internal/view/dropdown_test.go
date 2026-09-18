@@ -33,6 +33,21 @@ func TestTypeaheadTabCompletesSelectedSuggestion(t *testing.T) {
 	}
 }
 
+func TestDropdownChangedFuncFiresOnAccept(t *testing.T) {
+	field := newOrderedDropdownField("key", "Key", []string{"WorkflowId", "StartTime"})
+	field.SetValue("WorkflowId")
+	var got string
+	field.SetChangedFunc(func(v string) { got = v })
+	field.openList()
+	field.moveSelection(1)
+	if !field.acceptSuggestion() {
+		t.Fatal("accept should apply the highlighted key")
+	}
+	if got != "StartTime" {
+		t.Fatalf("onChange=%q", got)
+	}
+}
+
 func TestTypeaheadEscapeClosesDropdownNotForm(t *testing.T) {
 	field := newDropdownField("workflowType", "Workflow Type", []string{"OrderWorkflow", "PaymentWorkflow"})
 	field.moveSelection(1)

@@ -123,7 +123,7 @@ func (a *App) buildApp() {
 	a.hintPrompt.searchHistory = loadCommandHistory(config.SearchHistoryPath())
 
 	a.app = layout.NewApp(layout.AppConfig{
-		ShowCrumbs: true,
+		ShowCrumbs: false,
 		BottomBar:  a.menu,
 		OnComponentChange: func(c nav.Component) {
 			a.syncModalHints(c)
@@ -133,7 +133,7 @@ func (a *App) buildApp() {
 	})
 
 	tviewApp := a.app.GetApplication()
-	enableAppMouse(tviewApp, a.menu, a.app.Crumbs())
+	enableAppMouse(tviewApp, a.menu)
 	a.mouseEnabled = true
 	bindModalMouse(tviewApp, func() tview.Primitive {
 		if a.app == nil || a.app.Pages() == nil {
@@ -288,27 +288,10 @@ func (a *App) syncWorkflowStats(c nav.Component) {
 }
 
 func (a *App) updateCrumbs() {
-	current := a.currentContent()
-	if current == nil || a.app.Crumbs() == nil {
+	if a == nil || a.app == nil || a.app.Crumbs() == nil {
 		return
 	}
-
-	var path []string
-	if named, ok := current.(interface{ Name() string }); ok {
-		switch named.Name() {
-		case "namespaces":
-			path = []string{"Namespaces"}
-		case "workflows":
-			path = []string{"Namespaces", a.currentNS, "Workflows"}
-		case "task-queues":
-			path = []string{"Namespaces", a.currentNS, "Task Queues"}
-		case "schedules":
-			path = []string{"Namespaces", a.currentNS, "Schedules"}
-		case "workers":
-			path = []string{"Namespaces", a.currentNS, "Workers"}
-		}
-	}
-	a.app.Crumbs().SetPath(path)
+	a.app.Crumbs().Clear()
 }
 
 // Status chrome helpers.
@@ -1699,7 +1682,7 @@ func (a *App) ShowFilterMode(initialText string, callbacks FilterModeCallbacks) 
 			callbacks.OnCancel()
 		}
 	}
-	a.enterPrompt("/ ", "Filter...")
+	a.enterPrompt("/ ", "Search...")
 	if initialText != "" {
 		p.input.SetText(initialText)
 	}

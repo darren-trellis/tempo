@@ -229,6 +229,41 @@ func TestToggleAutoRefreshShowsStatus(t *testing.T) {
 	}
 }
 
+func TestSelectModeSuspendsAutoRefresh(t *testing.T) {
+	a := &App{menu: layout.NewMenu()}
+	wl := NewWorkflowList(a, "default")
+	t.Cleanup(wl.stopAutoRefresh)
+
+	wl.toggleAutoRefresh()
+	if wl.refreshTicker == nil {
+		t.Fatal("auto-refresh should start a ticker")
+	}
+
+	wl.toggleSelectionMode()
+	if !wl.selectionMode {
+		t.Fatal("expected select mode")
+	}
+	if !wl.autoRefresh {
+		t.Fatal("select mode should keep auto-refresh enabled")
+	}
+	if wl.refreshTicker != nil {
+		t.Fatal("select mode should suspend the auto-refresh ticker")
+	}
+
+	wl.liveRefresh()
+	if wl.liveBusy {
+		t.Fatal("live refresh should no-op while select mode is on")
+	}
+
+	wl.toggleSelectionMode()
+	if wl.selectionMode {
+		t.Fatal("expected select mode off")
+	}
+	if wl.refreshTicker == nil {
+		t.Fatal("leaving select mode should resume the auto-refresh ticker")
+	}
+}
+
 func TestTaskQueueToggleAutoRefreshShowsStatus(t *testing.T) {
 	a := &App{menu: layout.NewMenu()}
 	tq := NewTaskQueueView(a)

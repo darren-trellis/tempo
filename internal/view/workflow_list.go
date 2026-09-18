@@ -1,12 +1,12 @@
 package view
 
 import (
-	"fmt"
 	"time"
 
 	"github.com/atterpac/jig/components"
 	"github.com/atterpac/jig/input"
 	"github.com/atterpac/jig/theme"
+	"github.com/galaxy-io/tempo/internal/config"
 	"github.com/galaxy-io/tempo/internal/temporal"
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
@@ -46,6 +46,10 @@ type WorkflowList struct {
 	pollersVisible        bool
 	scheduleDetailVisible bool
 	workerDetailVisible   bool
+	filterBar             *filterChipBar
+	workflowStack         *tview.Flex
+	workflowBody          tview.Primitive
+	filterBarRows         int
 	workflowsPanel        *chromePanel
 	previewPanel          *components.Panel
 	previewTabs           *components.Tabs
@@ -101,6 +105,8 @@ type WorkflowList struct {
 	workflows             []temporal.Workflow // Filtered list for display
 	filterText            string
 	visibilityQuery       string // Temporal visibility query
+	activeFilterName      string
+	filterClauses         []config.FilterClause
 	pager                 workflowPager
 	pageBusy              bool
 	pageGen               uint64
@@ -242,6 +248,12 @@ func (wl *WorkflowList) RefreshTheme() {
 	if wl.listTabs != nil {
 		wl.listTabs.SetBackgroundColor(bg)
 	}
+	if wl.workflowStack != nil {
+		wl.workflowStack.SetBackgroundColor(bg)
+	}
+	if wl.filterBar != nil {
+		wl.filterBar.SetBackgroundColor(bg)
+	}
 	if wl.previewTabs != nil {
 		wl.previewTabs.SetBackgroundColor(bg)
 	}
@@ -309,45 +321,18 @@ func (wl *WorkflowList) displayedWorkflowCount() int {
 	return len(wl.workflows)
 }
 
-func (wl *WorkflowList) primaryPaneTitle() string {
-	name := ""
-	if wl != nil && wl.app != nil {
-		name = wl.app.profileTitle()
+func (wl *WorkflowList) loadedWorkflowCount() int {
+	if wl == nil {
+		return 0
 	}
-	n := 0
-	if wl != nil {
-		n = wl.displayedWorkflowCount()
-	}
-	filter := ""
-	if wl != nil {
-		switch {
-		case wl.filterText != "":
-			filter = "/" + wl.filterText
-		case wl.visibilityQuery != "":
-			q := wl.visibilityQuery
-			if len(q) > 40 {
-				q = q[:37] + "..."
-			}
-			filter = q
-		}
-	}
-	switch {
-	case name != "" && filter != "":
-		return fmt.Sprintf("%s (%s) (%d)", name, filter, n)
-	case name != "":
-		return fmt.Sprintf("%s (%d)", name, n)
-	case filter != "":
-		return fmt.Sprintf("(%s) (%d)", filter, n)
-	default:
-		return fmt.Sprintf("(%d)", n)
-	}
+	return len(wl.allWorkflows)
 }
 
 func (wl *WorkflowList) applyProfileTitle() {
 	if wl == nil || wl.workflowsPanel == nil {
 		return
 	}
-	wl.workflowsPanel.SetTitle(wl.primaryPaneTitle())
+	wl.workflowsPanel.SetTitle("")
 }
 
 func (wl *WorkflowList) SetMasterTitle(title string) {
@@ -361,12 +346,36 @@ func (wl *WorkflowList) SetMasterContent(content tview.Primitive) {
 	if content == wl.table && wl.tableScroll != nil {
 		content = wl.tableScroll
 	}
-	if wl.workflowTab != nil {
-		wl.workflowTab.Content = content
+	wl.workflowBody = content
+	wl.mountWorkflowContent()
+}
+
+func (wl *WorkflowList) mountWorkflowContent() {
+	if wl.workflowStack == nil {
+		if wl.workflowTab != nil && wl.workflowBody != nil {
+			wl.workflowTab.Content = wl.workflowBody
+			return
+		}
+		if wl.workflowsPanel != nil && wl.workflowBody != nil {
+			wl.workflowsPanel.SetContent(wl.workflowBody)
+		}
 		return
 	}
-	if wl.workflowsPanel != nil {
-		wl.workflowsPanel.SetContent(content)
+	body := wl.workflowBody
+	if body == nil {
+		body = wl.tableScroll
+	}
+	rows := wl.filterBarHeight()
+	wl.filterBarRows = rows
+	wl.workflowStack.Clear()
+	if wl.filterBar != nil {
+		wl.workflowStack.AddItem(wl.filterBar, rows, 0, false)
+	}
+	if body != nil {
+		wl.workflowStack.AddItem(body, 0, 1, true)
+	}
+	if wl.workflowTab != nil {
+		wl.workflowTab.Content = wl.workflowStack
 	}
 }
 
@@ -409,11 +418,11 @@ func (wl *WorkflowList) Start() {
 			return true
 		}).
 		OnRune('F', func(e *tcell.EventKey) bool {
-			wl.showVisibilityQuery()
+			wl.showFilterBuilder()
 			return true
 		}).
 		OnRune('f', func(e *tcell.EventKey) bool {
-			wl.showQueryTemplates()
+			wl.showFilterManager()
 			return true
 		}).
 		OnRune('d', func(e *tcell.EventKey) bool {
@@ -423,8 +432,7 @@ func (wl *WorkflowList) Start() {
 				}
 				return true
 			}
-			wl.showDateRangePicker()
-			return true
+			return false
 		}).
 		OnRune('D', func(e *tcell.EventKey) bool {
 			if wl.selectionMode && len(wl.table.GetSelectedRows()) > 0 {
@@ -485,24 +493,6 @@ func (wl *WorkflowList) Start() {
 		OnRune('R', func(e *tcell.EventKey) bool {
 			wl.showResetSelected()
 			return true
-		}).
-		OnRune('C', func(e *tcell.EventKey) bool {
-			if wl.visibilityQuery != "" {
-				wl.clearVisibilityQuery()
-				return true
-			}
-			return false
-		}).
-		OnRune('L', func(e *tcell.EventKey) bool {
-			wl.showSavedFilters()
-			return true
-		}).
-		OnRune('S', func(e *tcell.EventKey) bool {
-			if wl.visibilityQuery != "" {
-				wl.showSaveFilter()
-				return true
-			}
-			return false
 		}).
 		OnRune('N', func(e *tcell.EventKey) bool {
 			wl.showStartWorkflow()
@@ -838,19 +828,11 @@ func (wl *WorkflowList) workflowPaneHints() []KeyHint {
 	}
 	hints = append(hints,
 		KeyHint{Key: "|", Description: "Columns"},
-		KeyHint{Key: "/", Description: "Filter"},
-		KeyHint{Key: "F", Description: "Query"},
-		KeyHint{Key: "f", Description: "Templates"},
-		KeyHint{Key: "d", Description: "Date Range"},
+		KeyHint{Key: "/", Description: "Search"},
+		KeyHint{Key: "F", Description: "Filter"},
+		KeyHint{Key: "f", Description: "Filters"},
 	)
-	if wl.visibilityQuery != "" {
-		hints = append(hints,
-			KeyHint{Key: "C", Description: "Clear Query"},
-			KeyHint{Key: "S", Description: "Save Filter"},
-		)
-	}
 	hints = append(hints,
-		KeyHint{Key: "L", Description: "Load Filter"},
 		KeyHint{Key: "v", Description: "Select Mode"},
 		KeyHint{Key: "N", Description: "Start"},
 	)
@@ -987,6 +969,12 @@ func (wl *WorkflowList) Draw(screen tcell.Screen) {
 	if wl.listTabs != nil {
 		wl.listTabs.SetBackgroundColor(bg)
 	}
+	if wl.workflowStack != nil {
+		wl.workflowStack.SetBackgroundColor(bg)
+	}
+	if wl.filterBar != nil {
+		wl.filterBar.SetBackgroundColor(bg)
+	}
 	if wl.previewTabs != nil {
 		wl.previewTabs.SetBackgroundColor(bg)
 	}
@@ -1032,5 +1020,6 @@ func (wl *WorkflowList) Draw(screen tcell.Screen) {
 		wl.timelineView.SetBackgroundColor(bg)
 	}
 	wl.syncFocusFromPrimitives()
+	wl.syncFilterBarHeight()
 	wl.Flex.Draw(screen)
 }

@@ -7,6 +7,7 @@ import (
 	"github.com/atterpac/jig/components"
 	"github.com/atterpac/jig/theme"
 	"github.com/galaxy-io/tempo/internal/config"
+	"github.com/galaxy-io/tempo/internal/temporal"
 	"github.com/gdamore/tcell/v2"
 )
 
@@ -33,9 +34,10 @@ func TestModalKeepsWorkflowChrome(t *testing.T) {
 	if !a.app.Pages().CurrentIsModal() {
 		t.Fatal("expected a modal")
 	}
-	path := a.app.Crumbs().GetPath()
-	if len(path) == 0 || path[len(path)-1] != "Workflows" {
-		t.Fatalf("crumbs should stay on the workflow list, got %v", path)
+	if crumbs := a.app.Crumbs(); crumbs != nil {
+		if path := crumbs.GetPath(); len(path) != 0 {
+			t.Fatalf("breadcrumb path should stay empty, got %v", path)
+		}
 	}
 	if !a.chromeStatsOn || a.chromeStats.Running != 4 {
 		t.Fatal("workflow counts should stay visible while a modal is open")
@@ -92,8 +94,8 @@ func TestWorkflowCountChromeOmitsLabels(t *testing.T) {
 	if strings.Contains(got, "Running") || strings.Contains(got, "Completed") || strings.Contains(got, "4 | 9") {
 		t.Fatalf("counts should not live on the pane border, got %q", got)
 	}
-	if strings.Contains(got, "local") {
-		t.Fatalf("profile should be the pane title, not tab chrome, got %q", got)
+	if !strings.Contains(got, "local") {
+		t.Fatalf("profile should be on the status bar, got %q", got)
 	}
 }
 
@@ -110,7 +112,7 @@ func TestWorkflowStatBadgesUseLabels(t *testing.T) {
 func TestPaneChromeOmitsConnectionAndCounts(t *testing.T) {
 	a := &App{connected: true, chromeStatsOn: true, chromeStats: WorkflowStats{Running: 3}}
 	panel := newChromePanel(a)
-	panel.SetTitle("prod (3)")
+	panel.SetTitle("")
 	panel.SetRect(0, 0, 80, 6)
 	screen := tcell.NewSimulationScreen("UTF-8")
 	if err := screen.Init(); err != nil {
@@ -126,8 +128,8 @@ func TestPaneChromeOmitsConnectionAndCounts(t *testing.T) {
 		}
 	}
 	got := b.String()
-	if !strings.Contains(got, "prod") || !strings.Contains(got, "(3)") {
-		t.Fatalf("pane title should stay on the border, got %q", got)
+	if strings.Contains(got, "prod") || strings.Contains(got, "(3)") {
+		t.Fatalf("primary pane should have no title, got %q", got)
 	}
 	if strings.Contains(got, "Running") || strings.Contains(got, "3 | 0 | 0") {
 		t.Fatalf("counts should not be on the pane border, got %q", got)
@@ -140,23 +142,15 @@ func TestPaneChromeOmitsConnectionAndCounts(t *testing.T) {
 func TestStatBadgesDrawOnBottomBar(t *testing.T) {
 	a := NewAppWithProvider(nil, "default", config.DefaultConfig(), "local")
 	a.SetWorkflowStats(WorkflowStats{Running: 100, Completed: 23})
-	a.updateCrumbs()
-	crumbs := a.app.Crumbs()
-	crumbs.SetRect(0, 0, 80, 1)
-	a.menu.SetRect(0, 1, 80, 1)
+	a.menu.SetRect(0, 0, 80, 1)
 	screen := tcell.NewSimulationScreen("UTF-8")
 	if err := screen.Init(); err != nil {
 		t.Fatal(err)
 	}
-	screen.SetSize(80, 2)
-	crumbs.Draw(screen)
+	screen.SetSize(80, 1)
 	a.menu.Draw(screen)
 	a.drawBottomChrome(screen)
-	top := rowText(screen, 0, 80)
-	bottom := rowText(screen, 1, 80)
-	if strings.Contains(top, "Running") || strings.Contains(top, "Completed") {
-		t.Fatalf("counts should not be on the breadcrumb bar, got %q", top)
-	}
+	bottom := rowText(screen, 0, 80)
 	if !strings.Contains(bottom, "100 Running") || !strings.Contains(bottom, "23 Completed") {
 		t.Fatalf("bottom bar should show labeled badges, got %q", bottom)
 	}
@@ -165,7 +159,7 @@ func TestStatBadgesDrawOnBottomBar(t *testing.T) {
 	a.menu.Draw(screen)
 	a.drawHintStatus(screen)
 	a.drawBottomChrome(screen)
-	bottom = rowText(screen, 1, 80)
+	bottom = rowText(screen, 0, 80)
 	if !strings.Contains(bottom, "Copied workflow ID") {
 		t.Fatalf("status should stay on the left, got %q", bottom)
 	}
@@ -176,9 +170,69 @@ func TestStatBadgesDrawOnBottomBar(t *testing.T) {
 	a.modalHintsOn = true
 	a.menu.Draw(screen)
 	a.drawBottomChrome(screen)
-	bottom = rowText(screen, 1, 80)
+	bottom = rowText(screen, 0, 80)
 	if strings.Contains(bottom, "Running") {
 		t.Fatalf("counts should hide while modal hints are on, got %q", bottom)
+	}
+}
+
+func TestStatusBarShowsLoadedDisplayedProfileAndTree(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	a := NewAppWithProvider(nil, "default", config.DefaultConfig(), "local")
+	wl := NewWorkflowList(a, "default")
+	wl.keepDataOnStart = true
+	wl.allWorkflows = []temporal.Workflow{
+		{ID: "wf-1", RunID: "run-1", Status: "Running"},
+		{ID: "wf-2", RunID: "run-2", Status: "Completed"},
+		{ID: "wf-3", RunID: "run-3", Status: "Failed"},
+	}
+	wl.workflows = wl.allWorkflows[:2]
+	a.app.Pages().Push(wl)
+	a.SetWorkflowStats(wl.displayedStats())
+	a.menu.SetRect(0, 0, 120, 1)
+	screen := tcell.NewSimulationScreen("UTF-8")
+	if err := screen.Init(); err != nil {
+		t.Fatal(err)
+	}
+	screen.SetSize(120, 1)
+	a.menu.Draw(screen)
+	a.drawBottomChrome(screen)
+	got := rowText(screen, 0, 120)
+	if !strings.Contains(got, "3 Loaded") || !strings.Contains(got, "2 Displayed") {
+		t.Fatalf("loaded/displayed should sit with status counts, got %q", got)
+	}
+	if !strings.Contains(got, "local") {
+		t.Fatalf("profile should be on the status bar, got %q", got)
+	}
+	if !strings.Contains(got, theme.IconNamespace) {
+		t.Fatalf("tree mode should use the tree glyph, got %q", got)
+	}
+	if strings.Contains(paneTitle(wl.workflowsPanel), "local") || strings.Contains(paneTitle(wl.workflowsPanel), "Loaded") {
+		t.Fatalf("primary pane should stay untitled, got %q", paneTitle(wl.workflowsPanel))
+	}
+
+	wl.workflowTreeMode = false
+	screen.Clear()
+	a.menu.Draw(screen)
+	a.drawBottomChrome(screen)
+	got = rowText(screen, 0, 120)
+	if !strings.Contains(got, theme.IconList) {
+		t.Fatalf("list mode should use the list glyph, got %q", got)
+	}
+
+	wl.setListKind(listTaskQueues)
+	screen.Clear()
+	a.menu.Draw(screen)
+	a.drawBottomChrome(screen)
+	got = rowText(screen, 0, 120)
+	if strings.Contains(got, "Loaded") || strings.Contains(got, "Displayed") {
+		t.Fatalf("other tabs should hide loaded/displayed, got %q", got)
+	}
+	if strings.Contains(got, theme.IconList) || strings.Contains(got, theme.IconNamespace) {
+		t.Fatalf("other tabs should hide the tree/list glyph, got %q", got)
+	}
+	if !strings.Contains(got, "local") {
+		t.Fatalf("profile should stay on the status bar off workflows, got %q", got)
 	}
 }
 
@@ -204,6 +258,9 @@ func TestBottomBarDrawsConnectionAndCodec(t *testing.T) {
 	}
 	if !strings.Contains(got, "4 Running") {
 		t.Fatalf("counts should sit with the status glyphs, got %q", got)
+	}
+	if !strings.Contains(got, "local") {
+		t.Fatalf("profile should sit on the status bar, got %q", got)
 	}
 	if !strings.Contains(got, theme.IconCloud+" | ") || !strings.Contains(got, "4 Running") {
 		t.Fatalf("codec glyph should be pipe-separated from counts, got %q", got)

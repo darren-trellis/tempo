@@ -252,13 +252,21 @@ func TestCommandSuggestionsConfigAndFilters(t *testing.T) {
 	}
 
 	items = suggestionsFor("config set ", catalog, commandExtras{})
-	if !hasLabel(items, "theme") || !hasLabel(items, "autosave") {
+	if !hasLabel(items, "theme") || !hasLabel(items, "autosave") || !hasLabel(items, "filter_wrap") {
 		t.Fatalf("config set names=%v", suggestionLabels(items))
 	}
 
 	items = suggestionsFor("config set theme ", catalog, commandExtras{})
 	if !hasLabel(items, config.DefaultTheme) {
 		t.Fatalf("theme values=%v", suggestionLabels(items))
+	}
+
+	items = suggestionsFor("filter ", catalog, commandExtras{})
+	if !hasLabel(items, "manage") || !hasLabel(items, "load") {
+		t.Fatalf("filter subcommands=%v", suggestionLabels(items))
+	}
+	if hasLabel(items, "save") {
+		t.Fatalf("filter save should be gone, got %v", suggestionLabels(items))
 	}
 
 	items = suggestionsFor("filter load ", catalog, commandExtras{filters: []string{"failed-today"}})
