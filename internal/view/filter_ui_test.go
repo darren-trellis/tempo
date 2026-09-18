@@ -373,6 +373,18 @@ func TestClauseEditorHasFormAndRawTabs(t *testing.T) {
 	if !foundForm || !foundRaw {
 		t.Fatal("clause editor should show Form and Raw tabs")
 	}
+	if hintDescription(a.menu.GetHints(), "Ctrl+T") != "Test" {
+		t.Fatalf("Ctrl+T should be on the status bar, got %+v", a.menu.GetHints())
+	}
+	if hintDescription(a.menu.GetHints(), "Ctrl+[") != "Prev" || hintDescription(a.menu.GetHints(), "Ctrl+]") != "Next" {
+		t.Fatalf("tab switch hints should be on the status bar, got %+v", a.menu.GetHints())
+	}
+	if hintDescription(a.menu.GetHints(), "Enter") != "Save" || hintDescription(a.menu.GetHints(), "Esc") != "Cancel" {
+		t.Fatalf("save/cancel should stay on the status bar, got %+v", a.menu.GetHints())
+	}
+	if hintDescription(a.menu.GetHints(), "t") != "" {
+		t.Fatal("bare t should not be advertised")
+	}
 }
 
 func TestTestVisibilityQueryClearsActiveFilter(t *testing.T) {
@@ -392,14 +404,32 @@ func TestTestVisibilityQueryClearsActiveFilter(t *testing.T) {
 }
 
 func TestFilterTestKey(t *testing.T) {
-	if !isFilterTestKey(tcell.NewEventKey(tcell.KeyRune, 't', tcell.ModNone)) {
-		t.Fatal("t should test the raw filter")
-	}
 	if !isFilterTestKey(tcell.NewEventKey(tcell.KeyCtrlT, 0, tcell.ModCtrl)) {
-		t.Fatal("Ctrl+T should also test the raw filter")
+		t.Fatal("Ctrl+T should test the raw filter")
 	}
-	if isFilterTestKey(tcell.NewEventKey(tcell.KeyRune, 'T', tcell.ModNone)) {
-		t.Fatal("uppercase T should still type into RFC3339 timestamps")
+	if !isFilterTestKey(tcell.NewEventKey(tcell.KeyRune, 't', tcell.ModCtrl)) {
+		t.Fatal("Ctrl+T as a rune should test the raw filter")
+	}
+	if isFilterTestKey(tcell.NewEventKey(tcell.KeyRune, 't', tcell.ModNone)) {
+		t.Fatal("plain t should type into the filter")
+	}
+}
+
+func TestClauseTabKeys(t *testing.T) {
+	if isClauseTabPrev(tcell.NewEventKey(tcell.KeyEscape, 0, tcell.ModNone)) {
+		t.Fatal("Esc should still cancel")
+	}
+	if !isClauseTabPrev(tcell.NewEventKey(tcell.KeyCtrlLeftSq, 0, tcell.ModCtrl)) {
+		t.Fatal("Ctrl+[ should switch to the previous tab")
+	}
+	if !isClauseTabNext(tcell.NewEventKey(tcell.KeyCtrlRightSq, 0, tcell.ModCtrl)) {
+		t.Fatal("Ctrl+] should switch to the next tab")
+	}
+	if !isClauseTabNext(tcell.NewEventKey(tcell.KeyGS, ']', tcell.ModCtrl)) {
+		t.Fatal("Ctrl+] from the terminal should switch tabs")
+	}
+	if isClauseTabNext(tcell.NewEventKey(tcell.KeyTab, 0, tcell.ModNone)) || isClauseTabPrev(tcell.NewEventKey(tcell.KeyTab, 0, tcell.ModNone)) {
+		t.Fatal("Tab should move between fields, not Form/Raw")
 	}
 }
 

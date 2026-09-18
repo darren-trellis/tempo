@@ -10,6 +10,7 @@ import (
 	"github.com/atterpac/jig/theme"
 	"github.com/galaxy-io/tempo/internal/config"
 	"github.com/gdamore/tcell/v2"
+	"github.com/rivo/tview"
 )
 
 func (wl *WorkflowList) showClauseEditor(initial config.FilterClause, onSave func(config.FilterClause)) {
@@ -27,14 +28,22 @@ func (wl *WorkflowList) showClauseEditor(initial config.FilterClause, onSave fun
 	}
 
 	clauseHints := func() []components.KeyHint {
-		hints := []components.KeyHint{
+		return []components.KeyHint{
+			{Key: "Ctrl+[", Description: "Prev"},
+			{Key: "Ctrl+]", Description: "Next"},
+			{Key: "Ctrl+T", Description: "Test"},
 			{Key: "Enter", Description: "Save"},
 			{Key: "Esc", Description: "Cancel"},
 		}
-		if activeTab == 1 {
-			hints = append([]components.KeyHint{{Key: "t", Description: "Test"}}, hints...)
+	}
+	applyHints := func() {
+		if modal == nil {
+			return
 		}
-		return hints
+		modal.SetHints(clauseHints())
+		if wl.app != nil {
+			wl.app.syncModalHints(modal)
+		}
 	}
 
 	var rebuild func(config.FilterClause)
@@ -196,9 +205,7 @@ func (wl *WorkflowList) showClauseEditor(initial config.FilterClause, onSave fun
 						}
 					}
 				}
-				if modal != nil {
-					modal.SetHints(clauseHints())
-				}
+				applyHints()
 				if wl.app != nil && wl.app.JigApp() != nil {
 					if index == 1 {
 						wl.app.JigApp().SetFocus(rawForm)
@@ -221,16 +228,62 @@ func (wl *WorkflowList) showClauseEditor(initial config.FilterClause, onSave fun
 				wl.closeModal()
 			})
 		}
-		modal.SetHints(clauseHints())
+		applyHints()
 		modal.bindDropdowns(form, fields...)
-		form.SetInputCapture(dropdownFormCapture(fields...))
-		rawForm.SetInputCapture(withFilterTestKey(testRaw, nil))
+		switchClauseTab := func(delta int) {
+			next := activeTab + delta
+			if next < 0 {
+				next = 1
+			}
+			if next > 1 {
+				next = 0
+			}
+			if next != activeTab {
+				tabs.SetActive(next)
+			}
+		}
+		clauseCapture := func(next func(*tcell.EventKey) *tcell.EventKey) func(*tcell.EventKey) *tcell.EventKey {
+			return func(event *tcell.EventKey) *tcell.EventKey {
+				if isClauseTabPrev(event) {
+					switchClauseTab(-1)
+					return nil
+				}
+				if isClauseTabNext(event) {
+					switchClauseTab(1)
+					return nil
+				}
+				if activeTab == 1 && isFilterTestKey(event) {
+					testRaw()
+					return nil
+				}
+				if next != nil {
+					return next(event)
+				}
+				return event
+			}
+		}
+		form.SetInputCapture(clauseCapture(dropdownFormCapture(fields...)))
+		rawForm.SetInputCapture(clauseCapture(nil))
 		tabs.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
-			if activeTab == 1 && isFilterTestKey(event) {
-				testRaw()
+			if ev := clauseCapture(nil)(event); ev == nil {
 				return nil
 			}
-			return event
+			if !isJigTabsNavKey(event) {
+				return event
+			}
+			target := form
+			if activeTab == 1 {
+				target = rawForm
+			}
+			if capture := target.GetInputCapture(); capture != nil {
+				if ev := capture(event); ev == nil {
+					return nil
+				}
+			}
+			if handler := target.InputHandler(); handler != nil {
+				handler(event, func(tview.Primitive) {})
+			}
+			return nil
 		})
 		modal.SetContent(tabs)
 		if !pushed {
@@ -274,13 +327,28 @@ func isFilterTestKey(event *tcell.EventKey) bool {
 	if event.Key() == tcell.KeyCtrlT {
 		return true
 	}
-	if event.Key() != tcell.KeyRune {
+	return event.Key() == tcell.KeyRune && (event.Rune() == 't' || event.Rune() == 'T') && event.Modifiers()&tcell.ModCtrl != 0
+}
+
+func isClauseTabPrev(event *tcell.EventKey) bool {
+	if event == nil || event.Key() == tcell.KeyEscape {
 		return false
 	}
-	if event.Modifiers()&tcell.ModCtrl != 0 && (event.Rune() == 't' || event.Rune() == 'T') {
+	if event.Key() == tcell.KeyCtrlLeftSq {
 		return true
 	}
-	return event.Modifiers() == tcell.ModNone && event.Rune() == 't'
+	return event.Key() == tcell.KeyRune && event.Rune() == '[' && event.Modifiers()&tcell.ModCtrl != 0
+}
+
+func isClauseTabNext(event *tcell.EventKey) bool {
+	if event == nil {
+		return false
+	}
+	switch event.Key() {
+	case tcell.KeyCtrlRightSq, tcell.KeyGS:
+		return true
+	}
+	return event.Key() == tcell.KeyRune && event.Rune() == ']' && event.Modifiers()&tcell.ModCtrl != 0
 }
 
 func formString(form *components.Form, name string) string {
