@@ -620,8 +620,21 @@ func TestFilterManagerRefreshesAfterSave(t *testing.T) {
 		t.Fatal("manager table should have keys")
 	}
 	if ev := capture(tcell.NewEventKey(tcell.KeyRune, 'n', tcell.ModNone)); ev != nil {
-		t.Fatal("n should open the builder")
+		t.Fatal("n should be handled")
 	}
+
+	// n opens the clause editor; saving a clause hands off to the builder.
+	editor := a.app.Pages().Current().(*overlayModal)
+	clauseForm, ok := editor.body.(*components.Tabs).GetActiveTab().Content.(*components.Form)
+	if !ok {
+		t.Fatalf("clause editor body=%T", editor.body)
+	}
+	if field, found := clauseForm.GetTextField("value"); found {
+		field.SetValue("order-42")
+	} else {
+		t.Fatal("clause editor should have a value field")
+	}
+	clauseForm.InputHandler()(tcell.NewEventKey(tcell.KeyEnter, 0, tcell.ModNone), func(tview.Primitive) {})
 
 	builderTable, ok := a.app.Pages().Current().(*overlayModal).body.(*components.Table)
 	if !ok {
@@ -708,5 +721,100 @@ func TestClauseEditorHidesValueForNullOperators(t *testing.T) {
 			t.Errorf("%s should still show the Operator field", filterOpLabel(op))
 		}
 		wl.closeModal()
+	}
+}
+
+func TestNewFilterOpensClauseEditorFirst(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	cfg := config.DefaultConfig()
+	cfg.SavedFilters = []config.SavedFilter{{Name: "existing"}}
+	a := NewAppWithProvider(nil, "default", cfg, "local")
+	wl := NewWorkflowList(a, "default")
+	wl.keepDataOnStart = true
+	a.app.Pages().Push(wl)
+	wl.showFilterManager()
+
+	manager, ok := a.app.Pages().Current().(*overlayModal)
+	if !ok {
+		t.Fatalf("manager current=%T", a.app.Pages().Current())
+	}
+	table, ok := manager.body.(*components.Table)
+	if !ok {
+		t.Fatalf("manager body=%T", manager.body)
+	}
+	capture := table.GetInputCapture()
+	if capture == nil {
+		t.Fatal("manager table should have keys")
+	}
+	if ev := capture(tcell.NewEventKey(tcell.KeyRune, 'n', tcell.ModNone)); ev != nil {
+		t.Fatal("n should be handled")
+	}
+
+	// n lands on the clause editor, not on the builder.
+	editor, ok := a.app.Pages().Current().(*overlayModal)
+	if !ok {
+		t.Fatalf("editor current=%T", a.app.Pages().Current())
+	}
+	if _, isTable := editor.body.(*components.Table); isTable {
+		t.Fatal("n should open the clause editor, not the filter builder")
+	}
+	tabs, ok := editor.body.(*components.Tabs)
+	if !ok {
+		t.Fatalf("clause editor body=%T, want tabs", editor.body)
+	}
+	form, ok := tabs.GetActiveTab().Content.(*components.Form)
+	if !ok {
+		t.Fatalf("clause editor tab body=%T", tabs.GetActiveTab().Content)
+	}
+
+	if field, found := form.GetTextField("value"); found {
+		field.SetValue("order-42")
+	} else {
+		t.Fatal("clause editor should have a value field")
+	}
+	form.InputHandler()(tcell.NewEventKey(tcell.KeyEnter, 0, tcell.ModNone), func(tview.Primitive) {})
+
+	// Saving the clause hands off to the builder, carrying the clause.
+	builder, ok := a.app.Pages().Current().(*overlayModal)
+	if !ok {
+		t.Fatalf("builder current=%T", a.app.Pages().Current())
+	}
+	builderTable, ok := builder.body.(*components.Table)
+	if !ok {
+		t.Fatalf("builder body=%T, want the clause table", builder.body)
+	}
+	if builderTable.GetDataRowCount() != 1 {
+		t.Fatalf("builder should show the clause just entered, got %d rows", builderTable.GetDataRowCount())
+	}
+	if got := builderTable.GetCell(1, 0).Text; got != "WorkflowId" {
+		t.Errorf("clause key = %q, want WorkflowId", got)
+	}
+	if got := builderTable.GetCell(1, 2).Text; !strings.Contains(got, "order-42") {
+		t.Errorf("clause value = %q, want the value just entered", got)
+	}
+}
+
+func TestNewFilterCancelledClauseReturnsToManager(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	cfg := config.DefaultConfig()
+	cfg.SavedFilters = []config.SavedFilter{{Name: "existing"}}
+	a := NewAppWithProvider(nil, "default", cfg, "local")
+	wl := NewWorkflowList(a, "default")
+	wl.keepDataOnStart = true
+	a.app.Pages().Push(wl)
+	wl.showFilterManager()
+
+	manager := a.app.Pages().Current().(*overlayModal)
+	capture := manager.body.(*components.Table).GetInputCapture()
+	capture(tcell.NewEventKey(tcell.KeyRune, 'n', tcell.ModNone))
+
+	wl.closeModal()
+
+	back, ok := a.app.Pages().Current().(*overlayModal)
+	if !ok {
+		t.Fatalf("current=%T", a.app.Pages().Current())
+	}
+	if _, isTable := back.body.(*components.Table); !isTable {
+		t.Fatalf("cancelling the clause should land back on the Filters modal, got %T", back.body)
 	}
 }

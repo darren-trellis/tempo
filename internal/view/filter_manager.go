@@ -7,6 +7,7 @@ import (
 	"github.com/atterpac/jig/components"
 	"github.com/atterpac/jig/input"
 	"github.com/atterpac/jig/theme"
+	"github.com/galaxy-io/tempo/internal/config"
 	"github.com/gdamore/tcell/v2"
 )
 
@@ -64,11 +65,16 @@ func (wl *WorkflowList) showFilterManager() {
 		wl.applySavedFilter(cfg.GetSavedFilters()[idx])
 	}
 
+	// A new filter always needs at least one clause, so go straight to the
+	// clause editor and open the builder around whatever comes back.
 	createFilter := func() {
-		wl.openFilterBuilder(&filterBuilderState{
-			wl:             wl,
-			persistOnApply: true,
-			onSaved:        refresh,
+		wl.showClauseEditor(newFilterClause(), func(clauses []config.FilterClause) {
+			wl.openFilterBuilder(&filterBuilderState{
+				wl:             wl,
+				clauses:        clauses,
+				persistOnApply: true,
+				onSaved:        refresh,
+			})
 		})
 	}
 

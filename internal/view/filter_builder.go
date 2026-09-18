@@ -68,7 +68,7 @@ func (wl *WorkflowList) openFilterBuilder(state *filterBuilderState) {
 	}
 
 	addClause := func() {
-		wl.showClauseEditor(config.FilterClause{Key: "WorkflowId", Op: filterOpEq}, func(clauses []config.FilterClause) {
+		wl.showClauseEditor(newFilterClause(), func(clauses []config.FilterClause) {
 			state.clauses = append(state.clauses, clauses...)
 			refresh()
 		})

@@ -244,7 +244,7 @@ func TestIsNullNotMatchedInValues(t *testing.T) {
 	}
 }
 
-func TestNullOperatorsOfferedWhereMeaningful(t *testing.T) {
+func TestNullOperatorsOfferedOnEveryKey(t *testing.T) {
 	has := func(labels []string, want string) bool {
 		for _, l := range labels {
 			if l == want {
@@ -253,12 +253,28 @@ func TestNullOperatorsOfferedWhereMeaningful(t *testing.T) {
 		}
 		return false
 	}
-	closeTime := filterOpLabelsForKey("CloseTime")
-	if !has(closeTime, "Is Null") || !has(closeTime, "Is Not Null") {
-		t.Errorf("CloseTime operators = %v, want the null checks", closeTime)
+	// "" is the key a fresh clause starts with, and "MyCustomAttr" stands in
+	// for an attribute the catalog has not loaded yet.
+	for _, key := range []string{"", "WorkflowId", "RunId", "WorkflowType", "TaskQueue", "ExecutionStatus", "StartTime", "CloseTime", "MyCustomAttr"} {
+		labels := filterOpLabelsForKey(key)
+		if !has(labels, "Is Null") || !has(labels, "Is Not Null") {
+			t.Errorf("operators for %q = %v, want the null checks", key, labels)
+		}
+		if got := len(labels); got != len(uniqueStrings(labels)) {
+			t.Errorf("operators for %q contain duplicates: %v", key, labels)
+		}
 	}
-	workflowID := filterOpLabelsForKey("WorkflowId")
-	if has(workflowID, "Is Null") {
-		t.Errorf("WorkflowId is always set, operators = %v", workflowID)
+}
+
+func uniqueStrings(in []string) []string {
+	seen := map[string]bool{}
+	out := make([]string, 0, len(in))
+	for _, s := range in {
+		if seen[s] {
+			continue
+		}
+		seen[s] = true
+		out = append(out, s)
 	}
+	return out
 }

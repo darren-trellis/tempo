@@ -50,9 +50,7 @@ var filterKeySpecs = []filterKeySpec{
 	{key: "TaskQueue", label: "Task Queue", kind: filterKeyCatalog, ops: []string{filterOpEq, filterOpNeq, filterOpStartsWith}},
 	{key: "ExecutionStatus", label: "Execution Status", kind: filterKeyStatus, ops: []string{filterOpEq, filterOpNeq}},
 	{key: "StartTime", label: "Start Time", kind: filterKeyTime, ops: []string{filterOpAfter, filterOpBefore}},
-	// CloseTime is empty while a workflow runs, so a null check is the idiom
-	// for open executions. The other system attributes are always populated.
-	{key: "CloseTime", label: "Close Time", kind: filterKeyTime, ops: []string{filterOpAfter, filterOpBefore, filterOpIsNull, filterOpIsNotNull}},
+	{key: "CloseTime", label: "Close Time", kind: filterKeyTime, ops: []string{filterOpAfter, filterOpBefore}},
 }
 
 var filterOpLabels = map[string]string{
@@ -167,30 +165,47 @@ func specFromSearchAttribute(attr temporal.SearchAttribute) filterKeySpec {
 		spec.kind = filterKeyText
 		spec.ops = []string{filterOpEq, filterOpNeq, filterOpStartsWith}
 	}
-	// A custom attribute is only set by the workflows that bother to, so
-	// asking whether it is present at all is worth offering everywhere.
-	spec.ops = append(spec.ops, filterOpIsNull, filterOpIsNotNull)
 	return spec
 }
 
 func resolveFilterKey(wl *WorkflowList, key string) filterKeySpec {
 	key = strings.TrimSpace(key)
 	if spec, ok := lookupFilterKey(key); ok {
-		return spec
+		return withNullOps(spec)
 	}
 	for _, spec := range customFilterSpecs(wl) {
 		if strings.EqualFold(spec.key, key) {
-			return spec
+			return withNullOps(spec)
 		}
 	}
 	if key == "" {
-		return filterKeySpecs[0]
+		return withNullOps(filterKeySpecs[0])
 	}
-	return filterKeySpec{
+	return withNullOps(filterKeySpec{
 		key:  key,
 		kind: filterKeyText,
 		ops:  []string{filterOpEq, filterOpNeq, filterOpStartsWith},
+	})
+}
+
+// withNullOps offers the value-less operators on every key. The server accepts
+// IS NULL against any attribute, and copying the operators into a fresh slice
+// keeps the shared spec tables untouched.
+func withNullOps(spec filterKeySpec) filterKeySpec {
+	ops := make([]string, 0, len(spec.ops)+2)
+	for _, op := range spec.ops {
+		if op == filterOpIsNull || op == filterOpIsNotNull {
+			continue
+		}
+		ops = append(ops, op)
 	}
+	spec.ops = append(ops, filterOpIsNull, filterOpIsNotNull)
+	return spec
+}
+
+// newFilterClause is the clause a fresh row starts from.
+func newFilterClause() config.FilterClause {
+	return config.FilterClause{Key: "WorkflowId", Op: filterOpEq}
 }
 
 func defaultFilterOp(key string) string {
