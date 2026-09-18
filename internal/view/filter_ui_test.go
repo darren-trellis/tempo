@@ -673,6 +673,161 @@ func TestFilterManagerRefreshesAfterSave(t *testing.T) {
 	}
 }
 
+// filterManagerTable opens the Filters dialog and hands back its table.
+func filterManagerTable(t *testing.T, a *App, wl *WorkflowList) *components.Table {
+	t.Helper()
+	wl.showFilterManager()
+	om, ok := a.app.Pages().Current().(*overlayModal)
+	if !ok {
+		t.Fatalf("current=%T", a.app.Pages().Current())
+	}
+	table, ok := om.body.(*components.Table)
+	if !ok {
+		t.Fatalf("content=%T", om.body)
+	}
+	return table
+}
+
+// submitNamePrompt fills in the open name prompt and accepts it.
+func submitNamePrompt(t *testing.T, a *App, name string) {
+	t.Helper()
+	prompt, ok := a.app.Pages().Current().(*overlayModal)
+	if !ok {
+		t.Fatalf("prompt current=%T", a.app.Pages().Current())
+	}
+	form, ok := prompt.body.(*components.Form)
+	if !ok {
+		t.Fatalf("prompt body=%T", prompt.body)
+	}
+	field, ok := form.GetTextField("name")
+	if !ok {
+		t.Fatal("name prompt should have a name field")
+	}
+	field.SetValue(name)
+	form.InputHandler()(tcell.NewEventKey(tcell.KeyEnter, 0, tcell.ModNone), func(tview.Primitive) {})
+}
+
+func TestCloneFilterCopiesQueryBelowTheOriginal(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	cfg := config.DefaultConfig()
+	cfg.SavedFilters = []config.SavedFilter{
+		{Name: "first"},
+		{Name: "recent", Query: "StartTime > '$HOURS_AGO_24'", IsDefault: true},
+		{Name: "last"},
+	}
+	a := NewAppWithProvider(nil, "default", cfg, "local")
+	wl := NewWorkflowList(a, "default")
+	wl.keepDataOnStart = true
+	a.app.Pages().Push(wl)
+
+	table := filterManagerTable(t, a, wl)
+	table.SelectRow(1)
+	if ev := table.GetInputCapture()(tcell.NewEventKey(tcell.KeyRune, 'c', tcell.ModNone)); ev != nil {
+		t.Fatal("c should clone the selected filter")
+	}
+	submitNamePrompt(t, a, "recent (copy)")
+
+	filters := cfg.GetSavedFilters()
+	if len(filters) != 4 {
+		t.Fatalf("clone should add one filter, got %+v", filters)
+	}
+	clone := filters[2]
+	if clone.Name != "recent (copy)" {
+		t.Fatalf("clone should sit right below its original, got %+v", filters)
+	}
+	if clone.Query != "StartTime > '$HOURS_AGO_24'" {
+		t.Fatalf("clone should carry the query over verbatim, got %q", clone.Query)
+	}
+	if clone.IsDefault {
+		t.Fatal("a clone should not inherit the default flag")
+	}
+	if !filters[1].IsDefault {
+		t.Fatal("cloning should leave the original alone")
+	}
+}
+
+func TestCloneFilterSuggestsAFreeName(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	cfg := config.DefaultConfig()
+	cfg.SavedFilters = []config.SavedFilter{{Name: "recent"}, {Name: "recent (copy)"}}
+
+	if got := copyFilterName(cfg, "recent"); got != "recent (copy 2)" {
+		t.Fatalf("a taken name should count up, got %q", got)
+	}
+	if got := copyFilterName(cfg, "other"); got != "other (copy)" {
+		t.Fatalf("a free name should be used as is, got %q", got)
+	}
+
+	a := NewAppWithProvider(nil, "default", cfg, "local")
+	wl := NewWorkflowList(a, "default")
+	wl.keepDataOnStart = true
+	a.app.Pages().Push(wl)
+
+	table := filterManagerTable(t, a, wl)
+	table.SelectRow(0)
+	if ev := table.GetInputCapture()(tcell.NewEventKey(tcell.KeyRune, 'c', tcell.ModNone)); ev != nil {
+		t.Fatal("c should clone the selected filter")
+	}
+	prompt := a.app.Pages().Current().(*overlayModal)
+	form, ok := prompt.body.(*components.Form)
+	if !ok {
+		t.Fatalf("prompt body=%T", prompt.body)
+	}
+	field, _ := form.GetTextField("name")
+	if got := field.GetValue(); got != "recent (copy 2)" {
+		t.Fatalf("prompt should suggest a free name, got %q", got)
+	}
+}
+
+func TestCloneFilterRefusesToOverwriteAnExistingName(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	cfg := config.DefaultConfig()
+	cfg.SavedFilters = []config.SavedFilter{
+		{Name: "recent", Query: "StartTime > '$HOURS_AGO_24'"},
+		{Name: "failures", Query: "ExecutionStatus = 'Failed'"},
+	}
+	a := NewAppWithProvider(nil, "default", cfg, "local")
+	wl := NewWorkflowList(a, "default")
+	wl.keepDataOnStart = true
+	a.app.Pages().Push(wl)
+
+	table := filterManagerTable(t, a, wl)
+	table.SelectRow(0)
+	if ev := table.GetInputCapture()(tcell.NewEventKey(tcell.KeyRune, 'c', tcell.ModNone)); ev != nil {
+		t.Fatal("c should clone the selected filter")
+	}
+	submitNamePrompt(t, a, "failures")
+
+	filters := cfg.GetSavedFilters()
+	if len(filters) != 2 {
+		t.Fatalf("clone should not have been saved, got %+v", filters)
+	}
+	if filters[1].Query != "ExecutionStatus = 'Failed'" {
+		t.Fatalf("the existing filter should be untouched, got %q", filters[1].Query)
+	}
+}
+
+func TestCloneFilterWithNothingSelectedDoesNothing(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	cfg := config.DefaultConfig()
+	cfg.SavedFilters = nil
+	a := NewAppWithProvider(nil, "default", cfg, "local")
+	wl := NewWorkflowList(a, "default")
+	wl.keepDataOnStart = true
+	a.app.Pages().Push(wl)
+
+	table := filterManagerTable(t, a, wl)
+	if ev := table.GetInputCapture()(tcell.NewEventKey(tcell.KeyRune, 'c', tcell.ModNone)); ev != nil {
+		t.Fatal("c should be handled even with an empty list")
+	}
+	if _, isPrompt := a.app.Pages().Current().(*overlayModal).body.(*components.Form); isPrompt {
+		t.Fatal("an empty list has nothing to clone, so no prompt should open")
+	}
+	if len(cfg.GetSavedFilters()) != 0 {
+		t.Fatalf("nothing should have been saved, got %+v", cfg.GetSavedFilters())
+	}
+}
+
 func clauseEditorScreen(t *testing.T, a *App, wl *WorkflowList, clause config.FilterClause) tcell.SimulationScreen {
 	t.Helper()
 	wl.showClauseEditor(clause, nil)

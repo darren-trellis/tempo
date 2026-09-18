@@ -101,7 +101,7 @@ func (wl *WorkflowList) openFilterBuilder(state *filterBuilderState) {
 	}
 
 	saveNamed := func() {
-		wl.showFilterNamePrompt(state.name, func(name string) {
+		wl.showFilterNamePrompt("Save Filter", state.name, func(name string) {
 			state.name = name
 			state.persist(name)
 			wl.app.ToastSuccess("Saved filter " + name)
@@ -195,7 +195,7 @@ func (s *filterBuilderState) apply() {
 	f := s.savedFilter(s.name)
 	if s.persistOnApply {
 		if f.Name == "" {
-			s.wl.showFilterNamePrompt("", func(name string) {
+			s.wl.showFilterNamePrompt("Save Filter", "", func(name string) {
 				s.name = name
 				s.persist(name)
 				s.wl.applySavedFilter(s.savedFilter(name))
@@ -280,7 +280,7 @@ func filterClauseValueLabel(clause config.FilterClause) string {
 	return value
 }
 
-func (wl *WorkflowList) showFilterNamePrompt(initial string, onSave func(string)) {
+func (wl *WorkflowList) showFilterNamePrompt(title, initial string, onSave func(string)) {
 	form := components.NewFormBuilder().
 		Text("name", "Filter Name").
 		Placeholder("Enter a name").
@@ -303,7 +303,7 @@ func (wl *WorkflowList) showFilterNamePrompt(initial string, onSave func(string)
 		Build()
 
 	modal := newOverlayModal(components.ModalConfig{
-		Title:  fmt.Sprintf("%s Save Filter", theme.IconFilter),
+		Title:  fmt.Sprintf("%s %s", theme.IconFilter, title),
 		Width:  50,
 		Height: 10,
 	}, wl)

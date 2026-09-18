@@ -11,6 +11,18 @@ import (
 	"github.com/gdamore/tcell/v2"
 )
 
+// copyFilterName suggests a free name for a copy of base, counting up until
+// it finds one no filter has taken.
+func copyFilterName(cfg *config.Config, base string) string {
+	name := base + " (copy)"
+	for i := 2; ; i++ {
+		if _, taken := cfg.GetSavedFilter(name); !taken {
+			return name
+		}
+		name = fmt.Sprintf("%s (copy %d)", base, i)
+	}
+}
+
 func (wl *WorkflowList) showFilterManager() {
 	if wl == nil || wl.app == nil {
 		return
@@ -94,6 +106,29 @@ func (wl *WorkflowList) showFilterManager() {
 		})
 	}
 
+	// A clone lands right below its original under a name of its own. It
+	// carries the query over verbatim, placeholders and all, but never
+	// IsDefault: only one filter can be the default and the copy is not it.
+	cloneFilter := func() {
+		idx, ok := selectedFilter()
+		if !ok {
+			return
+		}
+		f := cfg.GetSavedFilters()[idx]
+		wl.showFilterNamePrompt("Clone Filter", copyFilterName(cfg, f.Name), func(name string) {
+			if _, taken := cfg.GetSavedFilter(name); taken {
+				wl.app.ToastWarning("A filter named " + name + " already exists")
+				return
+			}
+			cfg.SaveFilter(config.SavedFilter{Name: name, Query: compiledFilterQueryFor(wl, f)})
+			cfg.MoveSavedFilter(len(cfg.GetSavedFilters())-1, idx+1)
+			_ = wl.app.SaveConfig()
+			refresh()
+			table.SelectRow(idx + 1)
+			wl.app.ToastSuccess("Cloned filter " + name)
+		})
+	}
+
 	deleteFilter := func() {
 		idx, ok := selectedFilter()
 		if !ok {
@@ -142,6 +177,10 @@ func (wl *WorkflowList) showFilterManager() {
 			editFilter()
 			return true
 		}).
+		OnRune('c', func(e *tcell.EventKey) bool {
+			cloneFilter()
+			return true
+		}).
 		OnRune('d', func(e *tcell.EventKey) bool {
 			deleteFilter()
 			return true
@@ -186,6 +225,7 @@ func (wl *WorkflowList) showFilterManager() {
 		{Key: "Enter", Description: "Apply"},
 		{Key: "n", Description: "New Filter"},
 		{Key: "e", Description: "Edit"},
+		{Key: "c", Description: "Clone"},
 		{Key: "d", Description: "Delete"},
 		{Key: "J/K", Description: "Reorder"},
 		{Key: "Esc", Description: "Close"},
