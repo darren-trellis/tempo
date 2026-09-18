@@ -245,3 +245,54 @@ func TestDropdownModalEscDismissesWhenClosed(t *testing.T) {
 		t.Fatal("a second esc should dismiss the modal")
 	}
 }
+
+func TestTypeaheadEnterSelectsOptionWithoutSubmitting(t *testing.T) {
+	field := newDropdownField("taskQueue", "Task Queue", []string{"orders", "payments"})
+	field.Focus(func(tview.Primitive) {})
+	field.openList()
+	field.moveSelection(1)
+	capture := dropdownFormCapture(field)
+
+	if ev := capture(tcell.NewEventKey(tcell.KeyEnter, 0, tcell.ModNone)); ev != nil {
+		t.Fatal("enter should be consumed by the open dropdown, not reach the modal")
+	}
+	if field.GetValue() != "payments" {
+		t.Fatalf("enter should select the highlighted option, got %q", field.GetValue())
+	}
+	if field.expanded {
+		t.Fatal("dropdown should close after selecting")
+	}
+}
+
+func TestTypeaheadEnterWhenClosedReachesModal(t *testing.T) {
+	field := newDropdownField("taskQueue", "Task Queue", []string{"orders", "payments"})
+	field.Focus(func(tview.Primitive) {})
+	field.SetValue("orders")
+	if field.expanded {
+		t.Fatal("dropdown should be closed")
+	}
+	capture := dropdownFormCapture(field)
+	if ev := capture(tcell.NewEventKey(tcell.KeyEnter, 0, tcell.ModNone)); ev == nil {
+		t.Fatal("enter should reach the modal when the dropdown is closed")
+	}
+	if field.GetValue() != "orders" {
+		t.Fatalf("value should be untouched, got %q", field.GetValue())
+	}
+}
+
+// Enter on an unfocused dropdown belongs to the modal even if some other
+// dropdown on the form happens to be open.
+func TestTypeaheadEnterIgnoresUnfocusedOpenDropdown(t *testing.T) {
+	focused := newDropdownField("key", "Key", []string{"WorkflowId"})
+	other := newDropdownField("op", "Operator", []string{"Equals", "Not Equals"})
+	focused.Focus(func(tview.Primitive) {})
+	other.openList()
+
+	capture := dropdownFormCapture(focused, other)
+	if ev := capture(tcell.NewEventKey(tcell.KeyEnter, 0, tcell.ModNone)); ev == nil {
+		t.Fatal("enter should reach the modal when the focused dropdown is closed")
+	}
+	if other.GetValue() != "" {
+		t.Fatalf("unfocused dropdown should not be completed, got %q", other.GetValue())
+	}
+}

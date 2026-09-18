@@ -236,6 +236,10 @@ func readFilterClauseForm(kind filterKeyKind, keyField, opField, valueField, pre
 	if clause.Op == "" {
 		clause.Op = defaultFilterOp(clause.Key)
 	}
+	if !filterOpNeedsValue(clause.Op) {
+		clause.Value = ""
+		return clause, nil
+	}
 	switch kind {
 	case filterKeyCatalog, filterKeyStatus, filterKeyBool:
 		if valueField != nil {

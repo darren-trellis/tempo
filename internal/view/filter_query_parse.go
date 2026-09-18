@@ -127,6 +127,10 @@ func parseQueryConjunct(part string) (config.FilterClause, bool) {
 	key := string(runes[:end])
 	rest := strings.TrimSpace(string(runes[end:]))
 
+	if op, ok := nullaryQueryOp(rest); ok {
+		return config.FilterClause{Key: key, Op: op}, true
+	}
+
 	var op string
 	switch {
 	case strings.HasPrefix(rest, ">="), strings.HasPrefix(rest, "<="), strings.HasPrefix(rest, "=="):
@@ -154,6 +158,26 @@ func parseQueryConjunct(part string) (config.FilterClause, bool) {
 		return config.FilterClause{}, false
 	}
 	return config.FilterClause{Key: key, Op: op, Value: value}, true
+}
+
+// nullaryQueryOp matches the operators that take no value. IS NOT NULL is
+// tested first so it is not read as IS NULL with trailing junk.
+func nullaryQueryOp(rest string) (string, bool) {
+	for _, candidate := range []struct {
+		text string
+		op   string
+	}{
+		{"IS NOT NULL", filterOpIsNotNull},
+		{"IS NULL", filterOpIsNull},
+	} {
+		if len(rest) != len(candidate.text) {
+			continue
+		}
+		if strings.EqualFold(rest, candidate.text) {
+			return candidate.op, true
+		}
+	}
+	return "", false
 }
 
 func parseQueryValue(raw string) (string, bool) {

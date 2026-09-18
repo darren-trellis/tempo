@@ -548,7 +548,10 @@ func dropdownFormCapture(fields ...*dropdownField) func(*tcell.EventKey) *tcell.
 			if collapseOpenDropdowns(fields...) {
 				return nil
 			}
-		case tcell.KeyTab:
+		case tcell.KeyTab, tcell.KeyEnter:
+			// An open list owns Enter: it picks the highlighted option and
+			// closes. Only a closed dropdown lets Enter reach the modal, where
+			// it submits the form.
 			for _, field := range fields {
 				if field != nil && field.HasFocus() && field.acceptSuggestion() {
 					return nil

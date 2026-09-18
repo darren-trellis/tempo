@@ -76,7 +76,13 @@ func (wl *WorkflowList) showClauseEditor(initial config.FilterClause, onSave fun
 			rebuild(current)
 		})
 		opField.SetChangedFunc(func(v string) {
-			current.Op = filterOpFromLabel(v)
+			op := filterOpFromLabel(v)
+			if filterOpNeedsValue(op) != filterOpNeedsValue(current.Op) {
+				current.Op = op
+				rebuild(current)
+				return
+			}
+			current.Op = op
 		})
 
 		fields := []*dropdownField{keyField, opField}
@@ -84,7 +90,14 @@ func (wl *WorkflowList) showClauseEditor(initial config.FilterClause, onSave fun
 		var valueField *dropdownField
 		var presetField *dropdownField
 
-		switch spec.kind {
+		// IS NULL and IS NOT NULL stand alone, so the form stops at the
+		// operator.
+		kind := spec.kind
+		if !filterOpNeedsValue(current.Op) {
+			kind = filterKeyNone
+		}
+
+		switch kind {
 		case filterKeyCatalog:
 			valueField = newDropdownField("value", "Value", catalogOptionsForFilterKey(wl, key)).
 				SetPlaceholder("Value").
@@ -132,6 +145,7 @@ func (wl *WorkflowList) showClauseEditor(initial config.FilterClause, onSave fun
 					Value(displayFilterDateTime(current.Value)).
 					Done()
 			}
+		case filterKeyNone:
 		default:
 			builder.Text("value", "Value").
 				Placeholder("Value").

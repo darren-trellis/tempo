@@ -15,6 +15,8 @@ const (
 	filterOpStartsWith = "starts_with"
 	filterOpAfter      = "after"
 	filterOpBefore     = "before"
+	filterOpIsNull     = "is_null"
+	filterOpIsNotNull  = "is_not_null"
 	filterOpRaw        = "raw"
 
 	filterTimeCustom = "Custom"
@@ -29,6 +31,9 @@ const (
 	filterKeyTime
 	filterKeyNumber
 	filterKeyBool
+	// filterKeyNone is used by operators that take no value, so the editor
+	// renders no value widget at all.
+	filterKeyNone
 )
 
 type filterKeySpec struct {
@@ -45,7 +50,9 @@ var filterKeySpecs = []filterKeySpec{
 	{key: "TaskQueue", label: "Task Queue", kind: filterKeyCatalog, ops: []string{filterOpEq, filterOpNeq, filterOpStartsWith}},
 	{key: "ExecutionStatus", label: "Execution Status", kind: filterKeyStatus, ops: []string{filterOpEq, filterOpNeq}},
 	{key: "StartTime", label: "Start Time", kind: filterKeyTime, ops: []string{filterOpAfter, filterOpBefore}},
-	{key: "CloseTime", label: "Close Time", kind: filterKeyTime, ops: []string{filterOpAfter, filterOpBefore}},
+	// CloseTime is empty while a workflow runs, so a null check is the idiom
+	// for open executions. The other system attributes are always populated.
+	{key: "CloseTime", label: "Close Time", kind: filterKeyTime, ops: []string{filterOpAfter, filterOpBefore, filterOpIsNull, filterOpIsNotNull}},
 }
 
 var filterOpLabels = map[string]string{
@@ -54,6 +61,19 @@ var filterOpLabels = map[string]string{
 	filterOpStartsWith: "Starts With",
 	filterOpAfter:      "After",
 	filterOpBefore:     "Before",
+	filterOpIsNull:     "Is Null",
+	filterOpIsNotNull:  "Is Not Null",
+}
+
+// filterOpNeedsValue reports whether an operator takes a value. IS NULL and
+// IS NOT NULL stand alone, so the editor hides the value field for them.
+func filterOpNeedsValue(op string) bool {
+	switch strings.TrimSpace(op) {
+	case filterOpIsNull, filterOpIsNotNull:
+		return false
+	default:
+		return true
+	}
 }
 
 var filterStatusValues = []string{
@@ -147,6 +167,9 @@ func specFromSearchAttribute(attr temporal.SearchAttribute) filterKeySpec {
 		spec.kind = filterKeyText
 		spec.ops = []string{filterOpEq, filterOpNeq, filterOpStartsWith}
 	}
+	// A custom attribute is only set by the workflows that bother to, so
+	// asking whether it is present at all is worth offering everywhere.
+	spec.ops = append(spec.ops, filterOpIsNull, filterOpIsNotNull)
 	return spec
 }
 
@@ -327,7 +350,16 @@ func compileFilterClauseWith(clause config.FilterClause, spec filterKeySpec) str
 	if isRawFilterClause(clause) {
 		return value
 	}
-	if key == "" || op == "" || value == "" {
+	if key == "" || op == "" {
+		return ""
+	}
+	switch op {
+	case filterOpIsNull:
+		return key + " IS NULL"
+	case filterOpIsNotNull:
+		return key + " IS NOT NULL"
+	}
+	if value == "" {
 		return ""
 	}
 	switch op {
@@ -376,6 +408,9 @@ func quoteVisibilityTime(value string) string {
 func filterClauseSummary(clause config.FilterClause) string {
 	if strings.TrimSpace(clause.Key) == "" {
 		return ""
+	}
+	if !filterOpNeedsValue(clause.Op) {
+		return clause.Key + " " + filterOpLabel(clause.Op)
 	}
 	value := strings.TrimSpace(clause.Value)
 	if label := filterTimePresetLabel(value); label != filterTimeCustom {

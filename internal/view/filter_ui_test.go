@@ -659,3 +659,54 @@ func TestFilterManagerRefreshesAfterSave(t *testing.T) {
 		t.Fatalf("manager still shows the stale list: %d rows, want more than %d", got, before)
 	}
 }
+
+func clauseEditorScreen(t *testing.T, a *App, wl *WorkflowList, clause config.FilterClause) tcell.SimulationScreen {
+	t.Helper()
+	wl.showClauseEditor(clause, nil)
+	om, ok := a.app.Pages().Current().(*overlayModal)
+	if !ok {
+		t.Fatalf("current=%T", a.app.Pages().Current())
+	}
+	om.SetRect(0, 0, 80, 24)
+	screen := tcell.NewSimulationScreen("UTF-8")
+	if err := screen.Init(); err != nil {
+		t.Fatal(err)
+	}
+	screen.SetSize(80, 24)
+	om.Draw(screen)
+	return screen
+}
+
+func screenContains(screen tcell.SimulationScreen, want string) bool {
+	for y := 0; y < 24; y++ {
+		if strings.Contains(rowText(screen, y, 80), want) {
+			return true
+		}
+	}
+	return false
+}
+
+func TestClauseEditorHidesValueForNullOperators(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	a := NewAppWithProvider(nil, "default", config.DefaultConfig(), "local")
+	wl := NewWorkflowList(a, "default")
+	wl.keepDataOnStart = true
+	a.app.Pages().Push(wl)
+
+	withValue := clauseEditorScreen(t, a, wl, config.FilterClause{Key: "CloseTime", Op: filterOpAfter})
+	if !screenContains(withValue, "Value") {
+		t.Fatal("an operator that takes a value should show the Value field")
+	}
+	wl.closeModal()
+
+	for _, op := range []string{filterOpIsNull, filterOpIsNotNull} {
+		screen := clauseEditorScreen(t, a, wl, config.FilterClause{Key: "CloseTime", Op: op})
+		if screenContains(screen, "Value") {
+			t.Errorf("%s should hide the Value field", filterOpLabel(op))
+		}
+		if !screenContains(screen, "Operator") {
+			t.Errorf("%s should still show the Operator field", filterOpLabel(op))
+		}
+		wl.closeModal()
+	}
+}

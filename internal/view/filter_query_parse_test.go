@@ -183,3 +183,82 @@ func TestMigrateSavedFiltersDropsClauses(t *testing.T) {
 		t.Error("second migration should be a no-op")
 	}
 }
+
+func TestNullOperatorsCompileAndParse(t *testing.T) {
+	cases := []struct {
+		clause config.FilterClause
+		query  string
+	}{
+		{config.FilterClause{Key: "CustomerId", Op: filterOpIsNull}, "CustomerId IS NULL"},
+		{config.FilterClause{Key: "CustomerId", Op: filterOpIsNotNull}, "CustomerId IS NOT NULL"},
+		{config.FilterClause{Key: "CloseTime", Op: filterOpIsNull}, "CloseTime IS NULL"},
+	}
+	for _, tt := range cases {
+		t.Run(tt.query, func(t *testing.T) {
+			if got := compileFilterClause(tt.clause); got != tt.query {
+				t.Fatalf("compiled %q, want %q", got, tt.query)
+			}
+			parsed, ok := parseVisibilityQuery(tt.query)
+			if !ok || len(parsed) != 1 {
+				t.Fatalf("parse(%q) = %+v, ok=%v", tt.query, parsed, ok)
+			}
+			if parsed[0] != tt.clause {
+				t.Fatalf("parsed %+v, want %+v", parsed[0], tt.clause)
+			}
+		})
+	}
+}
+
+func TestNullOperatorsMixWithOtherClauses(t *testing.T) {
+	query := "ExecutionStatus = 'Running' AND CloseTime IS NULL AND CustomerId IS NOT NULL"
+	clauses, ok := parseVisibilityQuery(query)
+	if !ok {
+		t.Fatalf("parse(%q) reported unsupported", query)
+	}
+	want := []config.FilterClause{
+		{Key: "ExecutionStatus", Op: filterOpEq, Value: "Running"},
+		{Key: "CloseTime", Op: filterOpIsNull},
+		{Key: "CustomerId", Op: filterOpIsNotNull},
+	}
+	if len(clauses) != len(want) {
+		t.Fatalf("got %d clauses, want %d: %+v", len(clauses), len(want), clauses)
+	}
+	for i := range want {
+		if clauses[i] != want[i] {
+			t.Errorf("clause %d = %+v, want %+v", i, clauses[i], want[i])
+		}
+	}
+	if got := compileFilterClauses(clauses); got != query {
+		t.Errorf("round trip = %q, want %q", got, query)
+	}
+}
+
+// "IS NULL" only counts as an operator when it is the whole right-hand side.
+func TestIsNullNotMatchedInValues(t *testing.T) {
+	clauses, ok := parseVisibilityQuery("CustomerId = 'IS NULL'")
+	if !ok || len(clauses) != 1 {
+		t.Fatalf("parse = %+v, ok=%v", clauses, ok)
+	}
+	if clauses[0].Op != filterOpEq || clauses[0].Value != "IS NULL" {
+		t.Errorf("clause = %+v, want an equality on the literal", clauses[0])
+	}
+}
+
+func TestNullOperatorsOfferedWhereMeaningful(t *testing.T) {
+	has := func(labels []string, want string) bool {
+		for _, l := range labels {
+			if l == want {
+				return true
+			}
+		}
+		return false
+	}
+	closeTime := filterOpLabelsForKey("CloseTime")
+	if !has(closeTime, "Is Null") || !has(closeTime, "Is Not Null") {
+		t.Errorf("CloseTime operators = %v, want the null checks", closeTime)
+	}
+	workflowID := filterOpLabelsForKey("WorkflowId")
+	if has(workflowID, "Is Null") {
+		t.Errorf("WorkflowId is always set, operators = %v", workflowID)
+	}
+}
