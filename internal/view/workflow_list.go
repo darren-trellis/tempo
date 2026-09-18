@@ -428,10 +428,6 @@ func (wl *WorkflowList) Start() {
 			wl.showFilter()
 			return true
 		}).
-		OnRune('F', func(e *tcell.EventKey) bool {
-			wl.showFilterBuilder()
-			return true
-		}).
 		OnRune('f', func(e *tcell.EventKey) bool {
 			wl.showFilterManager()
 			return true
@@ -840,7 +836,6 @@ func (wl *WorkflowList) workflowPaneHints() []KeyHint {
 	hints = append(hints,
 		KeyHint{Key: "|", Description: "Columns"},
 		KeyHint{Key: "/", Description: "Search"},
-		KeyHint{Key: "F", Description: "Filter"},
 		KeyHint{Key: "f", Description: "Filters"},
 	)
 	hints = append(hints,

@@ -22,6 +22,7 @@ type namespaceCatalogStore struct {
 	mu        sync.RWMutex
 	epoch     uint64
 	items     map[string]startCatalog
+	attrs     map[string][]temporal.SearchAttribute
 	fetch     map[string]uint64
 	pending   map[string]catalogFetch
 	listeners map[string][]func(startCatalog)
@@ -136,11 +137,33 @@ func (s *namespaceCatalogStore) unlisten(ns string) {
 	s.mu.Unlock()
 }
 
+func (s *namespaceCatalogStore) getAttrs(ns string) []temporal.SearchAttribute {
+	if s == nil || ns == "" {
+		return nil
+	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return append([]temporal.SearchAttribute(nil), s.attrs[ns]...)
+}
+
+func (s *namespaceCatalogStore) putAttrs(ns string, attrs []temporal.SearchAttribute) {
+	if s == nil || ns == "" {
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.attrs == nil {
+		s.attrs = map[string][]temporal.SearchAttribute{}
+	}
+	s.attrs[ns] = append([]temporal.SearchAttribute(nil), attrs...)
+}
+
 func (s *namespaceCatalogStore) clear() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.epoch++
 	s.items = nil
+	s.attrs = nil
 	s.pending = nil
 	s.listeners = nil
 }
@@ -201,6 +224,9 @@ func (a *App) refreshNamespaceCatalogFor(ns string) {
 			return
 		}
 		a.catalog.putIfCurrent(ns, gen, startCatalog{types: types, queues: queues})
+		if attrs, attrErr := listCustomSearchAttributes(ctx, provider, ns); attrErr == nil {
+			a.catalog.putAttrs(ns, attrs)
+		}
 	}()
 }
 
@@ -209,6 +235,13 @@ func listStartCatalog(ctx context.Context, provider temporal.Provider, namespace
 		return nil, nil, nil
 	}
 	return provider.ListStartCatalog(ctx, namespace)
+}
+
+func listCustomSearchAttributes(ctx context.Context, provider temporal.Provider, namespace string) ([]temporal.SearchAttribute, error) {
+	if provider == nil {
+		return nil, nil
+	}
+	return provider.ListCustomSearchAttributes(ctx, namespace)
 }
 
 func (a *App) catalogSuggestions(namespace string) (types, queues []string, ok bool) {

@@ -1,8 +1,10 @@
 package view
 
 import (
+	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/atterpac/jig/components"
 	"github.com/atterpac/jig/input"
@@ -137,8 +139,12 @@ func (wl *WorkflowList) openFilterBuilder(state *filterBuilderState) {
 
 	refresh()
 
+	title := "New Filter"
+	if strings.TrimSpace(state.name) != "" {
+		title = "Edit Filter"
+	}
 	modal := newOverlayModal(components.ModalConfig{
-		Title:  fmt.Sprintf("%s Filter", theme.IconFilter),
+		Title:  fmt.Sprintf("%s %s", theme.IconFilter, title),
 		Width:  72,
 		Height: 20,
 	}, wl)
@@ -204,7 +210,7 @@ func (s *filterBuilderState) apply() {
 	}
 	s.wl.activeFilterName = ""
 	s.wl.filterClauses = append([]config.FilterClause(nil), s.clauses...)
-	s.wl.applyVisibilityQuery(compiledFilterQuery(f))
+	s.wl.applyVisibilityQuery(compiledFilterQueryFor(s.wl, f))
 	s.wl.closeModal()
 }
 
@@ -217,24 +223,21 @@ func (wl *WorkflowList) showClauseEditor(initial config.FilterClause, onSave fun
 		if key == "" {
 			key = filterKeySpecs[0].key
 		}
-		spec, ok := lookupFilterKey(key)
-		if !ok {
-			spec = filterKeySpecs[0]
-			key = spec.key
-		}
+		spec := resolveFilterKey(wl, key)
 		current.Key = key
-		if current.Op == "" || !filterOpAllowed(key, current.Op) {
-			current.Op = defaultFilterOp(key)
+		if current.Op == "" || !filterOpAllowedFor(wl, key, current.Op) {
+			current.Op = defaultFilterOpFor(wl, key)
 		}
 
-		keyField := newOrderedDropdownField("key", "Key", filterKeyNames()).SetValue(key)
-		opField := newOrderedDropdownField("op", "Operator", filterOpLabelsForKey(key)).SetValue(filterOpLabel(current.Op))
+		keyField := newOrderedDropdownField("key", "Key", filterKeyNamesFor(wl)).SetValue(key)
+		wl.refreshFilterKeyOptions(keyField)
+		opField := newOrderedDropdownField("op", "Operator", filterOpLabelsForKeyFor(wl, key)).SetValue(filterOpLabel(current.Op))
 		keyField.SetChangedFunc(func(v string) {
 			if strings.EqualFold(v, current.Key) {
 				return
 			}
 			current.Key = v
-			current.Op = defaultFilterOp(v)
+			current.Op = defaultFilterOpFor(wl, v)
 			current.Value = ""
 			rebuild(current)
 		})
@@ -260,6 +263,14 @@ func (wl *WorkflowList) showClauseEditor(initial config.FilterClause, onSave fun
 				status = filterStatusValues[0]
 			}
 			valueField = newOrderedDropdownField("value", "Value", filterStatusValues).SetValue(status)
+			builder.AddField(valueField)
+			fields = append(fields, valueField)
+		case filterKeyBool:
+			status := current.Value
+			if status == "" {
+				status = filterBoolValues[0]
+			}
+			valueField = newOrderedDropdownField("value", "Value", filterBoolValues).SetValue(status)
 			builder.AddField(valueField)
 			fields = append(fields, valueField)
 		case filterKeyTime:
@@ -342,6 +353,35 @@ func (wl *WorkflowList) showClauseEditor(initial config.FilterClause, onSave fun
 	rebuild(initial)
 }
 
+func (wl *WorkflowList) refreshFilterKeyOptions(keyField *dropdownField) {
+	if wl == nil || keyField == nil {
+		return
+	}
+	keyField.SetOptionsOrdered(filterKeyNamesFor(wl))
+	if wl.app == nil {
+		return
+	}
+	provider := wl.app.Provider()
+	ns := wl.namespace
+	if provider == nil || ns == "" {
+		return
+	}
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
+		defer cancel()
+		attrs, err := provider.ListCustomSearchAttributes(ctx, ns)
+		if err != nil {
+			return
+		}
+		wl.app.catalog.putAttrs(ns, attrs)
+		if jig := wl.app.JigApp(); jig != nil {
+			jig.QueueUpdateDraw(func() {
+				keyField.SetOptionsOrdered(filterKeyNamesFor(wl))
+			})
+		}
+	}()
+}
+
 func catalogOptionsForFilterKey(wl *WorkflowList, key string) []string {
 	if wl == nil {
 		return nil
@@ -365,7 +405,7 @@ func readFilterClauseForm(kind filterKeyKind, keyField, opField, valueField, pre
 		clause.Op = defaultFilterOp(clause.Key)
 	}
 	switch kind {
-	case filterKeyCatalog, filterKeyStatus:
+	case filterKeyCatalog, filterKeyStatus, filterKeyBool:
 		if valueField != nil {
 			clause.Value = strings.TrimSpace(valueField.GetValue())
 		}
@@ -457,7 +497,7 @@ func (wl *WorkflowList) applySavedFilter(f config.SavedFilter) {
 	}
 	wl.activeFilterName = f.Name
 	wl.filterClauses = append([]config.FilterClause(nil), f.Clauses...)
-	wl.applyVisibilityQuery(compiledFilterQuery(f))
+	wl.applyVisibilityQuery(compiledFilterQueryFor(wl, f))
 }
 
 func (wl *WorkflowList) applyFilterClauses(clauses []config.FilterClause) {
@@ -466,7 +506,7 @@ func (wl *WorkflowList) applyFilterClauses(clauses []config.FilterClause) {
 	}
 	wl.activeFilterName = ""
 	wl.filterClauses = append([]config.FilterClause(nil), clauses...)
-	wl.applyVisibilityQuery(compileFilterClauses(clauses))
+	wl.applyVisibilityQuery(compileFilterClausesFor(wl, clauses))
 }
 
 func (wl *WorkflowList) applyAllWorkflowsFilter() {

@@ -178,7 +178,7 @@ func (wl *WorkflowList) showFilterManager() {
 	modal.SetContent(table)
 	modal.SetHints([]components.KeyHint{
 		{Key: "Enter", Description: "Apply"},
-		{Key: "n", Description: "New"},
+		{Key: "n", Description: "New Filter"},
 		{Key: "e", Description: "Edit"},
 		{Key: "d", Description: "Delete"},
 		{Key: "J/K", Description: "Reorder"},

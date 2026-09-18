@@ -35,6 +35,7 @@ func TestClientCallsWithoutConnectionReturnErrors(t *testing.T) {
 		"ListTaskQueueNames":         func() error { _, err := c.ListTaskQueueNames(ctx, "n"); return err },
 		"ListWorkflowTypes":          func() error { _, err := c.ListWorkflowTypes(ctx, "n"); return err },
 		"ListStartCatalog":           func() error { _, _, err := c.ListStartCatalog(ctx, "n"); return err },
+		"ListCustomSearchAttributes": func() error { _, err := c.ListCustomSearchAttributes(ctx, "n"); return err },
 		"ListSchedules":              func() error { _, _, err := c.ListSchedules(ctx, "n", ListOptions{}); return err },
 		"GetSchedule":                func() error { _, err := c.GetSchedule(ctx, "n", "s"); return err },
 		"PauseSchedule":              func() error { return c.PauseSchedule(ctx, "n", "s", "why") },

@@ -588,7 +588,7 @@ func (a *App) execFilter(args []string) {
 		return
 	}
 	if len(args) == 0 {
-		wl.showFilterBuilder()
+		wl.showFilterManager()
 		return
 	}
 	switch strings.ToLower(args[0]) {

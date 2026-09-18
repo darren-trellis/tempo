@@ -6,6 +6,7 @@ import (
 
 	"github.com/atterpac/jig/components"
 	"github.com/galaxy-io/tempo/internal/config"
+	"github.com/galaxy-io/tempo/internal/temporal"
 	"github.com/gdamore/tcell/v2"
 )
 
@@ -230,6 +231,44 @@ func TestFilterValueWidgetKind(t *testing.T) {
 	}
 }
 
+func TestFilterKeyNamesIncludeCustomSearchAttributes(t *testing.T) {
+	a := &App{}
+	a.catalog.putAttrs("default", []temporal.SearchAttribute{
+		{Name: "CustomerId", Type: temporal.SearchAttributeKeyword},
+		{Name: "Amount", Type: temporal.SearchAttributeInt},
+		{Name: "ClosedAt", Type: temporal.SearchAttributeDatetime},
+	})
+	wl := &WorkflowList{app: a, namespace: "default"}
+	names := filterKeyNamesFor(wl)
+	if !containsString(names, "CustomerId") || !containsString(names, "Amount") || !containsString(names, "ClosedAt") {
+		t.Fatalf("custom keys missing: %v", names)
+	}
+	if names[0] != "WorkflowId" {
+		t.Fatalf("builtins should stay first, got %q", names[0])
+	}
+	spec := resolveFilterKey(wl, "Amount")
+	if spec.kind != filterKeyNumber {
+		t.Fatalf("Amount kind=%v", spec.kind)
+	}
+	spec = resolveFilterKey(wl, "ClosedAt")
+	if spec.kind != filterKeyTime {
+		t.Fatalf("ClosedAt kind=%v", spec.kind)
+	}
+	got := compileFilterClausesFor(wl, []config.FilterClause{{Key: "Amount", Op: filterOpEq, Value: "42"}})
+	if got != "Amount = 42" {
+		t.Fatalf("int compile=%q", got)
+	}
+}
+
+func containsString(items []string, want string) bool {
+	for _, item := range items {
+		if item == want {
+			return true
+		}
+	}
+	return false
+}
+
 func TestShowFilterBuilderOpensModal(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	a := NewAppWithProvider(nil, "default", config.DefaultConfig(), "local")
@@ -238,7 +277,28 @@ func TestShowFilterBuilderOpensModal(t *testing.T) {
 	a.app.Pages().Push(wl)
 	wl.showFilterBuilder()
 	if !a.app.Pages().CurrentIsModal() {
-		t.Fatal("F should open the filter builder")
+		t.Fatal("new filter should open the builder")
+	}
+	om, ok := a.app.Pages().Current().(*overlayModal)
+	if !ok {
+		t.Fatalf("current=%T", a.app.Pages().Current())
+	}
+	om.SetRect(0, 0, 80, 24)
+	screen := tcell.NewSimulationScreen("UTF-8")
+	if err := screen.Init(); err != nil {
+		t.Fatal(err)
+	}
+	screen.SetSize(80, 24)
+	om.Draw(screen)
+	found := false
+	for y := 0; y < 24; y++ {
+		if strings.Contains(rowText(screen, y, 80), "New Filter") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatal("builder title should be New Filter")
 	}
 }
 
@@ -276,6 +336,22 @@ func TestShowFilterManagerReorderAndDelete(t *testing.T) {
 	}
 	if len(cfg.SavedFilters) != 2 || cfg.SavedFilters[1].Name != "a" {
 		t.Fatalf("delete %+v", cfg.SavedFilters)
+	}
+}
+
+func TestFilterManagerHintIsNewFilter(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	a := NewAppWithProvider(nil, "default", config.DefaultConfig(), "local")
+	wl := NewWorkflowList(a, "default")
+	wl.keepDataOnStart = true
+	a.app.Pages().Push(wl)
+	wl.showFilterManager()
+	om, ok := a.app.Pages().Current().(*overlayModal)
+	if !ok {
+		t.Fatalf("current=%T", a.app.Pages().Current())
+	}
+	if hintDescription(om.Hints(), "n") != "New Filter" {
+		t.Fatalf("n hint=%q", hintDescription(om.Hints(), "n"))
 	}
 }
 

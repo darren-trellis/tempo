@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/galaxy-io/tempo/internal/config"
+	"github.com/galaxy-io/tempo/internal/temporal"
 )
 
 const (
@@ -25,6 +26,8 @@ const (
 	filterKeyCatalog
 	filterKeyStatus
 	filterKeyTime
+	filterKeyNumber
+	filterKeyBool
 )
 
 type filterKeySpec struct {
@@ -56,6 +59,8 @@ var filterStatusValues = []string{
 	"Running", "Completed", "Failed", "Canceled", "Terminated", "TimedOut", "ContinuedAsNew",
 }
 
+var filterBoolValues = []string{"true", "false"}
+
 type filterTimePreset struct {
 	label string
 	value string
@@ -82,6 +87,22 @@ func filterKeyNames() []string {
 	return names
 }
 
+func filterKeyNamesFor(wl *WorkflowList) []string {
+	names := filterKeyNames()
+	seen := make(map[string]bool, len(names))
+	for _, name := range names {
+		seen[strings.ToLower(name)] = true
+	}
+	for _, spec := range customFilterSpecs(wl) {
+		if seen[strings.ToLower(spec.key)] {
+			continue
+		}
+		seen[strings.ToLower(spec.key)] = true
+		names = append(names, spec.key)
+	}
+	return names
+}
+
 func lookupFilterKey(key string) (filterKeySpec, bool) {
 	for _, spec := range filterKeySpecs {
 		if strings.EqualFold(spec.key, strings.TrimSpace(key)) {
@@ -91,19 +112,75 @@ func lookupFilterKey(key string) (filterKeySpec, bool) {
 	return filterKeySpec{}, false
 }
 
+func customFilterSpecs(wl *WorkflowList) []filterKeySpec {
+	if wl == nil || wl.app == nil {
+		return nil
+	}
+	attrs := wl.app.catalog.getAttrs(wl.namespace)
+	out := make([]filterKeySpec, 0, len(attrs))
+	for _, attr := range attrs {
+		out = append(out, specFromSearchAttribute(attr))
+	}
+	return out
+}
+
+func specFromSearchAttribute(attr temporal.SearchAttribute) filterKeySpec {
+	spec := filterKeySpec{key: attr.Name, label: attr.Name}
+	switch attr.Type {
+	case temporal.SearchAttributeDatetime:
+		spec.kind = filterKeyTime
+		spec.ops = []string{filterOpAfter, filterOpBefore, filterOpEq, filterOpNeq}
+	case temporal.SearchAttributeInt, temporal.SearchAttributeDouble:
+		spec.kind = filterKeyNumber
+		spec.ops = []string{filterOpEq, filterOpNeq, filterOpAfter, filterOpBefore}
+	case temporal.SearchAttributeBool:
+		spec.kind = filterKeyBool
+		spec.ops = []string{filterOpEq, filterOpNeq}
+	default:
+		spec.kind = filterKeyText
+		spec.ops = []string{filterOpEq, filterOpNeq, filterOpStartsWith}
+	}
+	return spec
+}
+
+func resolveFilterKey(wl *WorkflowList, key string) filterKeySpec {
+	key = strings.TrimSpace(key)
+	if spec, ok := lookupFilterKey(key); ok {
+		return spec
+	}
+	for _, spec := range customFilterSpecs(wl) {
+		if strings.EqualFold(spec.key, key) {
+			return spec
+		}
+	}
+	if key == "" {
+		return filterKeySpecs[0]
+	}
+	return filterKeySpec{
+		key:  key,
+		kind: filterKeyText,
+		ops:  []string{filterOpEq, filterOpNeq, filterOpStartsWith},
+	}
+}
+
 func defaultFilterOp(key string) string {
-	spec, ok := lookupFilterKey(key)
-	if !ok || len(spec.ops) == 0 {
+	return defaultFilterOpFor(nil, key)
+}
+
+func defaultFilterOpFor(wl *WorkflowList, key string) string {
+	spec := resolveFilterKey(wl, key)
+	if len(spec.ops) == 0 {
 		return filterOpEq
 	}
 	return spec.ops[0]
 }
 
 func filterOpAllowed(key, op string) bool {
-	spec, ok := lookupFilterKey(key)
-	if !ok {
-		return false
-	}
+	return filterOpAllowedFor(nil, key, op)
+}
+
+func filterOpAllowedFor(wl *WorkflowList, key, op string) bool {
+	spec := resolveFilterKey(wl, key)
 	for _, allowed := range spec.ops {
 		if allowed == op {
 			return true
@@ -129,8 +206,12 @@ func filterOpFromLabel(label string) string {
 }
 
 func filterOpLabelsForKey(key string) []string {
-	spec, ok := lookupFilterKey(key)
-	if !ok {
+	return filterOpLabelsForKeyFor(nil, key)
+}
+
+func filterOpLabelsForKeyFor(wl *WorkflowList, key string) []string {
+	spec := resolveFilterKey(wl, key)
+	if len(spec.ops) == 0 {
 		return []string{filterOpLabels[filterOpEq]}
 	}
 	out := make([]string, 0, len(spec.ops))
@@ -171,16 +252,24 @@ func filterTimePresetValue(label string) string {
 }
 
 func compiledFilterQuery(f config.SavedFilter) string {
-	if q := compileFilterClauses(f.Clauses); q != "" {
+	return compiledFilterQueryFor(nil, f)
+}
+
+func compiledFilterQueryFor(wl *WorkflowList, f config.SavedFilter) string {
+	if q := compileFilterClausesFor(wl, f.Clauses); q != "" {
 		return q
 	}
 	return strings.TrimSpace(f.Query)
 }
 
 func compileFilterClauses(clauses []config.FilterClause) string {
+	return compileFilterClausesFor(nil, clauses)
+}
+
+func compileFilterClausesFor(wl *WorkflowList, clauses []config.FilterClause) string {
 	parts := make([]string, 0, len(clauses))
 	for _, clause := range clauses {
-		part := compileFilterClause(clause)
+		part := compileFilterClauseWith(clause, resolveFilterKey(wl, clause.Key))
 		if part == "" {
 			continue
 		}
@@ -190,6 +279,10 @@ func compileFilterClauses(clauses []config.FilterClause) string {
 }
 
 func compileFilterClause(clause config.FilterClause) string {
+	return compileFilterClauseWith(clause, resolveFilterKey(nil, clause.Key))
+}
+
+func compileFilterClauseWith(clause config.FilterClause, spec filterKeySpec) string {
 	key := strings.TrimSpace(clause.Key)
 	op := strings.TrimSpace(clause.Op)
 	value := strings.TrimSpace(clause.Value)
@@ -198,18 +291,34 @@ func compileFilterClause(clause config.FilterClause) string {
 	}
 	switch op {
 	case filterOpEq:
-		return key + " = " + quoteVisibilityValue(value)
+		return key + " = " + formatFilterValue(spec, value)
 	case filterOpNeq:
-		return key + " != " + quoteVisibilityValue(value)
+		return key + " != " + formatFilterValue(spec, value)
 	case filterOpStartsWith:
 		return key + " STARTS_WITH " + quoteVisibilityValue(value)
 	case filterOpAfter:
-		return key + " > " + quoteVisibilityTime(value)
+		return key + " > " + formatFilterCompare(spec, value)
 	case filterOpBefore:
-		return key + " < " + quoteVisibilityTime(value)
+		return key + " < " + formatFilterCompare(spec, value)
 	default:
 		return ""
 	}
+}
+
+func formatFilterValue(spec filterKeySpec, value string) string {
+	switch spec.kind {
+	case filterKeyNumber, filterKeyBool:
+		return value
+	default:
+		return quoteVisibilityValue(value)
+	}
+}
+
+func formatFilterCompare(spec filterKeySpec, value string) string {
+	if spec.kind == filterKeyNumber {
+		return value
+	}
+	return quoteVisibilityTime(value)
 }
 
 func quoteVisibilityValue(value string) string {

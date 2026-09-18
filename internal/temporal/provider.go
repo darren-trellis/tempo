@@ -64,6 +64,10 @@ type Provider interface {
 	// a namespace, paging through visibility rather than the current UI page.
 	ListStartCatalog(ctx context.Context, namespace string) (types, queues []string, err error)
 
+	// ListCustomSearchAttributes returns user-registered search attributes
+	// for a namespace.
+	ListCustomSearchAttributes(ctx context.Context, namespace string) ([]SearchAttribute, error)
+
 	// Close releases any resources held by the provider.
 	Close() error
 

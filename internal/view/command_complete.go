@@ -100,7 +100,7 @@ func builtinCommandCatalog() []commandInfo {
 		{name: "editor", help: "Open payload in editor"},
 		{name: "ui", help: "Open in Web UI"},
 		{name: "search", help: "Search the current list"},
-		{name: "filter", help: "Open the filter builder"},
+		{name: "filter", help: "Manage saved filters"},
 		{name: "filter manage", help: "Manage saved filters"},
 		{name: "filter load", help: "Load a saved filter"},
 		{name: "workflow start", help: "Start a workflow"},

@@ -216,8 +216,8 @@ func TestListHintsIncludeWorkflowActions(t *testing.T) {
 	if desc := hintDescription(wl.Hints(), "/"); desc != "Search" {
 		t.Fatalf("list search hint: %q", desc)
 	}
-	if desc := hintDescription(wl.Hints(), "F"); desc != "Filter" {
-		t.Fatalf("list filter hint: %q", desc)
+	if desc := hintDescription(wl.Hints(), "F"); desc != "" {
+		t.Fatalf("filter builder should not be a root key, got %q", desc)
 	}
 	if desc := hintDescription(wl.Hints(), "f"); desc != "Filters" {
 		t.Fatalf("list filters hint: %q", desc)
