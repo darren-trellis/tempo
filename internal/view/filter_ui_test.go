@@ -828,6 +828,92 @@ func TestCloneFilterWithNothingSelectedDoesNothing(t *testing.T) {
 	}
 }
 
+func TestRenameFilterKeepsQueryDefaultAndActiveChip(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	cfg := config.DefaultConfig()
+	cfg.SavedFilters = []config.SavedFilter{
+		{Name: "first"},
+		{Name: "recent", Query: "StartTime > '$HOURS_AGO_24'", IsDefault: true},
+		{Name: "last"},
+	}
+	a := NewAppWithProvider(nil, "default", cfg, "local")
+	wl := NewWorkflowList(a, "default")
+	wl.keepDataOnStart = true
+	wl.activeFilterName = "recent"
+	a.app.Pages().Push(wl)
+
+	table := filterManagerTable(t, a, wl)
+	table.SelectRow(1)
+	if ev := table.GetInputCapture()(tcell.NewEventKey(tcell.KeyRune, 'r', tcell.ModNone)); ev != nil {
+		t.Fatal("r should rename the selected filter")
+	}
+	prompt := a.app.Pages().Current().(*overlayModal)
+	form, ok := prompt.body.(*components.Form)
+	if !ok {
+		t.Fatalf("prompt body=%T", prompt.body)
+	}
+	field, _ := form.GetTextField("name")
+	if got := field.GetValue(); got != "recent" {
+		t.Fatalf("prompt should start from the current name, got %q", got)
+	}
+	submitNamePrompt(t, a, "today")
+
+	filters := cfg.GetSavedFilters()
+	if len(filters) != 3 {
+		t.Fatalf("rename should not add a filter, got %+v", filters)
+	}
+	got := filters[1]
+	if got.Name != "today" || got.Query != "StartTime > '$HOURS_AGO_24'" || !got.IsDefault {
+		t.Fatalf("rename should keep query, default, and position, got %+v", filters)
+	}
+	if wl.activeFilterName != "today" {
+		t.Fatalf("the active chip should follow the new name, got %q", wl.activeFilterName)
+	}
+}
+
+func TestRenameFilterRefusesToOverwriteAnExistingName(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	cfg := config.DefaultConfig()
+	cfg.SavedFilters = []config.SavedFilter{
+		{Name: "recent", Query: "StartTime > '$HOURS_AGO_24'", IsDefault: true},
+		{Name: "failures", Query: "ExecutionStatus = 'Failed'"},
+	}
+	a := NewAppWithProvider(nil, "default", cfg, "local")
+	wl := NewWorkflowList(a, "default")
+	wl.keepDataOnStart = true
+	a.app.Pages().Push(wl)
+
+	table := filterManagerTable(t, a, wl)
+	table.SelectRow(0)
+	if ev := table.GetInputCapture()(tcell.NewEventKey(tcell.KeyRune, 'r', tcell.ModNone)); ev != nil {
+		t.Fatal("r should rename the selected filter")
+	}
+	submitNamePrompt(t, a, "failures")
+
+	filters := cfg.GetSavedFilters()
+	if filters[0].Name != "recent" || !filters[0].IsDefault || filters[1].Query != "ExecutionStatus = 'Failed'" {
+		t.Fatalf("a refused rename should not change anything, got %+v", filters)
+	}
+}
+
+func TestRenameFilterWithNothingSelectedDoesNothing(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	cfg := config.DefaultConfig()
+	cfg.SavedFilters = nil
+	a := NewAppWithProvider(nil, "default", cfg, "local")
+	wl := NewWorkflowList(a, "default")
+	wl.keepDataOnStart = true
+	a.app.Pages().Push(wl)
+
+	table := filterManagerTable(t, a, wl)
+	if ev := table.GetInputCapture()(tcell.NewEventKey(tcell.KeyRune, 'r', tcell.ModNone)); ev != nil {
+		t.Fatal("r should be handled even with an empty list")
+	}
+	if _, isPrompt := a.app.Pages().Current().(*overlayModal).body.(*components.Form); isPrompt {
+		t.Fatal("an empty list has nothing to rename, so no prompt should open")
+	}
+}
+
 func clauseEditorScreen(t *testing.T, a *App, wl *WorkflowList, clause config.FilterClause) tcell.SimulationScreen {
 	t.Helper()
 	wl.showClauseEditor(clause, nil)

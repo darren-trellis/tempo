@@ -917,6 +917,33 @@ func (c *Config) SaveFilter(filter SavedFilter) {
 	c.SavedFilters = append(c.SavedFilters, filter)
 }
 
+// RenameFilter changes a saved filter's name in place. Query, default flag,
+// and position stay put. Renaming to the current name is a no-op.
+func (c *Config) RenameFilter(oldName, newName string) error {
+	if c == nil {
+		return fmt.Errorf("filter %q not found", oldName)
+	}
+	newName = strings.TrimSpace(newName)
+	if newName == "" {
+		return fmt.Errorf("name is required")
+	}
+	idx := -1
+	for i, f := range c.SavedFilters {
+		if f.Name == oldName {
+			idx = i
+			continue
+		}
+		if f.Name == newName {
+			return fmt.Errorf("a filter named %q already exists", newName)
+		}
+	}
+	if idx < 0 {
+		return fmt.Errorf("filter %q not found", oldName)
+	}
+	c.SavedFilters[idx].Name = newName
+	return nil
+}
+
 // DeleteFilter removes a saved filter by name.
 func (c *Config) DeleteFilter(name string) error {
 	for i, f := range c.SavedFilters {

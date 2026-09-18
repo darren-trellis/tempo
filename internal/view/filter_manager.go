@@ -106,6 +106,29 @@ func (wl *WorkflowList) showFilterManager() {
 		})
 	}
 
+	renameFilter := func() {
+		idx, ok := selectedFilter()
+		if !ok {
+			return
+		}
+		f := cfg.GetSavedFilters()[idx]
+		wl.showFilterNamePrompt("Rename Filter", f.Name, func(name string) {
+			if err := cfg.RenameFilter(f.Name, name); err != nil {
+				wl.app.ToastWarning(err.Error())
+				return
+			}
+			_ = wl.app.SaveConfig()
+			if strings.EqualFold(wl.activeFilterName, f.Name) {
+				wl.activeFilterName = name
+			}
+			refresh()
+			table.SelectRow(idx)
+			if name != f.Name {
+				wl.app.ToastSuccess("Renamed filter " + name)
+			}
+		})
+	}
+
 	// A clone lands right below its original under a name of its own. It
 	// carries the query over verbatim, placeholders and all, but never
 	// IsDefault: only one filter can be the default and the copy is not it.
@@ -177,6 +200,10 @@ func (wl *WorkflowList) showFilterManager() {
 			editFilter()
 			return true
 		}).
+		OnRune('r', func(e *tcell.EventKey) bool {
+			renameFilter()
+			return true
+		}).
 		OnRune('c', func(e *tcell.EventKey) bool {
 			cloneFilter()
 			return true
@@ -225,6 +252,7 @@ func (wl *WorkflowList) showFilterManager() {
 		{Key: "Enter", Description: "Apply"},
 		{Key: "n", Description: "New Filter"},
 		{Key: "e", Description: "Edit"},
+		{Key: "r", Description: "Rename"},
 		{Key: "c", Description: "Clone"},
 		{Key: "d", Description: "Delete"},
 		{Key: "J/K", Description: "Reorder"},
