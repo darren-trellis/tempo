@@ -134,17 +134,23 @@ func FromTemporalConfig(address, namespace, tlsCert, tlsKey, tlsCA, tlsServerNam
 	}
 }
 
+// FilterClause is one key/op/value row of the filter builder. It is derived
+// from a saved filter's query at runtime and is never written to the config.
 type FilterClause struct {
 	Key   string `yaml:"key"`
 	Op    string `yaml:"op"`
 	Value string `yaml:"value"`
 }
 
-// SavedFilter is a named list of AND-ed visibility clauses.
-// Query is kept for older configs that stored a raw visibility string.
+// SavedFilter is a named visibility query. The query is the stored form; the
+// builder parses it into clauses when the filter is opened for editing.
 type SavedFilter struct {
-	Name      string         `yaml:"name"`
-	Query     string         `yaml:"query,omitempty"`
+	Name string `yaml:"name"`
+	// Query may contain $TODAY and similar placeholders, which are resolved
+	// when the filter runs so relative filters stay relative.
+	Query string `yaml:"query,omitempty"`
+	// Clauses is only read, for configs written before filters were stored as
+	// queries. MigrateSavedFilters folds it into Query.
 	Clauses   []FilterClause `yaml:"clauses,omitempty"`
 	IsDefault bool           `yaml:"is_default,omitempty"`
 }
@@ -851,42 +857,33 @@ func (c *Config) EnsureSavedFilters() {
 }
 
 func DefaultSavedFilters() []SavedFilter {
+	filter := func(name, query string) SavedFilter {
+		return SavedFilter{Name: name, Query: query}
+	}
 	status := func(name, value string) SavedFilter {
-		return SavedFilter{Name: name, Clauses: []FilterClause{{Key: "ExecutionStatus", Op: "eq", Value: value}}}
+		return filter(name, "ExecutionStatus = '"+value+"'")
 	}
 	started := func(name, value string) SavedFilter {
-		return SavedFilter{Name: name, Clauses: []FilterClause{{Key: "StartTime", Op: "after", Value: value}}}
+		return filter(name, "StartTime > "+value)
 	}
 	return []SavedFilter{
 		status("Running Workflows", "Running"),
-		{Name: "Unhandled Failures", Query: "`ExecutionStatus`=\"Running\" AND `TemporalReportedProblems` IN (\"category=WorkflowTaskFailed\", \"category=WorkflowTaskTimedOut\")"},
+		filter("Unhandled Failures", "`ExecutionStatus`=\"Running\" AND `TemporalReportedProblems` IN (\"category=WorkflowTaskFailed\", \"category=WorkflowTaskTimedOut\")"),
 		status("Failed Workflows", "Failed"),
 		status("Completed Workflows", "Completed"),
 		status("Cancelled Workflows", "Canceled"),
 		status("Timed Out Workflows", "TimedOut"),
 		started("Started Today", "$TODAY"),
-		{Name: "Started Yesterday", Clauses: []FilterClause{
-			{Key: "StartTime", Op: "after", Value: "$YESTERDAY"},
-			{Key: "StartTime", Op: "before", Value: "$TODAY"},
-		}},
+		filter("Started Yesterday", "StartTime > $YESTERDAY AND StartTime < $TODAY"),
 		started("Started This Week", "$THIS_WEEK"),
 		started("Started Last Hour", "$HOUR_AGO"),
 		started("Started Last 30 Min", "$MINUTES_AGO_30"),
 		started("Started Last 24 Hours", "$HOURS_AGO_24"),
 		started("Started Last 7 Days", "$DAYS_AGO_7"),
 		started("Started Last 30 Days", "$DAYS_AGO_30"),
-		{Name: "Long Running (>1h)", Clauses: []FilterClause{
-			{Key: "ExecutionStatus", Op: "eq", Value: "Running"},
-			{Key: "StartTime", Op: "before", Value: "$HOUR_AGO"},
-		}},
-		{Name: "Long Running (>6h)", Clauses: []FilterClause{
-			{Key: "ExecutionStatus", Op: "eq", Value: "Running"},
-			{Key: "StartTime", Op: "before", Value: "$HOURS_AGO_6"},
-		}},
-		{Name: "Failed Today", Clauses: []FilterClause{
-			{Key: "ExecutionStatus", Op: "eq", Value: "Failed"},
-			{Key: "StartTime", Op: "after", Value: "$TODAY"},
-		}},
+		filter("Long Running (>1h)", "ExecutionStatus = 'Running' AND StartTime < $HOUR_AGO"),
+		filter("Long Running (>6h)", "ExecutionStatus = 'Running' AND StartTime < $HOURS_AGO_6"),
+		filter("Failed Today", "ExecutionStatus = 'Failed' AND StartTime > $TODAY"),
 	}
 }
 

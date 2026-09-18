@@ -103,6 +103,7 @@ func NewAppWithProvider(provider temporal.Provider, defaultNamespace string, cfg
 		config:        cfg,
 		activeProfile: activeProfile,
 	}
+	migrateSavedFilters(cfg)
 	a.buildApp()
 	a.setup()
 

@@ -31,14 +31,15 @@ func TestCompileFilterClauses(t *testing.T) {
 	}
 }
 
-func TestCompiledFilterQueryFallsBackToRaw(t *testing.T) {
+func TestCompiledFilterQueryPrefersStoredQuery(t *testing.T) {
 	f := config.SavedFilter{Query: "WorkflowType = 'Order'"}
 	if got := compiledFilterQuery(f); got != "WorkflowType = 'Order'" {
-		t.Fatalf("raw: %q", got)
+		t.Fatalf("stored query: %q", got)
 	}
-	f.Clauses = []config.FilterClause{{Key: "WorkflowType", Op: filterOpEq, Value: "Pay"}}
-	if got := compiledFilterQuery(f); got != "WorkflowType = 'Pay'" {
-		t.Fatalf("clauses win: %q", got)
+	// Clauses only survive in configs written before filters became queries.
+	legacy := config.SavedFilter{Clauses: []config.FilterClause{{Key: "WorkflowType", Op: filterOpEq, Value: "Pay"}}}
+	if got := compiledFilterQuery(legacy); got != "WorkflowType = 'Pay'" {
+		t.Fatalf("legacy clauses: %q", got)
 	}
 }
 

@@ -263,10 +263,36 @@ func compiledFilterQuery(f config.SavedFilter) string {
 }
 
 func compiledFilterQueryFor(wl *WorkflowList, f config.SavedFilter) string {
-	if q := compileFilterClausesFor(wl, f.Clauses); q != "" {
+	if q := strings.TrimSpace(f.Query); q != "" {
 		return q
 	}
-	return strings.TrimSpace(f.Query)
+	return compileFilterClausesFor(wl, f.Clauses)
+}
+
+// savedFilterClauses parses a saved filter into the rows the builder edits.
+// Filters are stored as a query string, so the clauses only exist at runtime.
+func savedFilterClauses(f config.SavedFilter) []config.FilterClause {
+	if q := strings.TrimSpace(f.Query); q != "" {
+		return filterClausesFromQuery(q)
+	}
+	return append([]config.FilterClause(nil), f.Clauses...)
+}
+
+// migrateSavedFilters folds the key/op/value clauses of older configs into the
+// query that filters are stored as now. It reports whether anything changed.
+func migrateSavedFilters(cfg *config.Config) bool {
+	changed := false
+	for i, f := range cfg.GetSavedFilters() {
+		if len(f.Clauses) == 0 {
+			continue
+		}
+		if strings.TrimSpace(f.Query) == "" {
+			cfg.SavedFilters[i].Query = compileFilterClauses(f.Clauses)
+		}
+		cfg.SavedFilters[i].Clauses = nil
+		changed = true
+	}
+	return changed
 }
 
 func compileFilterClauses(clauses []config.FilterClause) string {
@@ -359,11 +385,12 @@ func filterClauseSummary(clause config.FilterClause) string {
 }
 
 func savedFilterSummary(f config.SavedFilter) string {
-	if len(f.Clauses) == 0 {
+	clauses := savedFilterClauses(f)
+	if len(clauses) == 0 {
 		return strings.TrimSpace(f.Query)
 	}
-	parts := make([]string, 0, len(f.Clauses))
-	for _, clause := range f.Clauses {
+	parts := make([]string, 0, len(clauses))
+	for _, clause := range clauses {
 		if s := filterClauseSummary(clause); s != "" {
 			parts = append(parts, s)
 		}

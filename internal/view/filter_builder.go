@@ -15,7 +15,6 @@ type filterBuilderState struct {
 	wl             *WorkflowList
 	clauses        []config.FilterClause
 	name           string
-	rawQuery       string
 	persistOnApply bool
 	onSaved        func()
 }
@@ -29,8 +28,8 @@ func (wl *WorkflowList) showFilterBuilder() {
 		clauses: append([]config.FilterClause(nil), wl.filterClauses...),
 		name:    wl.activeFilterName,
 	}
-	if len(state.clauses) == 0 && strings.TrimSpace(wl.visibilityQuery) != "" {
-		state.rawQuery = wl.visibilityQuery
+	if len(state.clauses) == 0 {
+		state.clauses = filterClausesFromQuery(wl.visibilityQuery)
 	}
 	wl.openFilterBuilder(state)
 }
@@ -39,12 +38,6 @@ func (wl *WorkflowList) openFilterBuilder(state *filterBuilderState) {
 	if wl == nil || state == nil {
 		return
 	}
-	if len(state.clauses) == 0 {
-		if q := strings.TrimSpace(state.rawQuery); q != "" {
-			state.clauses = filterClausesFromQuery(q)
-			state.rawQuery = ""
-		}
-	}
 	table := components.NewTable()
 	table.SetBorder(false)
 
@@ -52,18 +45,12 @@ func (wl *WorkflowList) openFilterBuilder(state *filterBuilderState) {
 		row := table.SelectedRow()
 		table.ClearRows()
 		table.SetHeaders("KEY", "OPERATOR", "VALUE")
-		if len(state.clauses) == 0 {
-			if q := strings.TrimSpace(state.rawQuery); q != "" {
-				table.AddRow("(raw)", "", truncate(q, 48))
+		for _, clause := range state.clauses {
+			if isRawFilterClause(clause) {
+				table.AddRow("(raw)", "", truncate(clause.Value, 52))
+				continue
 			}
-		} else {
-			for _, clause := range state.clauses {
-				if isRawFilterClause(clause) {
-					table.AddRow("(raw)", "", truncate(clause.Value, 52))
-					continue
-				}
-				table.AddRow(clause.Key, filterOpLabel(clause.Op), filterClauseValueLabel(clause))
-			}
+			table.AddRow(clause.Key, filterOpLabel(clause.Op), filterClauseValueLabel(clause))
 		}
 		if row < 0 {
 			row = 0
@@ -186,13 +173,18 @@ func (s *filterBuilderState) persist(name string) {
 	if name == "" {
 		return
 	}
-	s.wl.persistSavedFilter(config.SavedFilter{
-		Name:    name,
-		Clauses: append([]config.FilterClause(nil), s.clauses...),
-		Query:   s.rawQuery,
-	})
+	s.wl.persistSavedFilter(s.savedFilter(name))
 	if s.onSaved != nil {
 		s.onSaved()
+	}
+}
+
+// savedFilter compiles the builder rows back into the stored form, a single
+// visibility query.
+func (s *filterBuilderState) savedFilter(name string) config.SavedFilter {
+	return config.SavedFilter{
+		Name:  strings.TrimSpace(name),
+		Query: compileFilterClausesFor(s.wl, s.clauses),
 	}
 }
 
@@ -200,21 +192,13 @@ func (s *filterBuilderState) apply() {
 	if s == nil || s.wl == nil {
 		return
 	}
-	f := config.SavedFilter{
-		Name:    strings.TrimSpace(s.name),
-		Clauses: append([]config.FilterClause(nil), s.clauses...),
-		Query:   s.rawQuery,
-	}
+	f := s.savedFilter(s.name)
 	if s.persistOnApply {
 		if f.Name == "" {
 			s.wl.showFilterNamePrompt("", func(name string) {
 				s.name = name
 				s.persist(name)
-				s.wl.applySavedFilter(config.SavedFilter{
-					Name:    name,
-					Clauses: f.Clauses,
-					Query:   f.Query,
-				})
+				s.wl.applySavedFilter(s.savedFilter(name))
 				s.wl.closeAllModals()
 			})
 			return
@@ -344,7 +328,7 @@ func (wl *WorkflowList) applySavedFilter(f config.SavedFilter) {
 		return
 	}
 	wl.activeFilterName = f.Name
-	wl.filterClauses = append([]config.FilterClause(nil), f.Clauses...)
+	wl.filterClauses = savedFilterClauses(f)
 	wl.applyVisibilityQuery(compiledFilterQueryFor(wl, f))
 	wl.revealActiveFilterChip()
 }

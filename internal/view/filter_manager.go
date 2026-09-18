@@ -7,7 +7,6 @@ import (
 	"github.com/atterpac/jig/components"
 	"github.com/atterpac/jig/input"
 	"github.com/atterpac/jig/theme"
-	"github.com/galaxy-io/tempo/internal/config"
 	"github.com/gdamore/tcell/v2"
 )
 
@@ -82,9 +81,8 @@ func (wl *WorkflowList) showFilterManager() {
 		f := cfg.GetSavedFilters()[idx]
 		wl.openFilterBuilder(&filterBuilderState{
 			wl:             wl,
-			clauses:        append([]config.FilterClause(nil), f.Clauses...),
+			clauses:        savedFilterClauses(f),
 			name:           f.Name,
-			rawQuery:       f.Query,
 			persistOnApply: true,
 			onSaved:        refresh,
 		})

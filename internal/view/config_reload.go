@@ -64,6 +64,7 @@ func (a *App) applyLoadedConfig(cfg *config.Config, force bool) {
 	if cfg == nil {
 		return
 	}
+	migrateSavedFilters(cfg)
 
 	old := a.config
 	if !force && old != nil && !old.ShouldAutoreload() && !cfg.ShouldAutoreload() {

@@ -1,6 +1,7 @@
 package view
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/galaxy-io/tempo/internal/config"
@@ -102,5 +103,83 @@ func TestFilterClausesFromQueryRoundTrips(t *testing.T) {
 		if got[i] != clauses[i] {
 			t.Errorf("clause %d = %+v, want %+v", i, got[i], clauses[i])
 		}
+	}
+}
+
+// Filters are stored as a query and parsed back into builder rows, so every
+// built-in filter has to survive that trip unchanged.
+func TestDefaultSavedFiltersRoundTrip(t *testing.T) {
+	for _, f := range config.DefaultSavedFilters() {
+		t.Run(f.Name, func(t *testing.T) {
+			if f.Query == "" {
+				t.Fatal("built-in filters should be stored as a query")
+			}
+			if len(f.Clauses) != 0 {
+				t.Fatal("built-in filters should not carry clauses")
+			}
+			clauses := savedFilterClauses(f)
+			if len(clauses) == 0 {
+				t.Fatal("filter parsed into no clauses")
+			}
+			if got := compileFilterClauses(clauses); got != f.Query {
+				t.Errorf("round trip changed the query:\n  stored:   %s\n  compiled: %s", f.Query, got)
+			}
+		})
+	}
+}
+
+// Relative filters only stay relative if the placeholder survives storage.
+func TestRelativeDefaultFiltersKeepPlaceholders(t *testing.T) {
+	want := map[string]string{
+		"Started Last 24 Hours": "$HOURS_AGO_24",
+		"Started Today":         "$TODAY",
+		"Long Running (>6h)":    "$HOURS_AGO_6",
+	}
+	for _, f := range config.DefaultSavedFilters() {
+		placeholder, ok := want[f.Name]
+		if !ok {
+			continue
+		}
+		if !strings.Contains(f.Query, placeholder) {
+			t.Errorf("%s = %q, want it to keep %s", f.Name, f.Query, placeholder)
+		}
+		clauses := savedFilterClauses(f)
+		found := false
+		for _, c := range clauses {
+			if strings.Contains(c.Value, placeholder) {
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("%s lost %s when parsed into clauses: %+v", f.Name, placeholder, clauses)
+		}
+	}
+}
+
+func TestMigrateSavedFiltersDropsClauses(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.SavedFilters = []config.SavedFilter{
+		{Name: "legacy", Clauses: []config.FilterClause{
+			{Key: "ExecutionStatus", Op: filterOpEq, Value: "Running"},
+			{Key: "StartTime", Op: filterOpAfter, Value: "$TODAY"},
+		}},
+		{Name: "already a query", Query: "WorkflowType = 'Order'"},
+	}
+
+	if !migrateSavedFilters(cfg) {
+		t.Fatal("migration should report a change")
+	}
+	legacy := cfg.SavedFilters[0]
+	if len(legacy.Clauses) != 0 {
+		t.Errorf("clauses should be dropped, got %+v", legacy.Clauses)
+	}
+	if legacy.Query != "ExecutionStatus = 'Running' AND StartTime > $TODAY" {
+		t.Errorf("migrated query = %q", legacy.Query)
+	}
+	if cfg.SavedFilters[1].Query != "WorkflowType = 'Order'" {
+		t.Errorf("query-only filter should be untouched, got %q", cfg.SavedFilters[1].Query)
+	}
+	if migrateSavedFilters(cfg) {
+		t.Error("second migration should be a no-op")
 	}
 }
