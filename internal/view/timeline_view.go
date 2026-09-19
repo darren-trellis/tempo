@@ -160,7 +160,7 @@ func (tv *TimelineView) Draw(screen tcell.Screen) {
 		timeRange = time.Minute
 	}
 
-	visibleLanes := height - 3
+	visibleLanes := tv.visibleLaneCount()
 	startLane := tv.scrollY
 	endLane := startLane + visibleLanes
 	if endLane > len(tv.lanes) {
@@ -596,6 +596,14 @@ func (tv *TimelineView) InputHandler() func(event *tcell.EventKey, setFocus func
 			tv.moveSelection(-1)
 		case tcell.KeyDown:
 			tv.moveSelection(1)
+		case tcell.KeyPgUp, tcell.KeyCtrlB:
+			tv.moveSelection(-tv.visibleLaneCount())
+		case tcell.KeyPgDn, tcell.KeyCtrlF:
+			tv.moveSelection(tv.visibleLaneCount())
+		case tcell.KeyHome:
+			tv.selectFirst()
+		case tcell.KeyEnd:
+			tv.selectLast()
 		case tcell.KeyLeft:
 			tv.scroll(-5)
 		case tcell.KeyRight:
@@ -610,6 +618,10 @@ func (tv *TimelineView) InputHandler() func(event *tcell.EventKey, setFocus func
 				tv.moveSelection(-1)
 			case 'j':
 				tv.moveSelection(1)
+			case 'g':
+				tv.selectFirst()
+			case 'G':
+				tv.selectLast()
 			case 'h':
 				tv.scroll(-5)
 			case 'l':
@@ -670,12 +682,20 @@ func timelineLaneScheduledID(lane TimelineLane) int64 {
 	return 0
 }
 
-func (tv *TimelineView) ensureLaneVisible() {
-	_, _, _, height := tv.GetInnerRect()
-	visibleLanes := height - 3
-	if visibleLanes < 1 {
-		visibleLanes = 1
+func (tv *TimelineView) visibleLaneCount() int {
+	if tv == nil {
+		return 1
 	}
+	_, _, _, height := tv.GetInnerRect()
+	visible := height - 3
+	if visible < 1 {
+		return 1
+	}
+	return visible
+}
+
+func (tv *TimelineView) ensureLaneVisible() {
+	visibleLanes := tv.visibleLaneCount()
 	if tv.selectedLane < tv.scrollY {
 		tv.scrollY = tv.selectedLane
 	}
@@ -733,12 +753,7 @@ func (tv *TimelineView) selectFirst() {
 	if len(tv.lanes) == 0 {
 		return
 	}
-	old := tv.selectedLane
-	tv.selectedLane = 0
-	tv.scrollY = 0
-	if old != tv.selectedLane && tv.onSelectionChange != nil {
-		tv.onSelectionChange(&tv.lanes[tv.selectedLane])
-	}
+	tv.setSelectedLane(0, true)
 }
 
 // selectLast jumps to the last lane.
@@ -746,19 +761,7 @@ func (tv *TimelineView) selectLast() {
 	if len(tv.lanes) == 0 {
 		return
 	}
-	old := tv.selectedLane
-	tv.selectedLane = len(tv.lanes) - 1
-
-	// Adjust scroll to keep selection visible
-	_, _, _, height := tv.GetInnerRect()
-	visibleLanes := height - 3
-	if tv.selectedLane >= tv.scrollY+visibleLanes {
-		tv.scrollY = tv.selectedLane - visibleLanes + 1
-	}
-
-	if old != tv.selectedLane && tv.onSelectionChange != nil {
-		tv.onSelectionChange(&tv.lanes[tv.selectedLane])
-	}
+	tv.setSelectedLane(len(tv.lanes)-1, true)
 }
 
 func (tv *TimelineView) laneBarEnd(width int, lane TimelineLane, timeRange time.Duration) int {

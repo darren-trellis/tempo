@@ -522,3 +522,55 @@ func TestTimelineScrollStopsAtLastBar(t *testing.T) {
 		t.Fatalf("zooming out should pull scroll back, scrollX=%d", tv.scrollX)
 	}
 }
+
+func TestTimelinePageAndEdgeKeys(t *testing.T) {
+	start := time.Date(2026, 8, 23, 12, 0, 0, 0, time.UTC)
+	events := []temporal.EnhancedHistoryEvent{
+		{ID: 1, Type: "WorkflowExecutionStarted", Time: start},
+	}
+	id := int64(5)
+	for i := 0; i < 20; i++ {
+		at := start.Add(time.Duration(i) * time.Second)
+		events = append(events,
+			temporal.EnhancedHistoryEvent{ID: id, Type: "ActivityTaskScheduled", Time: at, ActivityType: "Step"},
+			temporal.EnhancedHistoryEvent{ID: id + 1, Type: "ActivityTaskCompleted", Time: at.Add(time.Second), ScheduledEventID: id},
+		)
+		id += 2
+	}
+	tv := NewTimelineView()
+	tv.SetNodes(temporal.BuildEventTree(events))
+	if tv.LaneCount() != 20 {
+		t.Fatalf("lanes=%d", tv.LaneCount())
+	}
+	tv.SetRect(0, 0, 80, 10)
+	if tv.visibleLaneCount() != 7 {
+		t.Fatalf("visible=%d", tv.visibleLaneCount())
+	}
+
+	handler := tv.InputHandler()
+	handler(tcell.NewEventKey(tcell.KeyPgDn, 0, tcell.ModNone), func(tview.Primitive) {})
+	if tv.selectedLane != 7 {
+		t.Fatalf("page down should move a screenful, selected=%d", tv.selectedLane)
+	}
+	if tv.scrollY != 1 {
+		t.Fatalf("page down should keep the selection on screen, scrollY=%d", tv.scrollY)
+	}
+
+	handler(tcell.NewEventKey(tcell.KeyPgUp, 0, tcell.ModNone), func(tview.Primitive) {})
+	if tv.selectedLane != 0 {
+		t.Fatalf("page up should move back a screenful, selected=%d", tv.selectedLane)
+	}
+
+	handler(tcell.NewEventKey(tcell.KeyRune, 'G', tcell.ModNone), func(tview.Primitive) {})
+	if tv.selectedLane != 19 {
+		t.Fatalf("G should jump to the last lane, selected=%d", tv.selectedLane)
+	}
+	if tv.scrollY != 13 {
+		t.Fatalf("G should scroll the last lane into view, scrollY=%d", tv.scrollY)
+	}
+
+	handler(tcell.NewEventKey(tcell.KeyRune, 'g', tcell.ModNone), func(tview.Primitive) {})
+	if tv.selectedLane != 0 || tv.scrollY != 0 {
+		t.Fatalf("g should jump to the first lane, selected=%d scrollY=%d", tv.selectedLane, tv.scrollY)
+	}
+}
