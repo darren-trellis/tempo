@@ -340,14 +340,15 @@ func (tv *TimelineView) drawLaneBar(screen tcell.Screen, x, y, width int, lane T
 	}
 }
 
-// drawCursor draws a candlestick-style cursor showing gap and duration for selected lane.
+// drawCursor draws a candlestick-style cursor around the selected lane. The
+// offsets it spans are reported on the status bar rather than labelled here, so
+// the time scale stays readable.
 func (tv *TimelineView) drawCursor(screen tcell.Screen, x, y, width, height int, timeRange time.Duration) {
 	if timeRange <= 0 || width <= 0 {
 		return
 	}
 
 	lane := tv.lanes[tv.selectedLane]
-	startOffset := lane.StartTime.Sub(tv.startTime)
 	startPos, barEnd := tv.laneBarSpan(lane, width, timeRange)
 	endPos := barEnd - 1
 
@@ -376,74 +377,48 @@ func (tv *TimelineView) drawCursor(screen tcell.Screen, x, y, width, height int,
 	if startPos >= 0 && startPos < width {
 		cursorStyle := tcell.StyleDefault.Foreground(theme.Accent()).Background(theme.Bg())
 		tv.drawCursorLine(screen, x, y, width, lanesEnd, selectedRow, startPos, timeRange, cursorStyle, false)
-
-		// Draw start time label in header
-		startLabel := formatRelativeDuration(startOffset)
-		labelStyle := tcell.StyleDefault.Foreground(theme.Bg()).Background(theme.Accent())
-		labelX := x + startPos
-		if labelX+len(startLabel) > x+width {
-			labelX = x + width - len(startLabel)
-		}
-		if labelX < x {
-			labelX = x
-		}
-		for i, r := range startLabel {
-			if labelX+i >= x && labelX+i < x+width {
-				screen.SetContent(labelX+i, y, r, nil, labelStyle)
-			}
-		}
 	}
 
-	// Only draw end marker and duration for completed items (those with an EndTime)
-	if lane.EndTime != nil {
-		duration := lane.EndTime.Sub(lane.StartTime)
-		durationLabel := formatRelativeDuration(duration)
-		durationStyle := tcell.StyleDefault.Foreground(theme.Bg()).Background(theme.Success())
-
-		// Draw vertical line at end position (if visible and different from start)
-		if endPos > startPos && endPos >= 0 && endPos < width {
-			endStyle := tcell.StyleDefault.Foreground(theme.Success()).Background(theme.Bg())
-			tv.drawCursorLine(screen, x, y, width, lanesEnd, selectedRow, endPos, timeRange, endStyle, true)
-		}
-
-		// Calculate available space inside the candlestick
-		candleWidth := endPos - startPos
-		startLabelLen := len(formatRelativeDuration(startOffset))
-
-		var durationX int
-		if candleWidth > len(durationLabel)+2 {
-			// Fits inside - center it between start and end
-			midPos := (startPos + endPos) / 2
-			durationX = x + midPos - len(durationLabel)/2
-			// Make sure it doesn't overlap with start label
-			if durationX < x+startPos+startLabelLen+1 {
-				durationX = x + startPos + startLabelLen + 1
-			}
-		} else {
-			// Doesn't fit inside - place it to the right of end marker
-			durationX = x + endPos + 1
-		}
-
-		// Clamp to screen bounds
-		if durationX < x {
-			durationX = x
-		}
-		if durationX+len(durationLabel) > x+width {
-			durationX = x + width - len(durationLabel)
-		}
-
-		// Draw the duration label if it fits on screen
-		if durationX >= x && durationX < x+width {
-			for i, r := range durationLabel {
-				if durationX+i >= x && durationX+i < x+width {
-					screen.SetContent(durationX+i, y+1, r, nil, durationStyle)
-				}
-			}
-		}
+	// Only completed items have an end to cap.
+	if lane.EndTime != nil && endPos > startPos && endPos >= 0 && endPos < width {
+		endStyle := tcell.StyleDefault.Foreground(theme.Success()).Background(theme.Bg())
+		tv.drawCursorLine(screen, x, y, width, lanesEnd, selectedRow, endPos, timeRange, endStyle, true)
 	}
 }
 
-// drawLegend draws the status legend and selected lane stats at the bottom.
+// TimelineSelection describes where the highlighted lane sits on the chart.
+type TimelineSelection struct {
+	Start    time.Duration
+	Duration time.Duration
+	Gap      time.Duration
+	Running  bool
+}
+
+// Selection reports the offsets of the highlighted lane for the status bar.
+func (tv *TimelineView) Selection() (TimelineSelection, bool) {
+	if tv == nil || tv.selectedLane < 0 || tv.selectedLane >= len(tv.lanes) {
+		return TimelineSelection{}, false
+	}
+	lane := tv.lanes[tv.selectedLane]
+	sel := TimelineSelection{
+		Start:   lane.StartTime.Sub(tv.startTime),
+		Running: lane.EndTime == nil,
+	}
+	if lane.EndTime != nil {
+		sel.Duration = lane.EndTime.Sub(lane.StartTime)
+	}
+	if tv.selectedLane > 0 {
+		if prev := tv.lanes[tv.selectedLane-1]; prev.EndTime != nil {
+			if gap := lane.StartTime.Sub(*prev.EndTime); gap > 0 {
+				sel.Gap = gap
+			}
+		}
+	}
+	return sel, true
+}
+
+// drawLegend draws the event type key at the bottom. The selected lane's
+// offsets live on the status bar.
 func (tv *TimelineView) drawLegend(screen tcell.Screen, x, y, width int) {
 	pos := x
 	for _, typ := range timelineLegendTypes() {
@@ -451,7 +426,7 @@ func (tv *TimelineView) drawLegend(screen tcell.Screen, x, y, width int) {
 		if typ == temporal.GroupChildWorkflow {
 			label = "Child"
 		}
-		if pos+1+len(label)+1 > x+width/2 {
+		if pos+1+len(label)+1 > x+width {
 			break
 		}
 
@@ -465,79 +440,6 @@ func (tv *TimelineView) drawLegend(screen tcell.Screen, x, y, width int) {
 			pos++
 		}
 		pos += 1
-	}
-
-	// Draw selected lane stats on the right side
-	if tv.selectedLane >= 0 && tv.selectedLane < len(tv.lanes) {
-		lane := tv.lanes[tv.selectedLane]
-
-		// Calculate stats
-		startOffset := lane.StartTime.Sub(tv.startTime)
-
-		// Calculate gap from previous lane
-		var gap time.Duration
-		if tv.selectedLane > 0 {
-			prevLane := tv.lanes[tv.selectedLane-1]
-			if prevLane.EndTime != nil {
-				gap = lane.StartTime.Sub(*prevLane.EndTime)
-				if gap < 0 {
-					gap = 0
-				}
-			}
-		}
-
-		// Build stats segments with their colors
-		type statSegment struct {
-			text  string
-			color tcell.Color
-		}
-
-		segments := []statSegment{}
-		labelColor := theme.FgDim()
-
-		// Start segment (accent color)
-		segments = append(segments, statSegment{"Start:", labelColor})
-		segments = append(segments, statSegment{formatRelativeDuration(startOffset), theme.Accent()})
-		segments = append(segments, statSegment{"  ", labelColor})
-
-		// Duration or running segment
-		if lane.EndTime != nil {
-			duration := lane.EndTime.Sub(lane.StartTime)
-			segments = append(segments, statSegment{"Dur:", labelColor})
-			segments = append(segments, statSegment{formatRelativeDuration(duration), theme.Success()})
-		} else {
-			segments = append(segments, statSegment{"(running)", theme.Warning()})
-		}
-
-		// Gap segment (dim color)
-		if gap > 0 {
-			segments = append(segments, statSegment{"  Gap:", labelColor})
-			segments = append(segments, statSegment{formatRelativeDuration(gap), theme.FgDim()})
-		}
-
-		// Calculate total length
-		totalLen := 0
-		for _, seg := range segments {
-			totalLen += len(seg.text)
-		}
-
-		// Draw stats right-aligned
-		statsX := x + width - totalLen
-		if statsX < pos+2 {
-			statsX = pos + 2
-		}
-
-		currentX := statsX
-		for _, seg := range segments {
-			style := tcell.StyleDefault.Foreground(seg.color).Background(theme.Bg())
-			for _, r := range seg.text {
-				if currentX >= x+width {
-					break
-				}
-				screen.SetContent(currentX, y, r, nil, style)
-				currentX++
-			}
-		}
 	}
 }
 

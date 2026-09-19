@@ -29,14 +29,20 @@ func (a *App) statusBarSegments() []chromeSeg {
 		return nil
 	}
 	var segs []chromeSeg
-	add := func(text string, color tcell.Color) {
-		if text == "" {
+	addSegs := func(extra ...chromeSeg) {
+		if len(extra) == 0 {
 			return
 		}
 		if len(segs) > 0 {
 			segs = append(segs, chromeSeg{text: " | ", color: theme.FgDim()})
 		}
-		segs = append(segs, chromeSeg{text: text, color: color})
+		segs = append(segs, extra...)
+	}
+	add := func(text string, color tcell.Color) {
+		if text == "" {
+			return
+		}
+		addSegs(chromeSeg{text: text, color: color})
 	}
 	add(a.connectionChromeText(), a.connectionChromeColor())
 	if icon := a.codecChromeIcon(); icon != "" {
@@ -51,8 +57,42 @@ func (a *App) statusBarSegments() []chromeSeg {
 		if extra := strings.TrimSpace(wl.adHocSummary()); extra != "" {
 			add(theme.IconFilter+" "+extra, theme.Fg())
 		}
+		addSegs(wl.timelineChromeSegs()...)
 	}
 	add(a.profileTitle(), theme.Fg())
+	return segs
+}
+
+// timelineChromeSegs reads the highlighted lane's offsets onto the status bar,
+// which is where the timeline reports them now that the chart carries no
+// labels.
+func (wl *WorkflowList) timelineChromeSegs() []chromeSeg {
+	if wl == nil || !wl.timelineVisible || wl.timelineView == nil {
+		return nil
+	}
+	sel, ok := wl.timelineView.Selection()
+	if !ok {
+		return nil
+	}
+	segs := []chromeSeg{
+		{text: theme.IconClock + " ", color: theme.FgDim()},
+		{text: "Start ", color: theme.FgDim()},
+		{text: formatRelativeDuration(sel.Start), color: theme.Accent()},
+	}
+	if sel.Running {
+		segs = append(segs, chromeSeg{text: "  running", color: theme.Warning()})
+	} else {
+		segs = append(segs,
+			chromeSeg{text: "  Dur ", color: theme.FgDim()},
+			chromeSeg{text: formatRelativeDuration(sel.Duration), color: theme.Success()},
+		)
+	}
+	if sel.Gap > 0 {
+		segs = append(segs,
+			chromeSeg{text: "  Gap ", color: theme.FgDim()},
+			chromeSeg{text: formatRelativeDuration(sel.Gap), color: theme.FgDim()},
+		)
+	}
 	return segs
 }
 

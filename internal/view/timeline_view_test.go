@@ -5,6 +5,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/atterpac/jig/theme"
+	"github.com/galaxy-io/tempo/internal/config"
 	"github.com/galaxy-io/tempo/internal/temporal"
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
@@ -281,6 +283,152 @@ func TestTimelineDrawsNameInsideBar(t *testing.T) {
 	}
 	if !strings.Contains(row.String(), "ValidateOrder") {
 		t.Fatalf("bar should contain the activity name, got %q", row.String())
+	}
+}
+
+func TestTimelineChartCarriesNoStartOrDurationLabel(t *testing.T) {
+	start := time.Date(2026, 8, 23, 12, 0, 0, 0, time.UTC)
+	tv := NewTimelineView()
+	tv.SetNodes(temporal.BuildEventTree([]temporal.EnhancedHistoryEvent{
+		{ID: 1, Type: "WorkflowExecutionStarted", Time: start},
+		{ID: 5, Type: "ActivityTaskScheduled", Time: start.Add(20 * time.Second), ActivityType: "Late"},
+		{ID: 6, Type: "ActivityTaskCompleted", Time: start.Add(40 * time.Second), ScheduledEventID: 5},
+		{ID: 8, Type: "ActivityTaskScheduled", Time: start, ActivityType: "Wide"},
+		{ID: 9, Type: "ActivityTaskCompleted", Time: start.Add(time.Minute), ScheduledEventID: 8},
+	}))
+	if !tv.SelectByScheduledID(5) {
+		t.Fatal("should select the late activity")
+	}
+	tv.SetRect(0, 0, 80, 10)
+
+	screen := tcell.NewSimulationScreen("UTF-8")
+	if err := screen.Init(); err != nil {
+		t.Fatal(err)
+	}
+	screen.SetSize(80, 10)
+	tv.Draw(screen)
+
+	for x := 0; x < 80; x++ {
+		ch, _, style, _ := screen.GetContent(x, 0)
+		if _, bg, _ := style.Decompose(); bg == theme.Accent() {
+			t.Fatalf("header should carry no start label, got %q at column %d", string(ch), x)
+		}
+	}
+	for x := 0; x < 80; x++ {
+		ch, _, _, _ := screen.GetContent(x, 1)
+		if ch != '─' {
+			t.Fatalf("the scale rule should carry no duration label, got %q at column %d", string(ch), x)
+		}
+	}
+}
+
+func TestTimelineSelectionReportsOffsets(t *testing.T) {
+	start := time.Date(2026, 8, 23, 12, 0, 0, 0, time.UTC)
+	tv := NewTimelineView()
+	tv.SetNodes(temporal.BuildEventTree([]temporal.EnhancedHistoryEvent{
+		{ID: 1, Type: "WorkflowExecutionStarted", Time: start},
+		{ID: 5, Type: "ActivityTaskScheduled", Time: start, ActivityType: "First"},
+		{ID: 6, Type: "ActivityTaskCompleted", Time: start.Add(10 * time.Second), ScheduledEventID: 5},
+		{ID: 8, Type: "ActivityTaskScheduled", Time: start.Add(25 * time.Second), ActivityType: "Second"},
+		{ID: 9, Type: "ActivityTaskCompleted", Time: start.Add(40 * time.Second), ScheduledEventID: 8},
+	}))
+
+	if !tv.SelectByScheduledID(8) {
+		t.Fatal("should select the second activity")
+	}
+	sel, ok := tv.Selection()
+	if !ok {
+		t.Fatal("a highlighted lane should report a selection")
+	}
+	if sel.Start != 25*time.Second {
+		t.Fatalf("start=%s", sel.Start)
+	}
+	if sel.Duration != 15*time.Second {
+		t.Fatalf("duration=%s", sel.Duration)
+	}
+	if sel.Gap != 15*time.Second {
+		t.Fatalf("gap=%s", sel.Gap)
+	}
+	if sel.Running {
+		t.Fatal("a completed activity should not read as running")
+	}
+
+	if !tv.SelectByScheduledID(5) {
+		t.Fatal("should select the first activity")
+	}
+	sel, _ = tv.Selection()
+	if sel.Start != 0 || sel.Gap != 0 {
+		t.Fatalf("the first lane has no gap, got start=%s gap=%s", sel.Start, sel.Gap)
+	}
+
+	empty, ok := NewTimelineView().Selection()
+	if ok || empty != (TimelineSelection{}) {
+		t.Fatal("an empty timeline has no selection")
+	}
+}
+
+func TestTimelineSelectionMarksRunningLanes(t *testing.T) {
+	start := time.Date(2026, 8, 23, 12, 0, 0, 0, time.UTC)
+	tv := NewTimelineView()
+	tv.SetNodes(temporal.BuildEventTree([]temporal.EnhancedHistoryEvent{
+		{ID: 1, Type: "WorkflowExecutionStarted", Time: start},
+		{ID: 5, Type: "ActivityTaskScheduled", Time: start, ActivityType: "Open"},
+	}))
+	sel, ok := tv.Selection()
+	if !ok {
+		t.Fatal("expected a lane")
+	}
+	if !sel.Running || sel.Duration != 0 {
+		t.Fatalf("an open activity should read as running, got %+v", sel)
+	}
+}
+
+func TestTimelineOffsetsLandOnTheStatusBar(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	a := NewAppWithProvider(nil, "default", config.DefaultConfig(), "local")
+	wl := NewWorkflowList(a, "default")
+	wl.keepDataOnStart = true
+	a.app.Pages().Push(wl)
+
+	statusBar := func() string {
+		var b strings.Builder
+		for _, seg := range a.statusBarSegments() {
+			b.WriteString(seg.text)
+		}
+		return b.String()
+	}
+	if strings.Contains(statusBar(), "Start") {
+		t.Fatalf("a hidden timeline should stay off the status bar, got %q", statusBar())
+	}
+
+	wl.toggleTimeline()
+	now := time.Now()
+	wl.showPreviewEvents(temporal.Workflow{ID: "wf", RunID: "run"}, []temporal.EnhancedHistoryEvent{
+		{ID: 1, Type: "WorkflowExecutionStarted", Time: now.Add(-time.Minute)},
+		{ID: 5, Type: "ActivityTaskScheduled", Time: now.Add(-time.Minute), ActivityType: "First"},
+		{ID: 6, Type: "ActivityTaskCompleted", Time: now.Add(-50 * time.Second), ScheduledEventID: 5},
+		{ID: 8, Type: "ActivityTaskScheduled", Time: now.Add(-40 * time.Second), ActivityType: "Second"},
+		{ID: 9, Type: "ActivityTaskCompleted", Time: now.Add(-30 * time.Second), ScheduledEventID: 8},
+	})
+	if wl.timelineView.LaneCount() != 2 {
+		t.Fatalf("lanes=%d", wl.timelineView.LaneCount())
+	}
+
+	wl.timelineView.SelectByScheduledID(8)
+	got := statusBar()
+	if !strings.Contains(got, "Start 20s") {
+		t.Fatalf("status bar should carry the lane start, got %q", got)
+	}
+	if !strings.Contains(got, "Dur 10s") {
+		t.Fatalf("status bar should carry the lane duration, got %q", got)
+	}
+	if !strings.Contains(got, "Gap 10s") {
+		t.Fatalf("status bar should carry the gap from the previous lane, got %q", got)
+	}
+
+	wl.toggleTimeline()
+	if strings.Contains(statusBar(), "Start") {
+		t.Fatalf("hiding the timeline should drop the offsets, got %q", statusBar())
 	}
 }
 
