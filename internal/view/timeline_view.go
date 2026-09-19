@@ -14,6 +14,9 @@ import (
 const (
 	timelineMinWidth = 40
 	timelineBarFill  = '\u00a0'
+	// timelineBarLabelInside is the narrowest bar that can hold its own name.
+	// Anything narrower spills the name out to the right of the bar.
+	timelineBarLabelInside = 4
 )
 
 // TimelineLane represents a horizontal lane in the timeline.
@@ -267,6 +270,29 @@ func barContainsCol(barStart, barEnd, col int) bool {
 	return col >= barStart && col < barEnd && barEnd > barStart
 }
 
+// laneRowSpan reports every column a lane paints: its bar, plus the name that
+// spills past a bar too narrow to hold it. The cursor skips this span so it
+// never cuts through an event.
+func (tv *TimelineView) laneRowSpan(lane TimelineLane, width int, timeRange time.Duration) (start, end int) {
+	barStart, barEnd := tv.laneBarSpan(lane, width, timeRange)
+	if barEnd-barStart >= timelineBarLabelInside {
+		return barStart, barEnd
+	}
+	label := timelineBarName(lane)
+	if label == "" {
+		return barStart, barEnd
+	}
+	spill := len(timelineBarLabelRunes(label, width-barEnd-1))
+	if spill <= 0 {
+		return barStart, barEnd
+	}
+	end = barEnd + 1 + spill
+	if end > width {
+		end = width
+	}
+	return barStart, end
+}
+
 func (tv *TimelineView) drawCursorLine(screen tcell.Screen, x, y, width, lanesEnd, selectedRow, col int, timeRange time.Duration, style tcell.Style, capSelected bool) {
 	if col < 0 || col >= width {
 		return
@@ -280,7 +306,7 @@ func (tv *TimelineView) drawCursorLine(screen tcell.Screen, x, y, width, lanesEn
 		}
 		laneIdx := tv.scrollY + (row - y - 2)
 		if laneIdx >= 0 && laneIdx < len(tv.lanes) {
-			start, end := tv.laneBarSpan(tv.lanes[laneIdx], width, timeRange)
+			start, end := tv.laneRowSpan(tv.lanes[laneIdx], width, timeRange)
 			if barContainsCol(start, end, col) {
 				continue
 			}
@@ -319,7 +345,7 @@ func (tv *TimelineView) drawLaneBar(screen tcell.Screen, x, y, width int, lane T
 		screen.SetContent(x+pos, y, ch, nil, barStyle)
 	}
 
-	if barWidth < 4 && label != "" {
+	if barWidth < timelineBarLabelInside && label != "" {
 		outside := timelineBarLabelRunes(label, width-barEnd-1)
 		pos := barEnd + 1
 		for _, r := range outside {
@@ -543,7 +569,7 @@ func timelineBarContents(glyph rune, label string, width int) []rune {
 		return cells
 	}
 	cells[1] = glyph
-	if width < 4 {
+	if width < timelineBarLabelInside {
 		return cells
 	}
 	name := timelineBarLabelRunes(label, width-3)

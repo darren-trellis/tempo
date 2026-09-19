@@ -523,6 +523,51 @@ func TestTimelineScrollStopsAtLastBar(t *testing.T) {
 	}
 }
 
+func TestTimelineCursorSkipsSpilledLaneNames(t *testing.T) {
+	start := time.Date(2026, 8, 23, 12, 0, 0, 0, time.UTC)
+	end := start.Add(time.Minute)
+	instant := start
+	activityEnd := start.Add(40 * time.Second)
+
+	// An Upsert marker is instantaneous, so its bar is two cells wide and the
+	// name spills across the chart instead of sitting inside the bar.
+	tv := NewTimelineView()
+	tv.lanes = []TimelineLane{
+		{Name: "UpsertWorkflowSearchAttributes", Type: temporal.GroupMarker, Status: "Completed", StartTime: start, EndTime: &instant},
+		{Name: "readGatewayOpsActivity", Type: temporal.GroupActivity, Status: "Completed", StartTime: start.Add(10 * time.Second), EndTime: &activityEnd},
+	}
+	tv.startTime = start
+	tv.endTime = end
+	tv.selectedLane = 1
+	tv.SetRect(0, 0, 80, 10)
+
+	screen := tcell.NewSimulationScreen("UTF-8")
+	if err := screen.Init(); err != nil {
+		t.Fatal(err)
+	}
+	screen.SetSize(80, 10)
+	tv.Draw(screen)
+
+	timeRange := tv.endTime.Sub(tv.startTime)
+	markerStart, markerEnd := tv.laneBarSpan(tv.lanes[0], 80, timeRange)
+	if markerEnd-markerStart >= timelineBarLabelInside {
+		t.Fatalf("the marker bar should be too narrow to hold its name, span %d-%d", markerStart, markerEnd)
+	}
+	spanStart, spanEnd := tv.laneRowSpan(tv.lanes[0], 80, timeRange)
+	if spanEnd <= markerEnd {
+		t.Fatalf("the spilled name should widen the painted span, got %d-%d", spanStart, spanEnd)
+	}
+
+	cursorCol, _ := tv.laneBarSpan(tv.lanes[1], 80, timeRange)
+	if !barContainsCol(spanStart, spanEnd, cursorCol) {
+		t.Fatalf("expected the spilled name to cover the cursor column %d (%d-%d)", cursorCol, spanStart, spanEnd)
+	}
+	ch, _, _, _ := screen.GetContent(cursorCol, 2)
+	if ch == '│' {
+		t.Fatal("the cursor should not cut through a name spilled outside its bar")
+	}
+}
+
 func TestTimelinePageAndEdgeKeys(t *testing.T) {
 	start := time.Date(2026, 8, 23, 12, 0, 0, 0, time.UTC)
 	events := []temporal.EnhancedHistoryEvent{
