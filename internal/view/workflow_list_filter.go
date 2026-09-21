@@ -199,6 +199,33 @@ func (wl *WorkflowList) updateFilterTitle(filter, hint string) {
 	}
 }
 
+func (wl *WorkflowList) clearTransientWorkflowFilter() bool {
+	if wl == nil {
+		return false
+	}
+	searching := wl.filterText != "" || (wl.originalWorkflows != nil && wl.activeFilterName == "")
+	if searching {
+		wl.clearAllFilters()
+		return true
+	}
+	if wl.adHoc.active() {
+		base := wl.adHoc.base
+		name := wl.activeFilterName
+		clauses := wl.filterClauses
+		wl.clearAdHocFilter()
+		wl.activeFilterName = name
+		wl.filterClauses = clauses
+		wl.runVisibilityQuery(base)
+		wl.revealActiveFilterChip()
+		return true
+	}
+	if wl.visibilityQuery != "" && wl.activeFilterName == "" {
+		wl.clearAllFilters()
+		return true
+	}
+	return false
+}
+
 func (wl *WorkflowList) clearAllFilters() {
 	server := wl.visibilityQuery != ""
 	wl.filterText = ""

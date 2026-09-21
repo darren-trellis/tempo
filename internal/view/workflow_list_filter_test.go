@@ -231,3 +231,49 @@ func TestTaskQueueEscapeClearsSearch(t *testing.T) {
 		t.Fatalf("search=%q n=%d", wl.taskQueues.searchText, len(wl.taskQueues.queues))
 	}
 }
+
+func TestEscapeKeepsTheSelectedSavedFilter(t *testing.T) {
+	wl := NewWorkflowList(&App{}, "default")
+	wl.keepDataOnStart = true
+	wl.loadMockData()
+	wl.applySavedFilter(config.SavedFilter{Name: "Running", Query: "ExecutionStatus = 'Running'"})
+
+	if wl.HandleEscape() {
+		t.Fatal("escape should not treat a saved filter as something to clear")
+	}
+	if wl.activeFilterName != "Running" || wl.visibilityQuery != "ExecutionStatus = 'Running'" {
+		t.Fatalf("saved filter should stay, name=%q query=%q", wl.activeFilterName, wl.visibilityQuery)
+	}
+}
+
+func TestEscapeClearsAnUnsavedVisibilityQuery(t *testing.T) {
+	wl := NewWorkflowList(&App{}, "default")
+	wl.keepDataOnStart = true
+	wl.loadMockData()
+	wl.applyVisibilityQuery("WorkflowType = 'Order'")
+
+	if !wl.HandleEscape() {
+		t.Fatal("escape should clear an unsaved query")
+	}
+	if wl.visibilityQuery != "" || wl.activeFilterName != "" {
+		t.Fatalf("unsaved query should clear, name=%q query=%q", wl.activeFilterName, wl.visibilityQuery)
+	}
+}
+
+func TestEscapePeelsAdHocClausesOffASavedFilter(t *testing.T) {
+	wl := NewWorkflowList(&App{}, "default")
+	wl.keepDataOnStart = true
+	wl.loadMockData()
+	wl.applySavedFilter(config.SavedFilter{Name: "Running", Query: "ExecutionStatus = 'Running'"})
+	wl.appendAdHocClauses([]config.FilterClause{{Key: "WorkflowType", Op: filterOpEq, Value: "Order"}})
+
+	if !wl.HandleEscape() {
+		t.Fatal("escape should peel the ad-hoc clauses")
+	}
+	if wl.adHoc.active() {
+		t.Fatal("ad-hoc clauses should be gone")
+	}
+	if wl.activeFilterName != "Running" || wl.visibilityQuery != "ExecutionStatus = 'Running'" {
+		t.Fatalf("the saved filter should remain, name=%q query=%q", wl.activeFilterName, wl.visibilityQuery)
+	}
+}

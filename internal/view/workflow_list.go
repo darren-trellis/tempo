@@ -836,7 +836,7 @@ func (wl *WorkflowList) timelineHints() []KeyHint {
 		{Key: "+/-", Description: "Zoom"},
 		{Key: "m", Description: timelineSizeHint(wl.timelineNarrow)},
 		{Key: "p", Description: "Preview"},
-		{Key: "L", Description: "Legend"},
+		{Key: "?", Description: "Legend"},
 	}
 }
 
@@ -925,8 +925,7 @@ func (wl *WorkflowList) HandleEscape() bool {
 		wl.workers.applyFilter("")
 		return true
 	}
-	if wl.workflowsActive() && (wl.filterText != "" || wl.visibilityQuery != "" || wl.originalWorkflows != nil) {
-		wl.clearAllFilters()
+	if wl.workflowsActive() && wl.clearTransientWorkflowFilter() {
 		return true
 	}
 	return false
