@@ -117,3 +117,70 @@ func TestSelectionStyleSurvivesTableDraw(t *testing.T) {
 		t.Error("cell still uses the black foreground jig hardcodes")
 	}
 }
+
+func tableShowsSelectedRow(t *testing.T, table *components.Table) bool {
+	t.Helper()
+	if table == nil {
+		return false
+	}
+	if rows, _ := table.GetSelectable(); !rows {
+		return false
+	}
+	table.SetRect(0, 0, 40, 8)
+	screen := tcell.NewSimulationScreen("UTF-8")
+	if err := screen.Init(); err != nil {
+		t.Fatal(err)
+	}
+	screen.SetSize(40, 8)
+	applyRowSelectionStyle(table)
+	table.Draw(screen)
+
+	wantBg := theme.Accent()
+	for y := 0; y < 8; y++ {
+		for x := 0; x < 40; x++ {
+			_, _, style, _ := screen.GetContent(x, y)
+			if _, bg, _ := style.Decompose(); bg == wantBg {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func TestWorkflowAndActivityRowsStayHighlightedWhenUnfocused(t *testing.T) {
+	wl := NewWorkflowList(&App{}, "default")
+	wl.keepDataOnStart = true
+	wl.loadMockData()
+	if wl.table.RowCount() == 0 {
+		t.Fatal("expected mock workflows")
+	}
+	wl.table.SelectRow(0)
+	wl.eventTable.ClearRows()
+	wl.eventTable.SetHeaders("ACTIVITY", "STATUS")
+	wl.eventTable.AddRow("ValidateOrder", "Completed")
+	wl.eventTable.AddRow("Charge", "Failed")
+	wl.eventTable.SelectRow(0)
+	wl.setPreviewKind(previewActivities)
+
+	wl.focusPane = focusTimeline
+	wl.applyFocusStyles()
+
+	if rows, _ := wl.table.GetSelectable(); !rows {
+		t.Fatal("the workflow row should stay selectable when another pane is focused")
+	}
+	if rows, _ := wl.eventTable.GetSelectable(); !rows {
+		t.Fatal("the activity row should stay selectable when another pane is focused")
+	}
+	if !tableShowsSelectedRow(t, wl.table) {
+		t.Fatal("the workflow highlight should stay painted when the list is unfocused")
+	}
+	if !tableShowsSelectedRow(t, wl.eventTable) {
+		t.Fatal("the activity highlight should stay painted when the list is unfocused")
+	}
+
+	wl.previewKind = previewHierarchy
+	wl.applyFocusStyles()
+	if rows, _ := wl.eventTable.GetSelectable(); rows {
+		t.Fatal("the activity table should not stay selectable on the hierarchy tab")
+	}
+}

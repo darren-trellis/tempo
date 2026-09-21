@@ -1277,10 +1277,10 @@ func (wl *WorkflowList) applyFocusStyles() {
 		wl.workers.table.SetSelectable(active && wl.workersActive() && wl.focusPane == focusWorkflows, false)
 	}
 	if wl.table != nil {
-		wl.table.SetSelectable(active && wl.focusPane == focusWorkflows, false)
+		wl.table.SetSelectable(wl.workflowsActive(), false)
 	}
 	if wl.eventTable != nil {
-		wl.eventTable.SetSelectable(active && wl.focusPane == focusEvents && wl.previewKind != previewHierarchy, false)
+		wl.eventTable.SetSelectable(wl.previewKind != previewHierarchy, false)
 	}
 	if wl.workflowDetail != nil {
 		wl.workflowDetail.SetSelectable(active && wl.previewKind == previewDetails && wl.focusPane == focusEvents, false)
