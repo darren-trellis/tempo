@@ -127,6 +127,57 @@ func tempoSettings() []tempoSetting {
 			},
 		},
 		{
+			name: "primary_tab",
+			help: "Default primary pane tab",
+			get:  func(c *config.Config) string { return c.ResolvedPrimaryTab() },
+			apply: func(a *App, value string) error {
+				switch strings.ToLower(strings.TrimSpace(value)) {
+				case config.PrimaryTabWorkflows, config.PrimaryTabQueues, config.PrimaryTabSchedules, config.PrimaryTabWorkers:
+					a.config.PrimaryTab = strings.ToLower(strings.TrimSpace(value))
+					return nil
+				default:
+					return fmt.Errorf("primary_tab must be workflows, queues, schedules, or workers")
+				}
+			},
+			values: func() []string {
+				return []string{config.PrimaryTabWorkflows, config.PrimaryTabQueues, config.PrimaryTabSchedules, config.PrimaryTabWorkers}
+			},
+		},
+		{
+			name: "secondary_tab",
+			help: "Default preview tab",
+			get:  func(c *config.Config) string { return c.ResolvedSecondaryTab() },
+			apply: func(a *App, value string) error {
+				switch strings.ToLower(strings.TrimSpace(value)) {
+				case config.SecondaryTabDetails, config.SecondaryTabActivities, config.SecondaryTabEvents, config.SecondaryTabHierarchy:
+					a.config.SecondaryTab = strings.ToLower(strings.TrimSpace(value))
+					return nil
+				default:
+					return fmt.Errorf("secondary_tab must be details, activities, events, or hierarchy")
+				}
+			},
+			values: func() []string {
+				return []string{config.SecondaryTabDetails, config.SecondaryTabActivities, config.SecondaryTabEvents, config.SecondaryTabHierarchy}
+			},
+		},
+		{
+			name: "tertiary_tab",
+			help: "Default detail tab",
+			get:  func(c *config.Config) string { return c.ResolvedTertiaryTab() },
+			apply: func(a *App, value string) error {
+				switch strings.ToLower(strings.TrimSpace(value)) {
+				case config.TertiaryTabDetails, config.TertiaryTabInput, config.TertiaryTabOutput:
+					a.config.TertiaryTab = strings.ToLower(strings.TrimSpace(value))
+					return nil
+				default:
+					return fmt.Errorf("tertiary_tab must be details, input, or output")
+				}
+			},
+			values: func() []string {
+				return []string{config.TertiaryTabDetails, config.TertiaryTabInput, config.TertiaryTabOutput}
+			},
+		},
+		{
 			name: "modal_shadow",
 			help: "Modal box shadow",
 			get: func(c *config.Config) string {
@@ -706,6 +757,10 @@ func (a *App) applySettingSideEffects(name string) {
 			if wl.focusPane == focusFilters && !wl.filtersOnSide() {
 				wl.setFocusPane(focusWorkflows)
 			}
+		}
+	case "primary_tab", "secondary_tab", "tertiary_tab":
+		if hasWL {
+			wl.applyConfiguredPaneTabs()
 		}
 	}
 }

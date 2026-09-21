@@ -227,6 +227,7 @@ func (wl *WorkflowList) setup() {
 	wl.applyProfileTitle()
 	wl.setupListTabs()
 	wl.updatePanelTitle()
+	wl.applyConfiguredPaneTabs()
 
 	wl.applyPreviewLayout()
 

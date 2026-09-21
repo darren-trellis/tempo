@@ -246,6 +246,45 @@ func TestResolvedSavedFiltersPosition(t *testing.T) {
 	}
 }
 
+func TestResolvedPaneTabs(t *testing.T) {
+	if DefaultConfig().ResolvedPrimaryTab() != PrimaryTabWorkflows {
+		t.Fatal("primary_tab should default to workflows")
+	}
+	if DefaultConfig().ResolvedSecondaryTab() != SecondaryTabActivities {
+		t.Fatal("secondary_tab should default to activities")
+	}
+	if DefaultConfig().ResolvedTertiaryTab() != TertiaryTabDetails {
+		t.Fatal("tertiary_tab should default to details")
+	}
+	if (*Config)(nil).ResolvedPrimaryTab() != PrimaryTabWorkflows {
+		t.Fatal("nil config should default primary to workflows")
+	}
+	if (&Config{PrimaryTab: "task_queues"}).ResolvedPrimaryTab() != PrimaryTabQueues {
+		t.Fatal("task_queues should resolve to queues")
+	}
+	if (&Config{PrimaryTab: "SCHEDULES"}).ResolvedPrimaryTab() != PrimaryTabSchedules {
+		t.Fatal("SCHEDULES should resolve to schedules")
+	}
+	if (&Config{SecondaryTab: "hierarchy"}).ResolvedSecondaryTab() != SecondaryTabHierarchy {
+		t.Fatal("secondary_tab: hierarchy should stick")
+	}
+	if (&Config{TertiaryTab: "output"}).ResolvedTertiaryTab() != TertiaryTabOutput {
+		t.Fatal("tertiary_tab: output should stick")
+	}
+	if (&Config{PrimaryTab: "nope"}).ResolvedPrimaryTab() != PrimaryTabWorkflows {
+		t.Fatal("unknown primary_tab should fall back to workflows")
+	}
+	parsed, err := ParseConfigFile([]byte("primary_tab: workers\nsecondary_tab: events\ntertiary_tab: input\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if parsed.ResolvedPrimaryTab() != PrimaryTabWorkers ||
+		parsed.ResolvedSecondaryTab() != SecondaryTabEvents ||
+		parsed.ResolvedTertiaryTab() != TertiaryTabInput {
+		t.Fatalf("yaml tabs: %s %s %s", parsed.ResolvedPrimaryTab(), parsed.ResolvedSecondaryTab(), parsed.ResolvedTertiaryTab())
+	}
+}
+
 func TestMouseScrollStepSize(t *testing.T) {
 	if DefaultConfig().MouseScrollStepSize() != DefaultMouseScrollStep {
 		t.Fatalf("default mouse scroll step = %d", DefaultConfig().MouseScrollStepSize())

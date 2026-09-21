@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/atterpac/jig/theme"
+	"github.com/galaxy-io/tempo/internal/config"
 	"github.com/galaxy-io/tempo/internal/temporal"
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
@@ -445,5 +446,65 @@ func TestEscapeStillClearsWorkflowFilters(t *testing.T) {
 	}
 	if wl.filterText != "orders" {
 		t.Fatal("the workflow filter should be left alone")
+	}
+}
+
+func TestConfiguredPaneTabsApplyOnStart(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.PrimaryTab = config.PrimaryTabSchedules
+	cfg.SecondaryTab = config.SecondaryTabEvents
+	cfg.TertiaryTab = config.TertiaryTabOutput
+	wl := NewWorkflowList(&App{config: cfg}, "default")
+
+	if !wl.schedulesActive() {
+		t.Fatalf("primary tab should open schedules, got %d", wl.listKind)
+	}
+	if wl.previewKind != previewEvents {
+		t.Fatalf("secondary tab should open events, got %d", wl.previewKind)
+	}
+	if wl.activityDetailKind != activityDetailOutput {
+		t.Fatalf("tertiary tab should open activity output, got %d", wl.activityDetailKind)
+	}
+	if wl.workflowIOKind != workflowIOOutput {
+		t.Fatalf("tertiary tab should open workflow output, got %d", wl.workflowIOKind)
+	}
+}
+
+func TestConfiguredPaneTabsUpdateLive(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	cfg := config.DefaultConfig()
+	a := NewAppWithProvider(nil, "default", cfg, "local")
+	wl := NewWorkflowList(a, "default")
+	wl.keepDataOnStart = true
+	a.app.Pages().Push(wl)
+	if !wl.workflowsActive() || wl.previewKind != previewActivities {
+		t.Fatalf("defaults: kind=%d preview=%d", wl.listKind, wl.previewKind)
+	}
+
+	s, ok := lookupTempoSetting("primary_tab")
+	if !ok {
+		t.Fatal("missing primary_tab")
+	}
+	a.commitSetting(s, config.PrimaryTabWorkers)
+	if !wl.workersActive() {
+		t.Fatalf("setting primary_tab should switch the list, got %d", wl.listKind)
+	}
+
+	s, ok = lookupTempoSetting("secondary_tab")
+	if !ok {
+		t.Fatal("missing secondary_tab")
+	}
+	a.commitSetting(s, config.SecondaryTabHierarchy)
+	if wl.previewKind != previewHierarchy {
+		t.Fatalf("setting secondary_tab should switch preview, got %d", wl.previewKind)
+	}
+
+	s, ok = lookupTempoSetting("tertiary_tab")
+	if !ok {
+		t.Fatal("missing tertiary_tab")
+	}
+	a.commitSetting(s, config.TertiaryTabInput)
+	if wl.activityDetailKind != activityDetailInput || wl.workflowIOKind != workflowIOInput {
+		t.Fatalf("setting tertiary_tab should switch details, activity=%d io=%d", wl.activityDetailKind, wl.workflowIOKind)
 	}
 }

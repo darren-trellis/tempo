@@ -196,6 +196,9 @@ type Config struct {
 	ColorCodeWorkflows  *bool    `yaml:"color_code_workflows,omitempty"`
 	ResetPoint          string   `yaml:"reset_point,omitempty"`
 	ResetReason         string   `yaml:"reset_reason,omitempty"`
+	PrimaryTab          string   `yaml:"primary_tab,omitempty"`
+	SecondaryTab        string   `yaml:"secondary_tab,omitempty"`
+	TertiaryTab         string   `yaml:"tertiary_tab,omitempty"`
 }
 
 // Setting is a duration that tolerates how people actually write one: "45s",
@@ -428,6 +431,66 @@ const (
 	ModalShadowNone        = "none"
 	ModalShadowUniform     = "uniform"
 )
+
+const (
+	PrimaryTabWorkflows    = "workflows"
+	PrimaryTabQueues       = "queues"
+	PrimaryTabSchedules    = "schedules"
+	PrimaryTabWorkers      = "workers"
+	SecondaryTabDetails    = "details"
+	SecondaryTabActivities = "activities"
+	SecondaryTabEvents     = "events"
+	SecondaryTabHierarchy  = "hierarchy"
+	TertiaryTabDetails     = "details"
+	TertiaryTabInput       = "input"
+	TertiaryTabOutput      = "output"
+)
+
+func (c *Config) ResolvedPrimaryTab() string {
+	if c == nil {
+		return PrimaryTabWorkflows
+	}
+	switch strings.ToLower(strings.TrimSpace(c.PrimaryTab)) {
+	case PrimaryTabQueues, "task_queues", "task-queues":
+		return PrimaryTabQueues
+	case PrimaryTabSchedules:
+		return PrimaryTabSchedules
+	case PrimaryTabWorkers:
+		return PrimaryTabWorkers
+	default:
+		return PrimaryTabWorkflows
+	}
+}
+
+func (c *Config) ResolvedSecondaryTab() string {
+	if c == nil {
+		return SecondaryTabActivities
+	}
+	switch strings.ToLower(strings.TrimSpace(c.SecondaryTab)) {
+	case SecondaryTabDetails:
+		return SecondaryTabDetails
+	case SecondaryTabEvents:
+		return SecondaryTabEvents
+	case SecondaryTabHierarchy:
+		return SecondaryTabHierarchy
+	default:
+		return SecondaryTabActivities
+	}
+}
+
+func (c *Config) ResolvedTertiaryTab() string {
+	if c == nil {
+		return TertiaryTabDetails
+	}
+	switch strings.ToLower(strings.TrimSpace(c.TertiaryTab)) {
+	case TertiaryTabInput:
+		return TertiaryTabInput
+	case TertiaryTabOutput:
+		return TertiaryTabOutput
+	default:
+		return TertiaryTabDetails
+	}
+}
 
 func (c *Config) ResolvedModalShadow() string {
 	if c == nil {

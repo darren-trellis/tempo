@@ -5,6 +5,7 @@ import (
 
 	"github.com/atterpac/jig/components"
 	"github.com/atterpac/jig/theme"
+	"github.com/galaxy-io/tempo/internal/config"
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 )
@@ -372,6 +373,76 @@ func (wl *WorkflowList) schedulesActive() bool {
 
 func (wl *WorkflowList) workersActive() bool {
 	return wl != nil && wl.listKind == listWorkers
+}
+
+func (wl *WorkflowList) applyConfiguredPaneTabs() {
+	if wl == nil {
+		return
+	}
+	var cfg *config.Config
+	if wl.app != nil {
+		cfg = wl.app.Config()
+	}
+	wl.setListKind(listKindFromConfig(cfg.ResolvedPrimaryTab()))
+	wl.applyConfiguredPreviewTab(cfg.ResolvedSecondaryTab())
+	wl.setActivityDetailKind(activityDetailKindFromConfig(cfg.ResolvedTertiaryTab()))
+	wl.setWorkflowIOKind(workflowIOKindFromConfig(cfg.ResolvedTertiaryTab()))
+}
+
+func listKindFromConfig(name string) listKind {
+	switch name {
+	case config.PrimaryTabQueues:
+		return listTaskQueues
+	case config.PrimaryTabSchedules:
+		return listSchedules
+	case config.PrimaryTabWorkers:
+		return listWorkers
+	default:
+		return listWorkflows
+	}
+}
+
+func previewKindFromConfig(name string) previewKind {
+	switch name {
+	case config.SecondaryTabDetails:
+		return previewDetails
+	case config.SecondaryTabEvents:
+		return previewEvents
+	case config.SecondaryTabHierarchy:
+		return previewHierarchy
+	default:
+		return previewActivities
+	}
+}
+
+func activityDetailKindFromConfig(name string) activityDetailKind {
+	switch name {
+	case config.TertiaryTabInput:
+		return activityDetailInput
+	case config.TertiaryTabOutput:
+		return activityDetailOutput
+	default:
+		return activityDetailDetails
+	}
+}
+
+func workflowIOKindFromConfig(name string) workflowIOKind {
+	if name == config.TertiaryTabOutput {
+		return workflowIOOutput
+	}
+	return workflowIOInput
+}
+
+func (wl *WorkflowList) applyConfiguredPreviewTab(name string) {
+	kind := previewKindFromConfig(name)
+	if wl.previewModeEnabled() {
+		wl.setPreviewKind(kind)
+		return
+	}
+	wl.previewKind = kind
+	if wl.previewTabs != nil && wl.previewTabs.GetActive() != int(kind) {
+		wl.previewTabs.SetActive(int(kind))
+	}
 }
 
 func (wl *WorkflowList) setListKind(kind listKind) {

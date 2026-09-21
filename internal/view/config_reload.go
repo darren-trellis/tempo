@@ -79,6 +79,9 @@ func (a *App) applyLoadedConfig(cfg *config.Config, force bool) {
 	var oldActivityCols []config.WorkflowColumnConfig
 	oldWorkflowTime := ""
 	oldActivityTime := ""
+	oldPrimaryTab := ""
+	oldSecondaryTab := ""
+	oldTertiaryTab := ""
 	if old != nil {
 		oldTheme = old.Theme
 		oldCols = old.WorkflowColumnLayout()
@@ -86,6 +89,9 @@ func (a *App) applyLoadedConfig(cfg *config.Config, force bool) {
 		oldWorkflowTime = old.ResolvedWorkflowTimeFormat()
 		oldActivityTime = old.ResolvedActivityTimeFormat()
 		oldPageSize = old.WorkflowPageLimit()
+		oldPrimaryTab = old.ResolvedPrimaryTab()
+		oldSecondaryTab = old.ResolvedSecondaryTab()
+		oldTertiaryTab = old.ResolvedTertiaryTab()
 		if conn, ok := old.GetProfile(oldProfile); ok {
 			oldConn = conn
 		}
@@ -125,6 +131,11 @@ func (a *App) applyLoadedConfig(cfg *config.Config, force bool) {
 				}
 				if cfg.WorkflowPageLimit() != oldPageSize {
 					wl.refresh()
+				}
+				if cfg.ResolvedPrimaryTab() != oldPrimaryTab ||
+					cfg.ResolvedSecondaryTab() != oldSecondaryTab ||
+					cfg.ResolvedTertiaryTab() != oldTertiaryTab {
+					wl.applyConfiguredPaneTabs()
 				}
 				wl.syncAutoRefresh()
 				if wl.taskQueuesActive() && wl.taskQueues != nil {
