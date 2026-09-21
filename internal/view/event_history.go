@@ -1,7 +1,6 @@
 package view
 
 import (
-	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -236,28 +235,6 @@ func highlightValues(s string) string {
 	return result
 }
 
-// prettyPrintJSON attempts to format a string as pretty JSON.
-// If it's not valid JSON, returns the original string.
 func prettyPrintJSON(s string) string {
-	s = strings.TrimSpace(s)
-	if s == "" {
-		return s
-	}
-
-	// Check if it looks like JSON
-	if !strings.HasPrefix(s, "{") && !strings.HasPrefix(s, "[") {
-		return s
-	}
-
-	var parsed interface{}
-	if err := json.Unmarshal([]byte(s), &parsed); err != nil {
-		return s
-	}
-
-	pretty, err := json.MarshalIndent(parsed, "", "  ")
-	if err != nil {
-		return s
-	}
-
-	return string(pretty)
+	return formatJSONPretty(s)
 }

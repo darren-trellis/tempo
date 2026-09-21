@@ -256,24 +256,49 @@ func findKeyColonIndex(s string) int {
 	return -1
 }
 
-// formatJSONPretty attempts to format a string as pretty JSON.
 func formatJSONPretty(s string) string {
 	s = strings.TrimSpace(s)
 	if s == "" {
 		return s
 	}
 
-	var parsed interface{}
-	if err := json.Unmarshal([]byte(s), &parsed); err != nil {
+	values, ok := decodeJSONValues(s)
+	if !ok {
 		return s
 	}
 
-	pretty, err := json.MarshalIndent(parsed, "", "  ")
-	if err != nil {
-		return s
+	parts := make([]string, 0, len(values))
+	for _, v := range values {
+		pretty, err := json.MarshalIndent(v, "", "  ")
+		if err != nil {
+			return s
+		}
+		parts = append(parts, string(pretty))
 	}
+	return strings.Join(parts, ",\n")
+}
 
-	return string(pretty)
+func decodeJSONValues(s string) ([]any, bool) {
+	var values []any
+	for {
+		dec := json.NewDecoder(strings.NewReader(s))
+		var v any
+		if err := dec.Decode(&v); err != nil {
+			return nil, false
+		}
+		values = append(values, v)
+		rest := strings.TrimSpace(s[dec.InputOffset():])
+		if rest == "" {
+			return values, true
+		}
+		if rest[0] != ',' {
+			return nil, false
+		}
+		s = strings.TrimSpace(rest[1:])
+		if s == "" {
+			return nil, false
+		}
+	}
 }
 
 // highlightFormattedJSONWorkflow applies syntax highlighting to formatted JSON.
