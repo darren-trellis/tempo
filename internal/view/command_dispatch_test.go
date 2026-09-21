@@ -9,6 +9,7 @@ import (
 	"github.com/atterpac/jig/components"
 	"github.com/galaxy-io/tempo/internal/config"
 	"github.com/galaxy-io/tempo/internal/temporal"
+	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 )
 
@@ -37,6 +38,79 @@ func TestCommitSettingStaysInMemoryUnlessAutosave(t *testing.T) {
 	}
 	if got := string(data); !strings.Contains(got, "color_code_workflows") {
 		t.Fatalf("autosave should persist, got %s", got)
+	}
+}
+
+func TestConfigSetOpensInteractiveEditor(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	cfg := config.DefaultConfig()
+	a := NewAppWithProvider(nil, "default", cfg, "local")
+	wl := NewWorkflowList(a, "default")
+	wl.keepDataOnStart = true
+	a.app.Pages().Push(wl)
+
+	a.executeBuiltinCommand([]string{"config", "set"})
+	if !a.app.Pages().CurrentIsModal() {
+		t.Fatal("config set should open the settings editor")
+	}
+	table := modalContentTable(a.app.Pages().Current())
+	if table == nil {
+		t.Fatal("expected a settings table")
+	}
+	if cell := table.GetCell(0, 0); cell == nil || cell.Text != "SETTING" {
+		t.Fatalf("expected SETTING header, got %v", cell)
+	}
+	if cell := table.GetCell(0, 1); cell == nil || cell.Text != "VALUE" {
+		t.Fatalf("expected VALUE header, got %v", cell)
+	}
+
+	themeIdx := -1
+	for i, s := range tempoSettings() {
+		if s.name != "theme" {
+			continue
+		}
+		themeIdx = i
+		cell := table.GetCell(i+1, 1)
+		if cell == nil || cell.Text != config.DefaultTheme {
+			t.Fatalf("theme value=%v want %s", cell, config.DefaultTheme)
+		}
+		break
+	}
+	if themeIdx < 0 {
+		t.Fatal("settings editor should list theme")
+	}
+	table.SelectRow(themeIdx)
+	if handler := table.InputHandler(); handler != nil {
+		handler(tcell.NewEventKey(tcell.KeyEnter, 0, tcell.ModNone), func(p tview.Primitive) {})
+	}
+	if !a.app.Pages().CurrentIsModal() {
+		t.Fatal("enter should open the value editor")
+	}
+	picker := modalContentTable(a.app.Pages().Current())
+	if picker == nil {
+		t.Fatal("theme should open a value picker")
+	}
+	picker.SelectRow(1)
+	if handler := picker.InputHandler(); handler != nil {
+		handler(tcell.NewEventKey(tcell.KeyEnter, 0, tcell.ModNone), func(p tview.Primitive) {})
+	}
+	if cfg.Theme == "" || cfg.Theme == config.DefaultTheme {
+		t.Fatalf("selecting a theme should change it, got %q", cfg.Theme)
+	}
+	editor := modalContentTable(a.app.Pages().Current())
+	if editor == nil {
+		t.Fatal("after a change the settings editor should come back")
+	}
+	updated := false
+	for row := 1; row < editor.GetRowCount(); row++ {
+		name := editor.GetCell(row, 0)
+		value := editor.GetCell(row, 1)
+		if name != nil && name.Text == "theme" && value != nil && value.Text == cfg.Theme {
+			updated = true
+		}
+	}
+	if !updated {
+		t.Fatalf("editor should show the new theme %q", cfg.Theme)
 	}
 }
 

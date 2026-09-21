@@ -9,6 +9,8 @@ import (
 	"github.com/atterpac/jig/theme"
 	"github.com/atterpac/jig/theme/themes"
 	"github.com/galaxy-io/tempo/internal/config"
+	"github.com/gdamore/tcell/v2"
+	"github.com/rivo/tview"
 )
 
 type tempoSetting struct {
@@ -400,7 +402,7 @@ func (a *App) execConfigSet(args []string) {
 		return
 	}
 	if len(args) == 0 {
-		a.showConfigNamePicker()
+		a.showConfigEditor("")
 		return
 	}
 	s, ok := lookupTempoSetting(args[0])
@@ -415,32 +417,71 @@ func (a *App) execConfigSet(args []string) {
 	a.commitSetting(s, strings.Join(args[1:], " "))
 }
 
-func (a *App) showConfigNamePicker() {
-	all := tempoSettings()
-	labels := make([]string, len(all))
-	helps := make([]string, len(all))
-	for i, s := range all {
-		labels[i] = s.name
-		helps[i] = s.help
+func (a *App) showConfigEditor(focusName string) {
+	if a == nil || a.app == nil || a.config == nil {
+		return
 	}
-	a.showOptionPicker("Set Config", labels, helps, "", nil, func(name string) {
-		if s, ok := lookupTempoSetting(name); ok {
-			a.showConfigValuePicker(s)
+	all := tempoSettings()
+	table := components.NewTable()
+	table.SetBorder(false)
+	table.SetHeaders("SETTING", "VALUE", "HELP")
+	focus := 0
+	for i, s := range all {
+		table.AddRow(s.name, s.get(a.config), s.help)
+		if focusName != "" && s.name == focusName {
+			focus = i
 		}
-	}, nil)
+	}
+	if len(all) > 0 {
+		table.SelectRow(focus)
+	}
+	table.SetOnSelect(func(row int) {
+		if row < 0 || row >= len(all) {
+			return
+		}
+		s := all[row]
+		a.app.Pages().DismissModal()
+		a.editConfigSetting(s, func() {
+			a.showConfigEditor(s.name)
+		})
+	})
+	modal := newOverlayModal(components.ModalConfig{
+		Title:  fmt.Sprintf("%s Settings", theme.IconInfo),
+		Width:  78,
+		Height: 24,
+	}, a.currentContent())
+	modal.SetContent(table)
+	modal.SetHints([]components.KeyHint{
+		{Key: "enter", Description: "Edit"},
+		{Key: "esc", Description: "Close"},
+	})
+	modal.SetOnCancel(func() {
+		a.app.Pages().DismissModal()
+		a.refocusCurrent()
+	})
+	a.PushModal(modal)
+	if a.JigApp() != nil {
+		a.JigApp().SetFocus(table)
+	}
 }
 
 func (a *App) showConfigValuePicker(s tempoSetting) {
-	if s.name == "theme" {
+	a.editConfigSetting(s, nil)
+}
+
+func (a *App) editConfigSetting(s tempoSetting, onDone func()) {
+	if s.name == "theme" && onDone == nil {
 		a.showThemeSelector()
 		return
 	}
 	var values []string
 	if s.values != nil {
 		values = s.values()
+	} else if s.name == "theme" {
+		values = config.ThemeNames()
 	}
 	if len(values) == 0 {
-		a.ToastWarning("usage: config set " + s.name + " <value>")
+		a.showConfigValueInput(s, onDone)
 		return
 	}
 	current := s.get(a.config)
@@ -454,10 +495,68 @@ func (a *App) showConfigValuePicker(s tempoSetting) {
 	}, func() {
 		_ = s.apply(a, original)
 		a.applySettingSideEffects(s.name)
-	})
+	}, onDone)
 }
 
-func (a *App) showOptionPicker(title string, values, helps []string, current string, onPreview, onSelect func(string), onCancel func()) {
+func (a *App) showConfigValueInput(s tempoSetting, onDone func()) {
+	if a == nil || a.app == nil {
+		return
+	}
+	current := ""
+	if a.config != nil {
+		current = s.get(a.config)
+	}
+	input := tview.NewInputField()
+	input.SetLabel(s.name + " ")
+	input.SetText(current)
+	input.SetFieldWidth(0)
+	input.SetFieldBackgroundColor(theme.Bg())
+	input.SetFieldTextColor(theme.Fg())
+	input.SetLabelColor(theme.Accent())
+	closed := false
+	done := func(commit bool) {
+		if closed {
+			return
+		}
+		closed = true
+		a.app.Pages().DismissModal()
+		if commit {
+			a.commitSetting(s, strings.TrimSpace(input.GetText()))
+		}
+		if onDone != nil {
+			onDone()
+			return
+		}
+		a.refocusCurrent()
+	}
+	input.SetDoneFunc(func(key tcell.Key) {
+		switch key {
+		case tcell.KeyEnter:
+			done(true)
+		case tcell.KeyEscape:
+			done(false)
+		}
+	})
+	modal := newOverlayModal(components.ModalConfig{
+		Title:  "Set " + s.name,
+		Width:  56,
+		Height: 7,
+	}, a.currentContent())
+	modal.SetContent(input)
+	modal.SetHints([]components.KeyHint{
+		{Key: "enter", Description: "Save"},
+		{Key: "esc", Description: "Cancel"},
+	})
+	modal.SetOnCancel(func() {
+		done(false)
+	})
+	a.PushModal(modal)
+	if a.JigApp() != nil {
+		a.JigApp().SetFocus(input)
+	}
+}
+
+func (a *App) showOptionPicker(title string, values, helps []string, current string, onPreview, onSelect func(string), onCancel, onDone func()) {
 	if a == nil || a.app == nil {
 		return
 	}
@@ -504,6 +603,10 @@ func (a *App) showOptionPicker(title string, values, helps []string, current str
 		if onSelect != nil {
 			onSelect(values[row])
 		}
+		if onDone != nil {
+			onDone()
+			return
+		}
 		if !a.app.Pages().CurrentIsModal() {
 			a.refocusCurrent()
 		}
@@ -531,6 +634,10 @@ func (a *App) showOptionPicker(title string, values, helps []string, current str
 	modal.SetOnCancel(func() {
 		restore()
 		a.app.Pages().DismissModal()
+		if onDone != nil {
+			onDone()
+			return
+		}
 		a.refocusCurrent()
 	})
 	a.PushModal(modal)
