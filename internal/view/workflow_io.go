@@ -79,18 +79,25 @@ func formatIOContent(label, content string, tree bool) string {
 	return highlightFormattedJSONWorkflow(formatJSONPretty(content))
 }
 
-func workflowIOHints(maximized bool) []components.KeyHint {
+func workflowIOHints(maximized, tree bool) []components.KeyHint {
 	maxHint := "Maximize"
 	if maximized {
 		maxHint = "Minimize"
 	}
-	return []components.KeyHint{
+	hints := []components.KeyHint{
 		{Key: "m", Description: maxHint},
 		{Key: "w", Description: "Wrap"},
 		{Key: "e", Description: "Editor"},
-		{Key: "y", Description: "Copy"},
-		{Key: "esc", Description: "Close"},
 	}
+	if tree {
+		hints = append(hints,
+			components.KeyHint{Key: "y", Description: "Yank Row"},
+			components.KeyHint{Key: "Y", Description: "Yank All"},
+		)
+	} else {
+		hints = append(hints, components.KeyHint{Key: "y", Description: "Copy"})
+	}
+	return append(hints, components.KeyHint{Key: "esc", Description: "Close"})
 }
 
 func showWorkflowIO(app *App, background tview.Primitive, workflowType, input, output string, onClose func()) {
@@ -120,7 +127,6 @@ func showWorkflowIO(app *App, background tview.Primitive, workflowType, input, o
 		SetWrap(false)
 	inputView.SetBackgroundColor(theme.Bg())
 	inputView.SetTextColor(theme.Fg())
-	inputView.SetText(formatIOContent("Input", input, ioTreeEnabled(app)))
 	attachTextViewScrollbar(inputView, app)
 
 	outputView := tview.NewTextView().
@@ -129,8 +135,16 @@ func showWorkflowIO(app *App, background tview.Primitive, workflowType, input, o
 		SetWrap(false)
 	outputView.SetBackgroundColor(theme.Bg())
 	outputView.SetTextColor(theme.Fg())
-	outputView.SetText(formatIOContent("Output", output, ioTreeEnabled(app)))
 	attachTextViewScrollbar(outputView, app)
+	treeEnabled := ioTreeEnabled(app)
+	inputTree := newJSONTreeSelection(inputView)
+	outputTree := newJSONTreeSelection(outputView)
+	if !inputTree.setContent(input, treeEnabled) {
+		inputView.SetText(formatIOContent("Input", input, treeEnabled))
+	}
+	if !outputTree.setContent(output, treeEnabled) {
+		outputView.SetText(formatIOContent("Output", output, treeEnabled))
+	}
 
 	inputPanel := components.NewPanel().SetTitle(fmt.Sprintf("%s Input", theme.IconArrowRight))
 	inputPanel.SetContent(inputView)
@@ -144,7 +158,7 @@ func showWorkflowIO(app *App, background tview.Primitive, workflowType, input, o
 
 	modal.SetContent(flex)
 	applyIOHints := func() {
-		hints := workflowIOHints(modal.maximized)
+		hints := workflowIOHints(modal.maximized, treeEnabled)
 		modal.SetHints(hints)
 		app.syncModalHints(modal)
 	}
@@ -190,8 +204,13 @@ func showWorkflowIO(app *App, background tview.Primitive, workflowType, input, o
 			return nil
 		}
 		view := outputView
+		tree := outputTree
 		if focusedInput {
 			view = inputView
+			tree = inputTree
+		}
+		if tree.handleKey(event) {
+			return nil
 		}
 		if handleTextViewScroll(view, event) {
 			return nil
@@ -222,6 +241,11 @@ func showWorkflowIO(app *App, background tview.Primitive, workflowType, input, o
 					content = input
 					panel = inputPanel
 				}
+				if treeEnabled {
+					if selected, ok := tree.value(); ok {
+						content = selected
+					}
+				}
 				if content != "" {
 					copyToClipboard(content)
 					panel.SetTitle(fmt.Sprintf("%s Copied!", theme.IconCompleted))
@@ -230,6 +254,25 @@ func showWorkflowIO(app *App, background tview.Primitive, workflowType, input, o
 						app.JigApp().QueueUpdateDraw(func() {
 							applyIOFocus()
 						})
+					}()
+				}
+				return nil
+			case 'Y':
+				if !treeEnabled {
+					return event
+				}
+				content := output
+				panel := outputPanel
+				if focusedInput {
+					content = input
+					panel = inputPanel
+				}
+				if content != "" {
+					copyToClipboard(content)
+					panel.SetTitle(fmt.Sprintf("%s Copied!", theme.IconCompleted))
+					go func() {
+						time.Sleep(1 * time.Second)
+						app.JigApp().QueueUpdateDraw(applyIOFocus)
 					}()
 				}
 				return nil

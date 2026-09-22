@@ -217,10 +217,22 @@ func (wl *WorkflowList) openPreviewIOInEditor() bool {
 	return true
 }
 
-func (wl *WorkflowList) yankPreviewIO() bool {
+func (wl *WorkflowList) yankPreviewIO(all bool) bool {
 	label, content, ok := wl.previewIOEditorPayload()
 	if !ok {
 		return false
+	}
+	if !all && ioTreeEnabled(wl.app) {
+		var tree *jsonTreeSelection
+		if wl.previewKind == previewActivities {
+			tree = wl.eventDetailTree
+		} else {
+			tree = wl.workflowIOTree
+		}
+		if value, selected := tree.value(); selected {
+			content = value
+			label = "row"
+		}
 	}
 	if wl.app == nil {
 		return true
@@ -674,6 +686,9 @@ func (wl *WorkflowList) renderWorkflowIO() {
 		return
 	}
 	if len(wl.previewEvents) == 0 {
+		if wl.workflowIOTree != nil {
+			wl.workflowIOTree.setContent("", false)
+		}
 		message := "Select a workflow to load preview"
 		if wl.previewWorkflowID != "" {
 			message = "Loading..."
@@ -683,10 +698,15 @@ func (wl *WorkflowList) renderWorkflowIO() {
 		return
 	}
 	input, output := workflowIOFromEvents(wl.previewEvents)
+	content := input
+	label := "Input"
 	if wl.workflowIOKind == workflowIOOutput {
-		wl.workflowIOView.SetText(formatIOContent("Output", output, ioTreeEnabled(wl.app)))
-	} else {
-		wl.workflowIOView.SetText(formatIOContent("Input", input, ioTreeEnabled(wl.app)))
+		content = output
+		label = "Output"
+	}
+	tree := ioTreeEnabled(wl.app)
+	if wl.workflowIOTree == nil || !wl.workflowIOTree.setContent(content, tree) {
+		wl.workflowIOView.SetText(formatIOContent(label, content, tree))
 	}
 	wl.workflowIOView.ScrollToBeginning()
 }
@@ -726,6 +746,9 @@ func (wl *WorkflowList) activityDetailFocusPrimitive() tview.Primitive {
 func (wl *WorkflowList) renderSelectedActivityDetail() {
 	visible := wl.visiblePreviewActivities()
 	if len(visible) == 0 {
+		if wl.eventDetailTree != nil {
+			wl.eventDetailTree.setContent("", false)
+		}
 		status := "No activities"
 		if len(wl.previewActivities) > 0 && wl.previewActivitySearch != "" {
 			status = "No matching activities"
@@ -744,15 +767,28 @@ func (wl *WorkflowList) renderSelectedActivityDetail() {
 	switch wl.activityDetailKind {
 	case activityDetailInput:
 		if wl.eventDetail != nil {
-			wl.eventDetail.SetText(formatActivityInput(a, ioTreeEnabled(wl.app)))
+			tree := ioTreeEnabled(wl.app)
+			if wl.eventDetailTree == nil || !wl.eventDetailTree.setContent(a.Input, tree) {
+				wl.eventDetail.SetText(formatActivityInput(a, tree))
+			}
 			wl.eventDetail.ScrollToBeginning()
 		}
 	case activityDetailOutput:
 		if wl.eventDetail != nil {
-			wl.eventDetail.SetText(formatActivityOutput(a, ioTreeEnabled(wl.app)))
+			content := a.Result
+			if content == "" {
+				content = a.Failure
+			}
+			tree := ioTreeEnabled(wl.app)
+			if wl.eventDetailTree == nil || !wl.eventDetailTree.setContent(content, tree) {
+				wl.eventDetail.SetText(formatActivityOutput(a, tree))
+			}
 			wl.eventDetail.ScrollToBeginning()
 		}
 	default:
+		if wl.eventDetailTree != nil {
+			wl.eventDetailTree.setContent("", false)
+		}
 		wl.renderActivityDetailRows(a)
 	}
 }
@@ -840,6 +876,7 @@ func (wl *WorkflowList) setupPreview() {
 	wl.eventDetail.SetBackgroundColor(theme.Bg())
 	wl.eventDetail.SetTextColor(theme.Fg())
 	attachTextViewScrollbar(wl.eventDetail, wl.app)
+	wl.eventDetailTree = newJSONTreeSelection(wl.eventDetail)
 
 	wl.eventTreeView = NewEventTreeView()
 	wl.eventTreeView.SetBackgroundColor(theme.Bg())
@@ -904,6 +941,7 @@ func (wl *WorkflowList) setupPreview() {
 	wl.workflowIOView.SetBackgroundColor(theme.Bg())
 	wl.workflowIOView.SetTextColor(theme.Fg())
 	attachTextViewScrollbar(wl.workflowIOView, wl.app)
+	wl.workflowIOTree = newJSONTreeSelection(wl.workflowIOView)
 	wl.workflowIOView.SetInputCapture(wl.capturePreviewTextView(wl.workflowIOView))
 
 	wl.workflowIOTabs = components.NewTabs().
@@ -1000,6 +1038,16 @@ func (wl *WorkflowList) setupPreview() {
 
 func (wl *WorkflowList) capturePreviewTextView(view *tview.TextView) func(*tcell.EventKey) *tcell.EventKey {
 	return func(event *tcell.EventKey) *tcell.EventKey {
+		var tree *jsonTreeSelection
+		switch view {
+		case wl.workflowIOView:
+			tree = wl.workflowIOTree
+		case wl.eventDetail:
+			tree = wl.eventDetailTree
+		}
+		if tree.handleKey(event) {
+			return nil
+		}
 		if event != nil && event.Key() == tcell.KeyRune && event.Rune() == 'w' && wl.togglePreviewIOWrap(view) {
 			return nil
 		}
@@ -1072,7 +1120,11 @@ func (wl *WorkflowList) handlePreviewKeys(event *tcell.EventKey) *tcell.EventKey
 			return nil
 		}
 	case 'y':
-		if wl.yankPreviewIO() {
+		if wl.yankPreviewIO(false) {
+			return nil
+		}
+	case 'Y':
+		if ioTreeEnabled(wl.app) && wl.yankPreviewIO(true) {
 			return nil
 		}
 	case 'i':

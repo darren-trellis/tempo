@@ -13,42 +13,59 @@ import (
 
 const jsonTreeTabWidth = 4
 
+type jsonTreeRow struct {
+	text  string
+	value string
+}
+
 func formatJSONTree(s string) string {
-	s = strings.TrimSpace(s)
-	if s == "" {
-		return s
-	}
-	values, ok := decodeJSONValues(s)
+	rows, ok := buildJSONTreeRows(s)
 	if !ok {
-		return highlightFormattedJSONWorkflow(s)
+		return highlightFormattedJSONWorkflow(strings.TrimSpace(s))
 	}
-	var lines []string
-	if len(values) == 1 {
-		appendJSONTreeRoot(&lines, values[0])
-	} else {
-		appendJSONTreeRoot(&lines, values)
+	lines := make([]string, len(rows))
+	for i, row := range rows {
+		lines[i] = row.text
 	}
 	return strings.Join(lines, "\n")
 }
 
-func appendJSONTreeRoot(lines *[]string, v any) {
+func buildJSONTreeRows(s string) ([]jsonTreeRow, bool) {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return nil, false
+	}
+	values, ok := decodeJSONValues(s)
+	if !ok {
+		return nil, false
+	}
+	var rows []jsonTreeRow
+	if len(values) == 1 {
+		appendJSONTreeRoot(&rows, values[0])
+	} else {
+		appendJSONTreeRoot(&rows, values)
+	}
+	return rows, true
+}
+
+func appendJSONTreeRoot(rows *[]jsonTreeRow, v any) {
 	switch val := v.(type) {
 	case map[string]any:
 		keys := sortedJSONKeys(val)
 		for i, key := range keys {
-			appendJSONTreeEntry(lines, key, val[key], "", i+1 == len(keys), false)
+			appendJSONTreeEntry(rows, key, val[key], "", i+1 == len(keys), false)
 		}
 	case []any:
-		*lines = append(*lines, jsonTreeDim(jsonTreeFoldMarker()+fmt.Sprintf("[%d]", len(val))))
+		appendJSONTreeRow(rows, jsonTreeDim(jsonTreeFoldMarker()+fmt.Sprintf("[%d]", len(val))), val)
 		for i, item := range val {
-			appendJSONTreeEntry(lines, strconv.Itoa(i), item, "", i+1 == len(val), true)
+			appendJSONTreeEntry(rows, strconv.Itoa(i), item, "", i+1 == len(val), true)
 		}
 	default:
-		*lines = append(*lines, jsonTreeScalar(v))
+		appendJSONTreeRow(rows, jsonTreeScalar(v), v)
 	}
 }
 
-func appendJSONTreeEntry(lines *[]string, key string, value any, prefix string, isLast, branched bool) {
+func appendJSONTreeEntry(rows *[]jsonTreeRow, key string, value any, prefix string, isLast, branched bool) {
 	branch := ""
 	if branched {
 		branch = jsonTreeBranch(isLast)
@@ -62,29 +79,37 @@ func appendJSONTreeEntry(lines *[]string, key string, value any, prefix string, 
 	switch val := value.(type) {
 	case map[string]any:
 		if len(val) == 0 {
-			*lines = append(*lines, lead+jsonTreeKey(key)+jsonTreeDim(": ")+jsonTreeScalar(val))
+			appendJSONTreeRow(rows, lead+jsonTreeKey(key)+jsonTreeDim(": ")+jsonTreeScalar(val), val)
 			return
 		}
-		*lines = append(*lines, lead+jsonTreeDim(jsonTreeFoldMarker())+jsonTreeKey(key))
+		appendJSONTreeRow(rows, lead+jsonTreeDim(jsonTreeFoldMarker())+jsonTreeKey(key), val)
 		keys := sortedJSONKeys(val)
 		for i, child := range keys {
-			appendJSONTreeEntry(lines, child, val[child], childPrefix, i+1 == len(keys), true)
+			appendJSONTreeEntry(rows, child, val[child], childPrefix, i+1 == len(keys), true)
 		}
 	case []any:
 		if len(val) == 0 {
-			*lines = append(*lines, lead+jsonTreeKey(key)+jsonTreeDim(": ")+jsonTreeScalar(val))
+			appendJSONTreeRow(rows, lead+jsonTreeKey(key)+jsonTreeDim(": ")+jsonTreeScalar(val), val)
 			return
 		}
-		*lines = append(*lines, lead+jsonTreeDim(jsonTreeFoldMarker())+jsonTreeKey(key)+jsonTreeDim(fmt.Sprintf(" [%d]", len(val))))
+		appendJSONTreeRow(rows, lead+jsonTreeDim(jsonTreeFoldMarker())+jsonTreeKey(key)+jsonTreeDim(fmt.Sprintf(" [%d]", len(val))), val)
 		for i, item := range val {
-			appendJSONTreeEntry(lines, strconv.Itoa(i), item, childPrefix, i+1 == len(val), true)
+			appendJSONTreeEntry(rows, strconv.Itoa(i), item, childPrefix, i+1 == len(val), true)
 		}
 	default:
-		*lines = append(*lines, lead+jsonTreeKey(key)+jsonTreeDim(": ")+jsonTreeScalar(value))
+		appendJSONTreeRow(rows, lead+jsonTreeKey(key)+jsonTreeDim(": ")+jsonTreeScalar(value), value)
 	}
 }
 
-func jsonTreeFoldMarker() string { return "▾ " }
+func appendJSONTreeRow(rows *[]jsonTreeRow, text string, value any) {
+	encoded, err := json.MarshalIndent(value, "", "  ")
+	if err != nil {
+		encoded = []byte(fmt.Sprint(value))
+	}
+	*rows = append(*rows, jsonTreeRow{text: text, value: string(encoded)})
+}
+
+func jsonTreeFoldMarker() string { return "◇ " }
 
 func jsonTreeBranch(isLast bool) string {
 	if isLast {
