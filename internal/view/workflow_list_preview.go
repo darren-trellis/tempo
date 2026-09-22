@@ -836,6 +836,7 @@ func (wl *WorkflowList) setupPreview() {
 		SetTextAlign(tview.AlignLeft).
 		SetWordWrap(true).
 		SetScrollable(true)
+	wl.eventDetailWrap = true
 	wl.eventDetail.SetBackgroundColor(theme.Bg())
 	wl.eventDetail.SetTextColor(theme.Fg())
 	attachTextViewScrollbar(wl.eventDetail, wl.app)
@@ -899,6 +900,7 @@ func (wl *WorkflowList) setupPreview() {
 		SetTextAlign(tview.AlignLeft).
 		SetWordWrap(true).
 		SetScrollable(true)
+	wl.workflowIOWrap = true
 	wl.workflowIOView.SetBackgroundColor(theme.Bg())
 	wl.workflowIOView.SetTextColor(theme.Fg())
 	attachTextViewScrollbar(wl.workflowIOView, wl.app)
@@ -998,10 +1000,35 @@ func (wl *WorkflowList) setupPreview() {
 
 func (wl *WorkflowList) capturePreviewTextView(view *tview.TextView) func(*tcell.EventKey) *tcell.EventKey {
 	return func(event *tcell.EventKey) *tcell.EventKey {
+		if event != nil && event.Key() == tcell.KeyRune && event.Rune() == 'w' && wl.togglePreviewIOWrap(view) {
+			return nil
+		}
 		if handleTextViewScroll(view, event) {
 			return nil
 		}
 		return wl.handlePreviewKeys(event)
+	}
+}
+
+func (wl *WorkflowList) togglePreviewIOWrap(view *tview.TextView) bool {
+	if wl == nil || view == nil {
+		return false
+	}
+	switch view {
+	case wl.workflowIOView:
+		wl.workflowIOWrap = !wl.workflowIOWrap
+		setTextViewWrap(view, wl.workflowIOWrap)
+		return true
+	case wl.eventDetail:
+		if wl.previewKind != previewActivities ||
+			(wl.activityDetailKind != activityDetailInput && wl.activityDetailKind != activityDetailOutput) {
+			return false
+		}
+		wl.eventDetailWrap = !wl.eventDetailWrap
+		setTextViewWrap(view, wl.eventDetailWrap)
+		return true
+	default:
+		return false
 	}
 }
 

@@ -66,6 +66,17 @@ func handleTextViewScroll(view *tview.TextView, event *tcell.EventKey) bool {
 	return false
 }
 
+func setTextViewWrap(view *tview.TextView, wrap bool) {
+	if view == nil {
+		return
+	}
+	view.SetWrap(wrap).SetWordWrap(wrap)
+	if wrap {
+		row, _ := view.GetScrollOffset()
+		view.ScrollTo(row, 0)
+	}
+}
+
 func scrollTextView(view *tview.TextView, delta int) {
 	if view == nil {
 		return

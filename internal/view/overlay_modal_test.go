@@ -98,7 +98,9 @@ func TestWorkflowIOModalOmitsButtons(t *testing.T) {
 	modal.frameless = true
 	modal.SetContent(tview.NewTextView().SetText("payload"))
 	modal.SetHints(workflowIOHints(false))
-	if hintDescription(modal.Hints(), "y") != "Copy" || hintDescription(modal.Hints(), "esc") != "Close" {
+	if hintDescription(modal.Hints(), "w") != "Wrap" ||
+		hintDescription(modal.Hints(), "y") != "Copy" ||
+		hintDescription(modal.Hints(), "esc") != "Close" {
 		t.Fatalf("IO hints should still be available, got %+v", modal.Hints())
 	}
 

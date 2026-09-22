@@ -180,6 +180,18 @@ func TestPreviewIOEditorPayload(t *testing.T) {
 	if ev := wl.handlePreviewKeys(tcell.NewEventKey(tcell.KeyRune, 'y', 0)); ev != nil {
 		t.Fatal("y on the workflow io pane should yank")
 	}
+	wl.workflowIOView.SetText(strings.Repeat("x", 200))
+	wl.workflowIOView.SetRect(0, 0, 20, 4)
+	scrollTextViewHoriz(wl.workflowIOView, 10)
+	if _, col := wl.workflowIOView.GetScrollOffset(); col == 0 {
+		t.Fatal("test setup should horizontally scroll the workflow input")
+	}
+	if ev := wl.workflowIOView.GetInputCapture()(tcell.NewEventKey(tcell.KeyRune, 'w', 0)); ev != nil {
+		t.Fatal("w on workflow input/output should toggle wrapping")
+	}
+	if wl.workflowIOWrap {
+		t.Fatal("workflow input/output should start wrapped and toggle off")
+	}
 
 	wl.setPreviewKind(previewActivities)
 	wl.activityDetailKind = activityDetailInput
@@ -192,6 +204,12 @@ func TestPreviewIOEditorPayload(t *testing.T) {
 	label, content, ok = wl.previewIOEditorPayload()
 	if !ok || label != "input" || content != `{"id":1}` {
 		t.Fatalf("activity input: label=%q content=%q ok=%v", label, content, ok)
+	}
+	if ev := wl.eventDetail.GetInputCapture()(tcell.NewEventKey(tcell.KeyRune, 'w', 0)); ev != nil {
+		t.Fatal("w on activity input/output should toggle wrapping")
+	}
+	if wl.eventDetailWrap {
+		t.Fatal("activity input/output should start wrapped and toggle off")
 	}
 	wl.activityDetailKind = activityDetailOutput
 	label, content, ok = wl.previewIOEditorPayload()

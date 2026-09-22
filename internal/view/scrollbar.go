@@ -165,6 +165,9 @@ func attachTextViewScrollbar(view *tview.TextView, app *App) {
 	if view == nil {
 		return
 	}
+	bindTextViewHorizontalScroll(view, func() int {
+		return mouseScrollStepFromApp(app)
+	})
 	view.SetDrawFunc(func(screen tcell.Screen, x, y, width, height int) (int, int, int, int) {
 		if !appShowsScrollbars(app) || width < 2 || height < 1 {
 			return x, y, width, height
@@ -191,6 +194,23 @@ func attachTextViewScrollbar(view *tview.TextView, app *App) {
 			drawScrollbar(screen, x, y+height-1, innerW, horiz, false)
 		}
 		return x, y, innerW, innerH
+	})
+}
+
+func bindTextViewHorizontalScroll(view *tview.TextView, step func() int) {
+	if view == nil {
+		return
+	}
+	prev := view.GetMouseCapture()
+	view.SetMouseCapture(func(action tview.MouseAction, event *tcell.EventMouse) (tview.MouseAction, *tcell.EventMouse) {
+		if delta := horizontalMouseDelta(action, event); delta != 0 {
+			scrollTextViewHoriz(view, delta*resolveMouseScrollStep(step))
+			return tview.MouseConsumed, nil
+		}
+		if prev != nil {
+			return prev(action, event)
+		}
+		return action, event
 	})
 }
 

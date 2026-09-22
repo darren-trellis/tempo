@@ -52,6 +52,20 @@ func TestHandleTextViewScrollHorizontal(t *testing.T) {
 	}
 }
 
+func TestSetTextViewWrapResetsHorizontalOffset(t *testing.T) {
+	view := tview.NewTextView().SetScrollable(true).SetWrap(false)
+	view.SetRect(0, 0, 10, 3)
+	view.SetText(strings.Repeat("x", 80))
+	scrollTextViewHoriz(view, 12)
+	if _, col := view.GetScrollOffset(); col == 0 {
+		t.Fatal("test setup should horizontally scroll")
+	}
+	setTextViewWrap(view, true)
+	if _, col := view.GetScrollOffset(); col != 0 {
+		t.Fatalf("enabling wrap should reset horizontal offset, got %d", col)
+	}
+}
+
 func TestHandleTextViewScrollPageUpStopsAtTop(t *testing.T) {
 	view := tview.NewTextView().SetScrollable(true)
 	view.SetText(strings.Repeat("line\n", 50))

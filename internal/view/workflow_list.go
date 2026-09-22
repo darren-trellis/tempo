@@ -62,6 +62,7 @@ type WorkflowList struct {
 	eventTreeMode          bool
 	eventTab               *components.Tab
 	eventDetail            *tview.TextView
+	eventDetailWrap        bool
 	eventDetailPanel       *components.Panel
 	eventsPanel            *components.Panel
 	workflowDetail         *components.Table
@@ -90,6 +91,7 @@ type WorkflowList struct {
 	workflowIOKind         workflowIOKind
 	workflowIOTabs         *components.Tabs
 	workflowIOView         *tview.TextView
+	workflowIOWrap         bool
 	hierarchyView          *WorkflowGraphView
 	hierarchyGraphPanel    *components.Panel
 	previewEvents          []temporal.EnhancedHistoryEvent
@@ -824,6 +826,7 @@ func (wl *WorkflowList) previewSideHints() []KeyHint {
 	}
 	if wl.previewIOViewFocused() {
 		hints := []KeyHint{
+			{Key: "w", Description: "Wrap"},
 			{Key: "e", Description: "Editor"},
 			{Key: "y", Description: "Yank"},
 		}

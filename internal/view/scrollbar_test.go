@@ -1,6 +1,7 @@
 package view
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/atterpac/jig/components"
@@ -109,6 +110,26 @@ func TestTextViewScrollbarReservesColumn(t *testing.T) {
 	screen.Show()
 	if !edgeHasGlyph(screen, 11, 0, 4, scrollbarThinVert) {
 		t.Fatal("expected a text view scrollbar")
+	}
+}
+
+func TestTextViewScrollbarTakesAHorizontalWheel(t *testing.T) {
+	view := tview.NewTextView().SetScrollable(true).SetWrap(false)
+	view.SetText(strings.Repeat("x", 80))
+	view.SetRect(0, 0, 12, 4)
+	attachTextViewScrollbar(view, nil)
+
+	capture := view.GetMouseCapture()
+	if capture == nil {
+		t.Fatal("a text view with a horizontal scrollbar needs mouse scrolling")
+	}
+	action, _ := capture(tview.MouseScrollRight, tcell.NewEventMouse(0, 0, tcell.WheelRight, tcell.ModNone))
+	if action != tview.MouseConsumed {
+		t.Fatal("horizontal wheel should be consumed")
+	}
+	_, col := view.GetScrollOffset()
+	if col <= 0 {
+		t.Fatal("horizontal wheel should move the text view")
 	}
 }
 

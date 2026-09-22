@@ -86,6 +86,7 @@ func workflowIOHints(maximized bool) []components.KeyHint {
 	}
 	return []components.KeyHint{
 		{Key: "m", Description: maxHint},
+		{Key: "w", Description: "Wrap"},
 		{Key: "e", Description: "Editor"},
 		{Key: "y", Description: "Copy"},
 		{Key: "esc", Description: "Close"},
@@ -151,6 +152,7 @@ func showWorkflowIO(app *App, background tview.Primitive, workflowType, input, o
 	modal.SetOnCancel(closeModal)
 
 	focusedInput := true
+	wrapped := false
 	applyIOFocus := func() {
 		inputPanel.SetTitle(fmt.Sprintf("%s Input", theme.IconArrowRight))
 		outputPanel.SetTitle(fmt.Sprintf("%s Output", theme.IconArrowLeft))
@@ -200,6 +202,11 @@ func showWorkflowIO(app *App, background tview.Primitive, workflowType, input, o
 			case 'm':
 				modal.toggleMaximize()
 				applyIOHints()
+				return nil
+			case 'w':
+				wrapped = !wrapped
+				setTextViewWrap(inputView, wrapped)
+				setTextViewWrap(outputView, wrapped)
 				return nil
 			case 'e':
 				if focusedInput {
