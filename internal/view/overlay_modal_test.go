@@ -5,6 +5,8 @@ import (
 	"testing"
 
 	"github.com/atterpac/jig/components"
+	"github.com/galaxy-io/tempo/internal/config"
+	"github.com/galaxy-io/tempo/internal/temporal"
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 )
@@ -49,6 +51,49 @@ func TestOverlayModalDrawsBackground(t *testing.T) {
 	r, _, _, _ := screen.GetContent(0, 0)
 	if r != 'K' {
 		t.Fatalf("background should remain visible, got %q", string(r))
+	}
+}
+
+func TestPushedModalDrawsTheViewBehindItOnce(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	a := NewAppWithProvider(nil, "default", config.DefaultConfig(), "local")
+	wl := NewWorkflowList(a, "default")
+	wl.keepDataOnStart = true
+	wl.allWorkflows = []temporal.Workflow{{ID: "wf-1", RunID: "r1", Status: "Running"}}
+	wl.applyFilter()
+	a.app.Pages().Push(wl)
+	draws := 0
+	wl.table.Table.SetDrawFunc(func(_ tcell.Screen, x, y, w, h int) (int, int, int, int) {
+		draws++
+		return x, y, w, h
+	})
+
+	screen := tcell.NewSimulationScreen("UTF-8")
+	if err := screen.Init(); err != nil {
+		t.Fatal(err)
+	}
+	screen.SetSize(120, 40)
+	pages := a.app.Pages()
+	pages.SetRect(0, 0, 120, 40)
+
+	first := newOverlayModal(components.ModalConfig{Title: "First", Width: 30, Height: 8}, wl)
+	first.SetContent(tview.NewTextView().SetText("FIRST"))
+	a.PushModal(first)
+	draws = 0
+	pages.Draw(screen)
+	if draws != 1 {
+		t.Fatalf("the workflows view should draw once under a modal, drew %d times", draws)
+	}
+
+	second := newOverlayModal(components.ModalConfig{Title: "Second", Width: 30, Height: 8}, wl)
+	second.SetContent(tview.NewBox())
+	second.SetRect(0, 0, 120, 40)
+	a.PushModal(second)
+	pages.Draw(screen)
+	for y := 0; y < 40; y++ {
+		if strings.Contains(rowText(screen, y, 120), "FIRST") {
+			t.Fatal("a modal over a modal should still cover the lower modal")
+		}
 	}
 }
 

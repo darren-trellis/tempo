@@ -57,13 +57,19 @@ func pushOverlayModal(pages *nav.Pages, modal nav.Component) {
 	current := pages.Current()
 	holdStartData(current)
 	bg := modalBackgroundOf(current)
+	// A modal over a view sees that view drawn by the page stack. Over another
+	// modal it repaints the base view itself, which hides the lower modal.
+	below := current != nil && bg == tview.Primitive(current)
 	if setter, ok := modal.(interface{ setModalBackground(tview.Primitive) }); ok {
 		setter.setModalBackground(bg)
+		if b, ok := modal.(interface{ setBackgroundBelow(bool) }); ok {
+			b.setBackgroundBelow(below)
+		}
 		pages.Push(modal)
 		return
 	}
 	if inner, ok := modal.(nav.Modal); ok && bg != nil {
-		pages.Push(&overlayModalPage{Modal: inner, background: bg})
+		pages.Push(&overlayModalPage{Modal: inner, background: bg, backgroundBelow: below})
 		return
 	}
 	pages.Push(modal)
@@ -71,11 +77,12 @@ func pushOverlayModal(pages *nav.Pages, modal nav.Component) {
 
 type overlayModalPage struct {
 	nav.Modal
-	background tview.Primitive
+	background      tview.Primitive
+	backgroundBelow bool
 }
 
 func (o *overlayModalPage) Draw(screen tcell.Screen) {
-	if o != nil && o.background != nil {
+	if o != nil && o.background != nil && !o.backgroundBelow {
 		x, y, w, h := o.GetRect()
 		o.background.SetRect(x, y, w, h)
 		o.background.Draw(screen)

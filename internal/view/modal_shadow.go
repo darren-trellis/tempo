@@ -16,6 +16,7 @@ const (
 type shadowedModal struct {
 	*components.Modal
 	background      tview.Primitive
+	backgroundBelow bool
 	body            tview.Primitive
 	hints           []components.KeyHint
 	interceptEscape func() bool
@@ -93,6 +94,14 @@ func (m *shadowedModal) setModalBackground(p tview.Primitive) {
 	m.background = p
 }
 
+// setBackgroundBelow records that the background is the page right under this
+// modal, which the page stack already draws each frame.
+func (m *shadowedModal) setBackgroundBelow(below bool) {
+	if m != nil {
+		m.backgroundBelow = below
+	}
+}
+
 func (m *shadowedModal) modalBackground() tview.Primitive {
 	if m == nil {
 		return nil
@@ -101,7 +110,7 @@ func (m *shadowedModal) modalBackground() tview.Primitive {
 }
 
 func (m *shadowedModal) drawBackground(screen tcell.Screen) {
-	if m == nil || m.background == nil || screen == nil {
+	if m == nil || m.background == nil || screen == nil || m.backgroundBelow {
 		return
 	}
 	x, y, w, h := m.GetRect()

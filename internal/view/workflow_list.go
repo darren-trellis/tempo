@@ -217,7 +217,6 @@ func (wl *WorkflowList) setup() {
 	wl.SetBackgroundColor(theme.Bg())
 	wl.mainFlex = tview.NewFlex().SetDirection(tview.FlexColumn)
 	wl.mainFlex.SetBackgroundColor(theme.Bg())
-	wl.table.SetEvaluateAllRows(true)
 	wl.table.SetBorder(false)
 	wl.table.SetBackgroundColor(theme.Bg())
 	applyWorkflowColumnHeaders(wl.table, wl.columnLayout())
