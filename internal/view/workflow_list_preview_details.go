@@ -79,6 +79,12 @@ func (wl *WorkflowList) handlePreviewDetailScroll(event *tcell.EventKey) bool {
 	case tcell.KeyRight:
 		wl.workflowDetailScroll.scrollChars(1)
 		return true
+	case tcell.KeyHome:
+		wl.workflowDetailScroll.scrollTo(scrollOffsetByColumn(wl.workflowDetailScroll.offset, tableColumnLayout(wl.workflowDetail), -1))
+		return true
+	case tcell.KeyEnd:
+		wl.workflowDetailScroll.scrollTo(scrollOffsetByColumn(wl.workflowDetailScroll.offset, tableColumnLayout(wl.workflowDetail), 1))
+		return true
 	}
 	switch event.Rune() {
 	case 'h':

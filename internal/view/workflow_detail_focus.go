@@ -1,7 +1,9 @@
 package view
 
 import (
+	"strings"
 	"sync"
+	"unicode/utf8"
 
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
@@ -58,10 +60,10 @@ func handleTextViewScroll(view *tview.TextView, event *tcell.EventKey) bool {
 		scrollTextView(view, textViewPageSize(view))
 		return true
 	case tcell.KeyHome:
-		view.ScrollToBeginning()
+		scrollTextViewHorizTo(view, 0)
 		return true
 	case tcell.KeyEnd:
-		view.ScrollToEnd()
+		scrollTextViewHorizEnd(view)
 		return true
 	}
 	switch event.Rune() {
@@ -125,17 +127,28 @@ func scrollTextViewHoriz(view *tview.TextView, delta int) {
 	if view == nil {
 		return
 	}
+	_, col := view.GetScrollOffset()
+	scrollTextViewHorizTo(view, col+delta)
+}
+
+func scrollTextViewHorizEnd(view *tview.TextView) {
+	if view == nil {
+		return
+	}
+	_, _, width, _ := view.GetInnerRect()
+	scrollTextViewHorizTo(view, textViewContentWidth(view)-width)
+}
+
+func scrollTextViewHorizTo(view *tview.TextView, col int) {
+	if view == nil {
+		return
+	}
+	row, _ := view.GetScrollOffset()
 	// A wrapped pane fits the text, so a horizontal pan would only clip it.
 	if textViewWraps(view) {
-		row, _ := view.GetScrollOffset()
 		view.ScrollTo(row, 0)
 		return
 	}
-	row, col := view.GetScrollOffset()
-	if col < 0 {
-		col = 0
-	}
-	col += delta
 	if col < 0 {
 		col = 0
 	}
@@ -148,4 +161,26 @@ func scrollTextViewHoriz(view *tview.TextView, delta int) {
 		col = max
 	}
 	view.ScrollTo(row, col)
+}
+
+func countSearchMatches(text, query string) int {
+	if text == "" || query == "" {
+		return 0
+	}
+	return strings.Count(strings.ToLower(text), strings.ToLower(query))
+}
+
+func scrollTextViewToMatch(view *tview.TextView, query string) {
+	if view == nil || query == "" {
+		return
+	}
+	text := view.GetText(true)
+	idx := strings.Index(strings.ToLower(text), strings.ToLower(query))
+	if idx < 0 {
+		return
+	}
+	line := strings.Count(text[:idx], "\n")
+	lineStart := strings.LastIndex(text[:idx], "\n") + 1
+	col := utf8.RuneCountInString(text[lineStart:idx])
+	view.ScrollTo(line, col)
 }

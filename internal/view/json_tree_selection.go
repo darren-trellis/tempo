@@ -103,12 +103,6 @@ func (s *jsonTreeSelection) handleKey(event *tcell.EventKey) bool {
 	case tcell.KeyDown:
 		s.selectRow(s.selected + 1)
 		return true
-	case tcell.KeyHome:
-		s.selectRow(0)
-		return true
-	case tcell.KeyEnd:
-		s.selectRow(len(s.rows) - 1)
-		return true
 	case tcell.KeyEnter:
 		s.toggleFold()
 		return true

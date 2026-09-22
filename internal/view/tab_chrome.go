@@ -44,6 +44,7 @@ func (a *App) statusBarSegments() []chromeSeg {
 		}
 		addSegs(chromeSeg{text: text, color: color})
 	}
+	add(a.searchStatus, theme.Accent())
 	add(a.connectionChromeText(), a.connectionChromeColor())
 	if icon := a.codecChromeIcon(); icon != "" {
 		add(icon, a.codecChromeColor())

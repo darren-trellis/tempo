@@ -205,6 +205,9 @@ func tempoSettings() []tempoSetting {
 		boolSetting("io_tree", "Show input and output as a JSON tree", func(c *config.Config) bool {
 			return c.ShouldShowIOTree()
 		}, func(c *config.Config, on bool) { c.IOTree = &on }),
+		boolSetting("io_wrap", "Wrap input and output text", func(c *config.Config) bool {
+			return c.ShouldWrapIO()
+		}, func(c *config.Config, on bool) { c.IOWrap = &on }),
 		{
 			name: "workflow_time_format",
 			help: "Workflow started/ended display",
@@ -737,6 +740,10 @@ func (a *App) applySettingSideEffects(name string) {
 		if hasWL {
 			wl.renderWorkflowIO()
 			wl.renderSelectedActivityDetail()
+		}
+	case "io_wrap":
+		if hasWL {
+			wl.applyIOWrap(a.config.ShouldWrapIO())
 		}
 	case "preview_cache_size":
 		if hasWL && a.config != nil {

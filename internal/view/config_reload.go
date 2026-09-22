@@ -83,6 +83,7 @@ func (a *App) applyLoadedConfig(cfg *config.Config, force bool) {
 	oldSecondaryTab := ""
 	oldTertiaryTab := ""
 	oldIOTree := false
+	oldIOWrap := false
 	if old != nil {
 		oldTheme = old.Theme
 		oldCols = old.WorkflowColumnLayout()
@@ -94,6 +95,7 @@ func (a *App) applyLoadedConfig(cfg *config.Config, force bool) {
 		oldSecondaryTab = old.ResolvedSecondaryTab()
 		oldTertiaryTab = old.ResolvedTertiaryTab()
 		oldIOTree = old.ShouldShowIOTree()
+		oldIOWrap = old.ShouldWrapIO()
 		if conn, ok := old.GetProfile(oldProfile); ok {
 			oldConn = conn
 		}
@@ -142,6 +144,9 @@ func (a *App) applyLoadedConfig(cfg *config.Config, force bool) {
 				if cfg.ShouldShowIOTree() != oldIOTree {
 					wl.renderWorkflowIO()
 					wl.renderSelectedActivityDetail()
+				}
+				if cfg.ShouldWrapIO() != oldIOWrap {
+					wl.applyIOWrap(cfg.ShouldWrapIO())
 				}
 				wl.syncAutoRefresh()
 				if wl.taskQueuesActive() && wl.taskQueues != nil {

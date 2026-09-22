@@ -1,9 +1,11 @@
 package view
 
 import (
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/atterpac/jig/components"
 	"github.com/atterpac/jig/layout"
 	"github.com/galaxy-io/tempo/internal/config"
 	"github.com/galaxy-io/tempo/internal/temporal"
@@ -154,6 +156,87 @@ func TestPreviewActivityHintsIncludeSearch(t *testing.T) {
 	if ev := wl.handlePreviewKeys(tcell.NewEventKey(tcell.KeyRune, '/', 0)); ev != nil {
 		t.Fatal("/ should open activity search")
 	}
+}
+
+func TestPreviewSearchShowsInThePaneTitle(t *testing.T) {
+	wl := NewWorkflowList(&App{}, "default")
+	wl.togglePreviewMode()
+	wl.setPreviewKind(previewActivities)
+	wl.previewActivities = []previewActivity{
+		{ScheduledID: 1, Type: "ValidateOrder"},
+		{ScheduledID: 5, Type: "ChargeCard"},
+	}
+	wl.applyPreviewActivitySearch("charge")
+	if got := drawnPanelTitle(wl.previewPanel); got != "/charge (1)" {
+		t.Fatalf("activities title: %q", got)
+	}
+	wl.applyPreviewActivitySearch("")
+	if got := drawnPanelTitle(wl.previewPanel); got != "" {
+		t.Fatalf("clearing the search should clear the title, got %q", got)
+	}
+
+	wl.setPreviewKind(previewEvents)
+	wl.previewEvents = []temporal.EnhancedHistoryEvent{
+		{ID: 1, Type: "WorkflowExecutionStarted"},
+		{ID: 2, Type: "ActivityTaskScheduled", ActivityType: "Charge"},
+		{ID: 3, Type: "ActivityTaskCompleted", ActivityType: "Charge"},
+	}
+	wl.applyPreviewEventSearch("charge")
+	if got := drawnPanelTitle(wl.previewPanel); got != "/charge (2)" {
+		t.Fatalf("events title: %q", got)
+	}
+}
+
+func TestInputSearchShowsInThePaneTitle(t *testing.T) {
+	wl := NewWorkflowList(&App{}, "default")
+	wl.togglePreviewMode()
+	wl.setPreviewKind(previewDetails)
+	wl.setWorkflowIOKind(workflowIOInput)
+	wl.focusPane = focusEventDetail
+	wl.previewEvents = []temporal.EnhancedHistoryEvent{{
+		Type:  "WorkflowExecutionStarted",
+		Input: `{"order":"abc","note":"order again"}`,
+	}}
+	wl.renderWorkflowIO()
+	if ev := wl.handlePreviewKeys(tcell.NewEventKey(tcell.KeyRune, '/', 0)); ev != nil {
+		t.Fatal("/ on input should open search")
+	}
+	wl.applyFocusedIOSearch("order")
+	row, col := wl.workflowIOView.GetScrollOffset()
+	if row != 1 || col == 0 {
+		t.Fatalf("search should scroll to the first match, row=%d col=%d", row, col)
+	}
+	if got := drawnPanelTitle(wl.eventDetailPanel); got != "/order (2)" {
+		t.Fatalf("input title: %q", got)
+	}
+
+	wl.setWorkflowIOKind(workflowIOOutput)
+	if got := drawnPanelTitle(wl.eventDetailPanel); got != "" {
+		t.Fatalf("output has its own search, got %q", got)
+	}
+}
+
+func drawnPanelTitle(panel *components.Panel) string {
+	screen := tcell.NewSimulationScreen("UTF-8")
+	if err := screen.Init(); err != nil {
+		return ""
+	}
+	screen.SetSize(80, 6)
+	panel.SetRect(0, 0, 80, 6)
+	panel.Draw(screen)
+	var b strings.Builder
+	for x := 0; x < 80; x++ {
+		r, _, _, _ := screen.GetContent(x, 0)
+		switch r {
+		case 0, ' ', '─', '╭', '╮':
+			if b.Len() > 0 && r == ' ' {
+				b.WriteRune(r)
+			}
+		default:
+			b.WriteRune(r)
+		}
+	}
+	return strings.TrimSpace(b.String())
 }
 
 func TestPreviewEventSearchFiltersTable(t *testing.T) {

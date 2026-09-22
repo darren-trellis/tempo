@@ -151,9 +151,10 @@ func (wl *WorkflowList) applyPreviewActivitySearch(query string) {
 	wl.previewActivitySearch = query
 	if w, ok := wl.currentPreviewWorkflow(); ok {
 		wl.renderPreviewActivities(w)
-		return
+	} else {
+		wl.renderPreviewActivities(temporal.Workflow{})
 	}
-	wl.renderPreviewActivities(temporal.Workflow{})
+	wl.syncSearchTitles()
 }
 
 func (wl *WorkflowList) visiblePreviewActivities() []previewActivity {
@@ -164,9 +165,10 @@ func (wl *WorkflowList) applyPreviewEventSearch(query string) {
 	wl.previewEventSearch = query
 	if w, ok := wl.currentPreviewWorkflow(); ok {
 		wl.renderPreviewEvents(w)
-		return
+	} else {
+		wl.renderPreviewEvents(temporal.Workflow{})
 	}
-	wl.renderPreviewEvents(temporal.Workflow{})
+	wl.syncSearchTitles()
 }
 
 func (wl *WorkflowList) visiblePreviewEvents() []temporal.EnhancedHistoryEvent {

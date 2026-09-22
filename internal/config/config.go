@@ -195,6 +195,7 @@ type Config struct {
 	ColorCodeActivities *bool    `yaml:"color_code_activities,omitempty"`
 	ColorCodeWorkflows  *bool    `yaml:"color_code_workflows,omitempty"`
 	IOTree              *bool    `yaml:"io_tree,omitempty"`
+	IOWrap              *bool    `yaml:"io_wrap,omitempty"`
 	ResetPoint          string   `yaml:"reset_point,omitempty"`
 	ResetReason         string   `yaml:"reset_reason,omitempty"`
 	PrimaryTab          string   `yaml:"primary_tab,omitempty"`
@@ -325,6 +326,15 @@ func (c *Config) ShouldShowIOTree() bool {
 		return false
 	}
 	return *c.IOTree
+}
+
+// ShouldWrapIO reports whether input and output text wraps. The tertiary pane
+// and the input/output modal share this setting. Defaults to off.
+func (c *Config) ShouldWrapIO() bool {
+	if c == nil || c.IOWrap == nil {
+		return false
+	}
+	return *c.IOWrap
 }
 
 const (

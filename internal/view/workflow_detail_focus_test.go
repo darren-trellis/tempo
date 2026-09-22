@@ -52,6 +52,28 @@ func TestHandleTextViewScrollHorizontal(t *testing.T) {
 	}
 }
 
+func TestHomeAndEndScrollHorizontally(t *testing.T) {
+	view := tview.NewTextView().SetScrollable(true).SetWrap(false)
+	view.SetText(strings.Repeat("x", 80) + "\n" + strings.Repeat("y", 80))
+	view.SetRect(0, 0, 20, 5)
+	view.ScrollTo(1, 4)
+
+	if !handleTextViewScroll(view, tcell.NewEventKey(tcell.KeyHome, 0, tcell.ModNone)) {
+		t.Fatal("home should scroll")
+	}
+	row, col := view.GetScrollOffset()
+	if row != 1 || col != 0 {
+		t.Fatalf("home should return to the first column of the current row, row=%d col=%d", row, col)
+	}
+	if !handleTextViewScroll(view, tcell.NewEventKey(tcell.KeyEnd, 0, tcell.ModNone)) {
+		t.Fatal("end should scroll")
+	}
+	row, col = view.GetScrollOffset()
+	if row != 1 || col != 60 {
+		t.Fatalf("end should reach the last column, row=%d col=%d", row, col)
+	}
+}
+
 func TestSetTextViewWrapResetsHorizontalOffset(t *testing.T) {
 	view := tview.NewTextView().SetScrollable(true).SetWrap(false)
 	view.SetRect(0, 0, 10, 3)

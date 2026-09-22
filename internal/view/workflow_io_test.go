@@ -4,7 +4,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/atterpac/jig/components"
+	"github.com/galaxy-io/tempo/internal/config"
 	"github.com/galaxy-io/tempo/internal/temporal"
+	"github.com/gdamore/tcell/v2"
+	"github.com/rivo/tview"
 )
 
 func startedAndCompleted() []temporal.EnhancedHistoryEvent {
@@ -121,4 +125,51 @@ func TestMockPreviewEventsCarryIO(t *testing.T) {
 	if _, output := workflowIOFromEvents(failed); output == "" {
 		t.Fatal("a failed workflow should show its failure as output")
 	}
+}
+
+func TestWorkflowIOModalSearchUsesTheStatusBar(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	a := NewAppWithProvider(nil, "default", config.DefaultConfig(), "local")
+	wl := NewWorkflowList(a, "default")
+	wl.keepDataOnStart = true
+	a.app.Pages().Push(wl)
+	showWorkflowIO(a, tview.NewBox(), "Order", `{"order":"abc","note":"order"}`, `{"ok":true}`, nil)
+	modal, ok := a.app.Pages().Current().(*overlayModal)
+	if !ok {
+		t.Fatalf("current=%T", a.app.Pages().Current())
+	}
+	focused := firstTextView(modal.GetPanel())
+	if focused == nil || focused.GetInputCapture() == nil {
+		t.Fatal("input pane should be focused")
+	}
+	if ev := focused.GetInputCapture()(tcell.NewEventKey(tcell.KeyRune, '/', 0)); ev != nil {
+		t.Fatal("/ should open search")
+	}
+	a.prompt().input.SetText("order")
+	if a.searchStatus != "/order (2)" {
+		t.Fatalf("status bar should show the search, got %q", a.searchStatus)
+	}
+
+	if ev := focused.GetInputCapture()(tcell.NewEventKey(tcell.KeyRune, 'w', 0)); ev != nil {
+		t.Fatal("w should toggle wrap")
+	}
+	if !a.config.ShouldWrapIO() || !textViewWraps(wl.workflowIOView) || !textViewWraps(wl.eventDetail) || !textViewWraps(focused) {
+		t.Fatal("wrap should be shared by the modal and the tertiary panes")
+	}
+}
+
+func firstTextView(p tview.Primitive) *tview.TextView {
+	switch v := p.(type) {
+	case *tview.TextView:
+		return v
+	case *tview.Flex:
+		for i := 0; i < v.GetItemCount(); i++ {
+			if found := firstTextView(v.GetItem(i)); found != nil {
+				return found
+			}
+		}
+	case *components.Panel:
+		return firstTextView(v.GetContent())
+	}
+	return nil
 }

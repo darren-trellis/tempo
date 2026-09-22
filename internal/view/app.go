@@ -39,6 +39,7 @@ type App struct {
 	chromeCodecColor func() tcell.Color
 	chromeStats      WorkflowStats
 	chromeStatsOn    bool
+	searchStatus     string
 	modalHintsOn     bool
 	connectionLabel  string
 	namespaceList    *NamespaceList
@@ -649,6 +650,29 @@ func (a *App) drawHintStatus(screen tcell.Screen) {
 		screen.SetContent(col, y, r, nil, style)
 		col++
 	}
+}
+
+func (a *App) setIOWrap(on bool) {
+	if a == nil {
+		return
+	}
+	if a.config == nil {
+		a.config = &config.Config{}
+	}
+	a.config.IOWrap = &on
+	if a.config.ShouldAutosave() {
+		_ = a.persistConfig()
+	}
+	if wl, ok := a.workflowList(); ok {
+		wl.applyIOWrap(on)
+	}
+}
+
+func (a *App) setSearchStatus(text string) {
+	if a == nil {
+		return
+	}
+	a.searchStatus = text
 }
 
 func (a *App) hintBarMessage() string {

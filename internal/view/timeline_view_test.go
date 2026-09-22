@@ -745,3 +745,33 @@ func TestTimelinePageAndEdgeKeys(t *testing.T) {
 		t.Fatalf("g should jump to the first lane, selected=%d scrollY=%d", tv.selectedLane, tv.scrollY)
 	}
 }
+
+func TestTimelineHomeAndEndScrollHorizontally(t *testing.T) {
+	start := time.Date(2026, 8, 23, 12, 0, 0, 0, time.UTC)
+	end := start.Add(time.Minute)
+	tv := NewTimelineView()
+	tv.SetRect(0, 0, 40, 8)
+	tv.lanes = []TimelineLane{
+		{Name: "read", StartTime: start, EndTime: &end},
+		{Name: "write", StartTime: start, EndTime: &end},
+	}
+	tv.startTime = start
+	tv.endTime = end
+	tv.zoomLevel = 8
+	tv.selectedLane = 1
+	tv.scrollX = 3
+
+	handler := tv.InputHandler()
+	handler(tcell.NewEventKey(tcell.KeyEnd, 0, tcell.ModNone), func(tview.Primitive) {})
+	if tv.scrollX <= 3 {
+		t.Fatalf("end should scroll to the horizontal end, scrollX=%d", tv.scrollX)
+	}
+	if tv.selectedLane != 1 {
+		t.Fatalf("end should leave the selected lane, selected=%d", tv.selectedLane)
+	}
+	endX := tv.scrollX
+	handler(tcell.NewEventKey(tcell.KeyHome, 0, tcell.ModNone), func(tview.Primitive) {})
+	if tv.scrollX != 0 || tv.selectedLane != 1 {
+		t.Fatalf("home should return to the first column, scrollX=%d selected=%d end=%d", tv.scrollX, tv.selectedLane, endX)
+	}
+}

@@ -652,9 +652,9 @@ func (tv *TimelineView) InputHandler() func(event *tcell.EventKey, setFocus func
 		case tcell.KeyPgDn, tcell.KeyCtrlF:
 			tv.moveSelection(tv.visibleLaneCount())
 		case tcell.KeyHome:
-			tv.selectFirst()
+			tv.scrollX = 0
 		case tcell.KeyEnd:
-			tv.selectLast()
+			tv.scrollX = tv.maxScrollX()
 		case tcell.KeyLeft:
 			tv.scroll(-5)
 		case tcell.KeyRight:

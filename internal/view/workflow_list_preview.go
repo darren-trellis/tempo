@@ -685,6 +685,7 @@ func (wl *WorkflowList) renderWorkflowIO() {
 	if wl.workflowIOView == nil {
 		return
 	}
+	defer wl.revealIOSearch()
 	if len(wl.previewEvents) == 0 {
 		if wl.workflowIOTree != nil {
 			wl.workflowIOTree.setContent("", false)
@@ -745,6 +746,7 @@ func (wl *WorkflowList) activityDetailFocusPrimitive() tview.Primitive {
 }
 
 func (wl *WorkflowList) renderSelectedActivityDetail() {
+	defer wl.revealIOSearch()
 	visible := wl.visiblePreviewActivities()
 	if len(visible) == 0 {
 		if wl.eventDetailTree != nil {
@@ -836,6 +838,7 @@ func (wl *WorkflowList) applyPreviewPage() {
 		}
 	}
 	wl.syncPreviewChrome()
+	wl.syncSearchTitles()
 	if wl.previewWorkflowID != "" {
 		if w, ok := wl.currentPreviewWorkflow(); ok {
 			wl.renderPreview(w)
@@ -874,7 +877,7 @@ func (wl *WorkflowList) setupPreview() {
 		SetDynamicColors(true).
 		SetTextAlign(tview.AlignLeft).
 		SetScrollable(true)
-	setTextViewWrap(wl.eventDetail, false)
+	setTextViewWrap(wl.eventDetail, ioWrapOn(wl.app))
 	wl.eventDetail.SetBackgroundColor(theme.Bg())
 	wl.eventDetail.SetTextColor(theme.Fg())
 	attachTextViewScrollbar(wl.eventDetail, wl.app)
@@ -938,7 +941,7 @@ func (wl *WorkflowList) setupPreview() {
 		SetDynamicColors(true).
 		SetTextAlign(tview.AlignLeft).
 		SetScrollable(true)
-	setTextViewWrap(wl.workflowIOView, false)
+	setTextViewWrap(wl.workflowIOView, ioWrapOn(wl.app))
 	wl.workflowIOView.SetBackgroundColor(theme.Bg())
 	wl.workflowIOView.SetTextColor(theme.Fg())
 	attachTextViewScrollbar(wl.workflowIOView, wl.app)
@@ -1066,28 +1069,143 @@ func (wl *WorkflowList) reportWrap(wrap bool) {
 }
 
 func (wl *WorkflowList) togglePreviewIOWrap(view *tview.TextView) bool {
-	if wl == nil || view == nil {
+	if wl == nil || (view != wl.workflowIOView && view != wl.eventDetail) || !wl.previewIOViewFocused() {
 		return false
 	}
-	switch view {
-	case wl.workflowIOView:
-		wl.workflowIOWrap = !wl.workflowIOWrap
-		setTextViewWrap(view, wl.workflowIOWrap)
-		wl.workflowIOTree.relayout()
-		wl.reportWrap(wl.workflowIOWrap)
-		return true
-	case wl.eventDetail:
-		if wl.previewKind != previewActivities ||
-			(wl.activityDetailKind != activityDetailInput && wl.activityDetailKind != activityDetailOutput) {
-			return false
-		}
-		wl.eventDetailWrap = !wl.eventDetailWrap
-		setTextViewWrap(view, wl.eventDetailWrap)
-		wl.eventDetailTree.relayout()
-		wl.reportWrap(wl.eventDetailWrap)
-		return true
-	default:
+	on := !ioWrapOn(wl.app)
+	if wl.app != nil {
+		wl.app.setIOWrap(on)
+	}
+	wl.applyIOWrap(on)
+	wl.reportWrap(on)
+	return true
+}
+
+func ioWrapOn(app *App) bool {
+	if app == nil || app.config == nil {
 		return false
+	}
+	return app.config.ShouldWrapIO()
+}
+
+func (wl *WorkflowList) applyIOWrap(on bool) {
+	if wl == nil {
+		return
+	}
+	setTextViewWrap(wl.workflowIOView, on)
+	setTextViewWrap(wl.eventDetail, on)
+	if wl.workflowIOTree != nil {
+		wl.workflowIOTree.relayout()
+	}
+	if wl.eventDetailTree != nil {
+		wl.eventDetailTree.relayout()
+	}
+}
+
+func searchLabel(query string, count int) string {
+	if query == "" {
+		return ""
+	}
+	return fmt.Sprintf("/%s (%d)", query, count)
+}
+
+func (wl *WorkflowList) showFocusedIOSearch() bool {
+	if wl == nil || wl.app == nil || !wl.previewIOViewFocused() {
+		return false
+	}
+	wl.app.ShowFilterMode(wl.focusedIOQuery(), FilterModeCallbacks{
+		OnChange: wl.applyFocusedIOSearch,
+		OnSubmit: wl.applyFocusedIOSearch,
+		OnCancel: func() { wl.applyFocusedIOSearch("") },
+	})
+	return true
+}
+
+func (wl *WorkflowList) focusedIOQuery() string {
+	if wl == nil {
+		return ""
+	}
+	switch {
+	case wl.previewKind == previewActivities && wl.activityDetailKind == activityDetailOutput:
+		return wl.activityOutputSearch
+	case wl.previewKind == previewActivities && wl.activityDetailKind == activityDetailInput:
+		return wl.activityInputSearch
+	case wl.previewKind == previewDetails && wl.workflowIOKind == workflowIOOutput:
+		return wl.workflowOutputSearch
+	case wl.previewKind == previewDetails:
+		return wl.workflowInputSearch
+	default:
+		return ""
+	}
+}
+
+func (wl *WorkflowList) applyFocusedIOSearch(query string) {
+	if wl == nil {
+		return
+	}
+	switch {
+	case wl.previewKind == previewActivities && wl.activityDetailKind == activityDetailOutput:
+		wl.activityOutputSearch = query
+	case wl.previewKind == previewActivities && wl.activityDetailKind == activityDetailInput:
+		wl.activityInputSearch = query
+	case wl.previewKind == previewDetails && wl.workflowIOKind == workflowIOOutput:
+		wl.workflowOutputSearch = query
+	case wl.previewKind == previewDetails:
+		wl.workflowInputSearch = query
+	}
+	wl.revealIOSearch()
+}
+
+func (wl *WorkflowList) revealIOSearch() {
+	if wl == nil {
+		return
+	}
+	view, query := wl.focusedIOView()
+	if query != "" && view != nil {
+		scrollTextViewToMatch(view, query)
+	}
+	wl.syncSearchTitles()
+}
+
+func (wl *WorkflowList) focusedIOView() (*tview.TextView, string) {
+	if wl == nil {
+		return nil, ""
+	}
+	switch {
+	case wl.previewKind == previewActivities && wl.activityDetailKind == activityDetailInput:
+		return wl.eventDetail, wl.activityInputSearch
+	case wl.previewKind == previewActivities && wl.activityDetailKind == activityDetailOutput:
+		return wl.eventDetail, wl.activityOutputSearch
+	case wl.previewKind == previewDetails && wl.workflowIOKind == workflowIOOutput:
+		return wl.workflowIOView, wl.workflowOutputSearch
+	case wl.previewKind == previewDetails:
+		return wl.workflowIOView, wl.workflowInputSearch
+	default:
+		return nil, ""
+	}
+}
+
+func (wl *WorkflowList) syncSearchTitles() {
+	if wl == nil {
+		return
+	}
+	if wl.previewPanel != nil {
+		title := ""
+		switch wl.previewKind {
+		case previewActivities:
+			title = searchLabel(wl.previewActivitySearch, len(wl.visiblePreviewActivities()))
+		case previewEvents:
+			title = searchLabel(wl.previewEventSearch, len(wl.visiblePreviewEvents()))
+		}
+		wl.previewPanel.SetTitle(title)
+	}
+	if wl.eventDetailPanel != nil {
+		view, query := wl.focusedIOView()
+		count := 0
+		if view != nil {
+			count = countSearchMatches(view.GetText(true), query)
+		}
+		wl.eventDetailPanel.SetTitle(searchLabel(query, count))
 	}
 }
 
@@ -1150,6 +1268,9 @@ func (wl *WorkflowList) handlePreviewKeys(event *tcell.EventKey) *tcell.EventKey
 			return nil
 		}
 	case '/':
+		if wl.showFocusedIOSearch() {
+			return nil
+		}
 		if wl.previewKind == previewEvents {
 			wl.showPreviewEventSearch()
 			return nil

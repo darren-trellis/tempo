@@ -62,7 +62,6 @@ type WorkflowList struct {
 	eventTreeMode          bool
 	eventTab               *components.Tab
 	eventDetail            *tview.TextView
-	eventDetailWrap        bool
 	eventDetailTree        *jsonTreeSelection
 	eventDetailPanel       *components.Panel
 	eventsPanel            *components.Panel
@@ -92,7 +91,6 @@ type WorkflowList struct {
 	workflowIOKind         workflowIOKind
 	workflowIOTabs         *components.Tabs
 	workflowIOView         *tview.TextView
-	workflowIOWrap         bool
 	workflowIOTree         *jsonTreeSelection
 	hierarchyView          *WorkflowGraphView
 	hierarchyGraphPanel    *components.Panel
@@ -100,6 +98,10 @@ type WorkflowList struct {
 	previewEventSearch     string
 	previewActivities      []previewActivity
 	previewActivitySearch  string
+	activityInputSearch    string
+	activityOutputSearch   string
+	workflowInputSearch    string
+	workflowOutputSearch   string
 	previewWorkflowID      string
 	previewRunID           string
 	previewGen             uint64
@@ -830,6 +832,9 @@ func (wl *WorkflowList) previewSideHints() []KeyHint {
 		hints := []KeyHint{
 			{Key: "w", Description: "Wrap"},
 			{Key: "e", Description: "Editor"},
+		}
+		if wl.previewKind == previewDetails {
+			hints = append([]KeyHint{{Key: "/", Description: "Search"}}, hints...)
 		}
 		if ioTreeEnabled(wl.app) {
 			hints = append(hints,

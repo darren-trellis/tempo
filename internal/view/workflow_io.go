@@ -86,6 +86,7 @@ func workflowIOHints(maximized, tree bool) []components.KeyHint {
 	}
 	hints := []components.KeyHint{
 		{Key: "m", Description: maxHint},
+		{Key: "/", Description: "Search"},
 		{Key: "w", Description: "Wrap"},
 		{Key: "e", Description: "Editor"},
 	}
@@ -107,6 +108,7 @@ func showWorkflowIO(app *App, background tview.Primitive, workflowType, input, o
 	}
 
 	closeModal := func() {
+		app.setSearchStatus("")
 		app.JigApp().Pages().DismissModal()
 		if onClose != nil {
 			onClose()
@@ -125,7 +127,7 @@ func showWorkflowIO(app *App, background tview.Primitive, workflowType, input, o
 	inputView := tview.NewTextView().
 		SetDynamicColors(true).
 		SetScrollable(true)
-	setTextViewWrap(inputView, false)
+	setTextViewWrap(inputView, ioWrapOn(app))
 	inputView.SetBackgroundColor(theme.Bg())
 	inputView.SetTextColor(theme.Fg())
 	attachTextViewScrollbar(inputView, app)
@@ -133,7 +135,7 @@ func showWorkflowIO(app *App, background tview.Primitive, workflowType, input, o
 	outputView := tview.NewTextView().
 		SetDynamicColors(true).
 		SetScrollable(true)
-	setTextViewWrap(outputView, false)
+	setTextViewWrap(outputView, ioWrapOn(app))
 	outputView.SetBackgroundColor(theme.Bg())
 	outputView.SetTextColor(theme.Fg())
 	attachTextViewScrollbar(outputView, app)
@@ -167,7 +169,17 @@ func showWorkflowIO(app *App, background tview.Primitive, workflowType, input, o
 	modal.SetOnCancel(closeModal)
 
 	focusedInput := true
-	wrapped := false
+	inputQuery := ""
+	outputQuery := ""
+	searchStatus := func() {
+		view := outputView
+		query := outputQuery
+		if focusedInput {
+			view = inputView
+			query = inputQuery
+		}
+		app.setSearchStatus(searchLabel(query, countSearchMatches(view.GetText(true), query)))
+	}
 	applyIOFocus := func() {
 		inputPanel.SetTitle(fmt.Sprintf("%s Input", theme.IconArrowRight))
 		outputPanel.SetTitle(fmt.Sprintf("%s Output", theme.IconArrowLeft))
@@ -181,6 +193,7 @@ func showWorkflowIO(app *App, background tview.Primitive, workflowType, input, o
 	switchFocus := func() {
 		focusedInput = !focusedInput
 		applyIOFocus()
+		searchStatus()
 		if focusedInput {
 			app.JigApp().SetFocus(inputView)
 		} else {
@@ -195,6 +208,7 @@ func showWorkflowIO(app *App, background tview.Primitive, workflowType, input, o
 			focusedInput = true
 		}
 		applyIOFocus()
+		searchStatus()
 
 		switch event.Key() {
 		case tcell.KeyEscape:
@@ -223,13 +237,51 @@ func showWorkflowIO(app *App, background tview.Primitive, workflowType, input, o
 				modal.toggleMaximize()
 				applyIOHints()
 				return nil
+			case '/':
+				query := outputQuery
+				targetInput := focusedInput
+				target := outputView
+				if targetInput {
+					query = inputQuery
+					target = inputView
+				}
+				app.ShowFilterMode(query, FilterModeCallbacks{
+					OnChange: func(text string) {
+						if targetInput {
+							inputQuery = text
+						} else {
+							outputQuery = text
+						}
+						scrollTextViewToMatch(target, text)
+						searchStatus()
+					},
+					OnSubmit: func(text string) {
+						if targetInput {
+							inputQuery = text
+						} else {
+							outputQuery = text
+						}
+						scrollTextViewToMatch(target, text)
+						searchStatus()
+					},
+					OnCancel: func() {
+						if targetInput {
+							inputQuery = ""
+						} else {
+							outputQuery = ""
+						}
+						searchStatus()
+					},
+				})
+				return nil
 			case 'w':
-				wrapped = !wrapped
-				setTextViewWrap(inputView, wrapped)
-				setTextViewWrap(outputView, wrapped)
+				on := !ioWrapOn(app)
+				app.setIOWrap(on)
+				setTextViewWrap(inputView, on)
+				setTextViewWrap(outputView, on)
 				inputTree.relayout()
 				outputTree.relayout()
-				app.ToastInfo(wrapToggleMessage(wrapped))
+				app.ToastInfo(wrapToggleMessage(on))
 				return nil
 			case 'e':
 				if focusedInput {
