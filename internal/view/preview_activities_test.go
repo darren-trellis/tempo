@@ -61,15 +61,15 @@ func TestActivityInfoRowsOmitsPayloads(t *testing.T) {
 			t.Fatalf("details should omit %q: %+v", key, rows)
 		}
 	}
-	if in := formatActivityInput(a); !strings.Contains(in, `"id"`) {
+	if in := formatActivityInput(a, false); !strings.Contains(in, `"id"`) {
 		t.Fatalf("input tab: %s", in)
 	}
-	if out := formatActivityOutput(a); !strings.Contains(out, `"ok"`) {
+	if out := formatActivityOutput(a, false); !strings.Contains(out, `"ok"`) {
 		t.Fatalf("output tab: %s", out)
 	}
 	failed := a
 	failed.Result = ""
-	if out := formatActivityOutput(failed); !strings.Contains(out, "should not appear") {
+	if out := formatActivityOutput(failed, false); !strings.Contains(out, "should not appear") {
 		t.Fatalf("failed output should show failure: %s", out)
 	}
 }

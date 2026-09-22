@@ -62,9 +62,19 @@ func workflowHistoryComplete(events []temporal.EnhancedHistoryEvent) bool {
 	return false
 }
 
-func formatIOContent(label, content string) string {
+func ioTreeEnabled(app *App) bool {
+	if app == nil {
+		return false
+	}
+	return app.Config().ShouldShowIOTree()
+}
+
+func formatIOContent(label, content string, tree bool) string {
 	if content == "" {
 		return fmt.Sprintf("[%s]No %s[-]", theme.TagFgDim(), strings.ToLower(label))
+	}
+	if tree {
+		return formatJSONTree(content)
 	}
 	return highlightFormattedJSONWorkflow(formatJSONPretty(content))
 }
@@ -109,7 +119,7 @@ func showWorkflowIO(app *App, background tview.Primitive, workflowType, input, o
 		SetWrap(false)
 	inputView.SetBackgroundColor(theme.Bg())
 	inputView.SetTextColor(theme.Fg())
-	inputView.SetText(formatIOContent("Input", input))
+	inputView.SetText(formatIOContent("Input", input, ioTreeEnabled(app)))
 	attachTextViewScrollbar(inputView, app)
 
 	outputView := tview.NewTextView().
@@ -118,7 +128,7 @@ func showWorkflowIO(app *App, background tview.Primitive, workflowType, input, o
 		SetWrap(false)
 	outputView.SetBackgroundColor(theme.Bg())
 	outputView.SetTextColor(theme.Fg())
-	outputView.SetText(formatIOContent("Output", output))
+	outputView.SetText(formatIOContent("Output", output, ioTreeEnabled(app)))
 	attachTextViewScrollbar(outputView, app)
 
 	inputPanel := components.NewPanel().SetTitle(fmt.Sprintf("%s Input", theme.IconArrowRight))

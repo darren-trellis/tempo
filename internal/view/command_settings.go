@@ -202,6 +202,9 @@ func tempoSettings() []tempoSetting {
 		boolSetting("color_code_workflows", "Color workflow rows by status", func(c *config.Config) bool {
 			return c.ShouldColorCodeWorkflows()
 		}, func(c *config.Config, on bool) { c.ColorCodeWorkflows = &on }),
+		boolSetting("io_tree", "Show input and output as a JSON tree", func(c *config.Config) bool {
+			return c.ShouldShowIOTree()
+		}, func(c *config.Config, on bool) { c.IOTree = &on }),
 		{
 			name: "workflow_time_format",
 			help: "Workflow started/ended display",
@@ -729,6 +732,11 @@ func (a *App) applySettingSideEffects(name string) {
 	case "color_code_activities", "activity_time_format":
 		if hasWL {
 			wl.renderActivityColumns()
+		}
+	case "io_tree":
+		if hasWL {
+			wl.renderWorkflowIO()
+			wl.renderSelectedActivityDetail()
 		}
 	case "preview_cache_size":
 		if hasWL && a.config != nil {

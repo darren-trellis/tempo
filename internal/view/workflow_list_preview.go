@@ -684,9 +684,9 @@ func (wl *WorkflowList) renderWorkflowIO() {
 	}
 	input, output := workflowIOFromEvents(wl.previewEvents)
 	if wl.workflowIOKind == workflowIOOutput {
-		wl.workflowIOView.SetText(formatIOContent("Output", output))
+		wl.workflowIOView.SetText(formatIOContent("Output", output, ioTreeEnabled(wl.app)))
 	} else {
-		wl.workflowIOView.SetText(formatIOContent("Input", input))
+		wl.workflowIOView.SetText(formatIOContent("Input", input, ioTreeEnabled(wl.app)))
 	}
 	wl.workflowIOView.ScrollToBeginning()
 }
@@ -744,12 +744,12 @@ func (wl *WorkflowList) renderSelectedActivityDetail() {
 	switch wl.activityDetailKind {
 	case activityDetailInput:
 		if wl.eventDetail != nil {
-			wl.eventDetail.SetText(formatActivityInput(a))
+			wl.eventDetail.SetText(formatActivityInput(a, ioTreeEnabled(wl.app)))
 			wl.eventDetail.ScrollToBeginning()
 		}
 	case activityDetailOutput:
 		if wl.eventDetail != nil {
-			wl.eventDetail.SetText(formatActivityOutput(a))
+			wl.eventDetail.SetText(formatActivityOutput(a, ioTreeEnabled(wl.app)))
 			wl.eventDetail.ScrollToBeginning()
 		}
 	default:

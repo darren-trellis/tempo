@@ -194,6 +194,7 @@ type Config struct {
 	PreviewLoadWait     *Setting `yaml:"preview_load_delay,omitempty"`
 	ColorCodeActivities *bool    `yaml:"color_code_activities,omitempty"`
 	ColorCodeWorkflows  *bool    `yaml:"color_code_workflows,omitempty"`
+	IOTree              *bool    `yaml:"io_tree,omitempty"`
 	ResetPoint          string   `yaml:"reset_point,omitempty"`
 	ResetReason         string   `yaml:"reset_reason,omitempty"`
 	PrimaryTab          string   `yaml:"primary_tab,omitempty"`
@@ -317,6 +318,13 @@ func (c *Config) ShouldColorCodeWorkflows() bool {
 		return false
 	}
 	return *c.ColorCodeWorkflows
+}
+
+func (c *Config) ShouldShowIOTree() bool {
+	if c == nil || c.IOTree == nil {
+		return false
+	}
+	return *c.IOTree
 }
 
 const (

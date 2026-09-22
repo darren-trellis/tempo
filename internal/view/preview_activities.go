@@ -224,18 +224,18 @@ func (k activityDetailKind) icon() string {
 	}
 }
 
-func formatActivityInput(a previewActivity) string {
-	return formatIOContent("Input", a.Input)
+func formatActivityInput(a previewActivity, tree bool) string {
+	return formatIOContent("Input", a.Input, tree)
 }
 
-func formatActivityOutput(a previewActivity) string {
+func formatActivityOutput(a previewActivity, tree bool) string {
 	if a.Result != "" {
-		return formatIOContent("Output", a.Result)
+		return formatIOContent("Output", a.Result, tree)
 	}
 	if a.Failure != "" {
 		return fmt.Sprintf("[%s]%s[-]", theme.TagError(), a.Failure)
 	}
-	return formatIOContent("Output", "")
+	return formatIOContent("Output", "", tree)
 }
 
 const (
