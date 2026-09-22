@@ -8,12 +8,13 @@ import (
 
 type resizableModal struct {
 	*shadowedModal
+	cfg       components.ModalConfig
 	maximized bool
 	frameless bool
 }
 
 func newResizableModal(cfg components.ModalConfig) *resizableModal {
-	return &resizableModal{shadowedModal: newModal(cfg)}
+	return &resizableModal{shadowedModal: newModal(cfg), cfg: cfg}
 }
 
 func (m *resizableModal) toggleMaximize() {
@@ -27,10 +28,17 @@ func (m *resizableModal) Draw(screen tcell.Screen) {
 		panel.SetFocused(true)
 	}
 	if !m.maximized {
-		m.Modal.Draw(screen)
+		// A frameless modal has no border, so its content takes the whole panel.
+		// Drawing the bordered modal first and then stretching the content over
+		// it laid the panes out at two widths every frame, and each layout
+		// pulled the scroll position back to the highlighted row.
 		if m.frameless {
+			m.placePanel()
 			m.drawFramelessContent(screen)
+			drawModalShadow(screen, m.GetPanel(), m.shadowStyle())
+			return
 		}
+		m.Modal.Draw(screen)
 		drawModalShadow(screen, m.GetPanel(), m.shadowStyle())
 		return
 	}
@@ -41,6 +49,30 @@ func (m *resizableModal) Draw(screen tcell.Screen) {
 		return
 	}
 	m.GetPanel().Draw(screen)
+}
+
+// placePanel centers the panel the way the bordered modal does, without
+// drawing it. The config that sized it is not readable back off the modal.
+func (m *resizableModal) placePanel() {
+	if m == nil || m.GetPanel() == nil {
+		return
+	}
+	x, y, width, height := m.GetRect()
+	modalWidth := m.cfg.Width
+	modalHeight := m.cfg.Height
+	if modalWidth == 0 {
+		modalWidth = m.cfg.MinWidth
+		if modalWidth == 0 {
+			modalWidth = 40
+		}
+	}
+	if modalHeight == 0 {
+		modalHeight = m.cfg.MinHeight
+		if modalHeight == 0 {
+			modalHeight = 10
+		}
+	}
+	m.GetPanel().SetRect(x+(width-modalWidth)/2, y+(height-modalHeight)/2, modalWidth, modalHeight)
 }
 
 func (m *resizableModal) drawFramelessContent(screen tcell.Screen) {
