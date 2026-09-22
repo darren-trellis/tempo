@@ -222,6 +222,12 @@ func (wl *WorkflowList) showFilterManager() {
 		})
 
 	refresh()
+	for i, f := range cfg.GetSavedFilters() {
+		if wl.activeFilterName != "" && f.Name == wl.activeFilterName {
+			table.SelectRow(i)
+			break
+		}
+	}
 
 	scroll := attachTableCharScroll(table, wl.app)
 	table.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {

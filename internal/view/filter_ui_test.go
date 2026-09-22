@@ -601,6 +601,36 @@ func TestDeleteActiveFilterKeepsManagerFocus(t *testing.T) {
 	}
 }
 
+func TestFilterManagerOpensOnTheActiveFilter(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	a := NewAppWithProvider(nil, "default", config.DefaultConfig(), "local")
+	wl := NewWorkflowList(a, "default")
+	wl.keepDataOnStart = true
+	a.app.Pages().Push(wl)
+	for _, name := range []string{"Running", "Failed", "Orders"} {
+		a.Config().SaveFilter(config.SavedFilter{Name: name, Query: "WorkflowType = '" + name + "'"})
+	}
+	filters := a.Config().GetSavedFilters()
+	wl.applySavedFilter(filters[2])
+
+	wl.showFilterManager()
+	om, ok := a.app.Pages().Current().(*overlayModal)
+	if !ok {
+		t.Fatalf("current=%T", a.app.Pages().Current())
+	}
+	if got := overlayModalTable(t, om).SelectedRow(); got != 2 {
+		t.Fatalf("the active filter should be selected, got row %d", got)
+	}
+	wl.closeModal()
+
+	wl.applyAllWorkflowsFilter()
+	wl.showFilterManager()
+	om = a.app.Pages().Current().(*overlayModal)
+	if got := overlayModalTable(t, om).SelectedRow(); got != 0 {
+		t.Fatalf("with no saved filter active the first row should be selected, got %d", got)
+	}
+}
+
 func TestFilterManagerHintIsNewFilter(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	a := NewAppWithProvider(nil, "default", config.DefaultConfig(), "local")
