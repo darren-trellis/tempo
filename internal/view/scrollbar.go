@@ -165,7 +165,7 @@ func attachTextViewScrollbar(view *tview.TextView, app *App) {
 	if view == nil {
 		return
 	}
-	bindTextViewHorizontalScroll(view, func() int {
+	bindTextViewMouseScroll(view, func() int {
 		return mouseScrollStepFromApp(app)
 	})
 	view.SetDrawFunc(func(screen tcell.Screen, x, y, width, height int) (int, int, int, int) {
@@ -197,21 +197,49 @@ func attachTextViewScrollbar(view *tview.TextView, app *App) {
 	})
 }
 
-func bindTextViewHorizontalScroll(view *tview.TextView, step func() int) {
+func bindTextViewMouseScroll(view *tview.TextView, step func() int) {
 	if view == nil {
 		return
 	}
 	prev := view.GetMouseCapture()
 	view.SetMouseCapture(func(action tview.MouseAction, event *tcell.EventMouse) (tview.MouseAction, *tcell.EventMouse) {
 		if delta := horizontalMouseDelta(action, event); delta != 0 {
+			_, before := view.GetScrollOffset()
 			scrollTextViewHoriz(view, delta*resolveMouseScrollStep(step))
+			if _, after := view.GetScrollOffset(); after == before {
+				return droppedWheel(action)
+			}
 			return tview.MouseConsumed, nil
+		}
+		if delta := verticalMouseDelta(action, event); delta != 0 && !textViewCanScroll(view, delta) {
+			return droppedWheel(action)
 		}
 		if prev != nil {
 			return prev(action, event)
 		}
 		return action, event
 	})
+}
+
+// textViewCanScroll reports whether a vertical wheel tick can still move a text
+// view. An unmeasured view answers true so an unknown size never blocks it.
+func textViewCanScroll(view *tview.TextView, delta int) bool {
+	if view == nil {
+		return true
+	}
+	row, _ := view.GetScrollOffset()
+	if delta < 0 {
+		return row > 0
+	}
+	_, _, width, height := view.GetInnerRect()
+	if width <= 0 || height <= 0 {
+		return true
+	}
+	vert, _ := textViewScrollMetrics(view, width, height)
+	if vert.total == 0 {
+		return true
+	}
+	return vert.offset < vert.total-vert.visible
 }
 
 func attachTreeScrollbar(tree *tview.TreeView, app *App) {

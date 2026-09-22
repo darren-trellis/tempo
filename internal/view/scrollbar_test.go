@@ -133,6 +133,41 @@ func TestTextViewScrollbarTakesAHorizontalWheel(t *testing.T) {
 	}
 }
 
+func TestTextViewWheelAtABoundaryIsDropped(t *testing.T) {
+	view := tview.NewTextView().SetScrollable(true).SetWrap(false)
+	view.SetText(strings.Repeat("line\n", 40) + strings.Repeat("x", 80))
+	view.SetRect(0, 0, 12, 6)
+	attachTextViewScrollbar(view, nil)
+	capture := view.GetMouseCapture()
+
+	screen := tcell.NewSimulationScreen("UTF-8")
+	if err := screen.Init(); err != nil {
+		t.Fatal(err)
+	}
+	screen.SetSize(12, 6)
+	view.Draw(screen)
+
+	up := tcell.NewEventMouse(1, 1, tcell.WheelUp, tcell.ModNone)
+	action, event := capture(tview.MouseScrollUp, up)
+	if action == tview.MouseConsumed || event != nil {
+		t.Fatal("scrolling up at the top should be dropped, not redrawn")
+	}
+
+	view.ScrollTo(10, 0)
+	view.Draw(screen)
+	if _, event := capture(tview.MouseScrollUp, up); event == nil {
+		t.Fatal("scrolling up mid-text should reach the text view")
+	}
+
+	// Horizontal panning stops at the longest line.
+	scrollTextViewHoriz(view, 500)
+	right := tcell.NewEventMouse(1, 1, tcell.WheelRight, tcell.ModNone)
+	action, event = capture(tview.MouseScrollRight, right)
+	if action == tview.MouseConsumed || event != nil {
+		t.Fatal("panning past the longest line should be dropped")
+	}
+}
+
 func TestScrollbarFollowsTableAfterPageJump(t *testing.T) {
 	table := components.NewTable()
 	table.SetHeaders("ID")

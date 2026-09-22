@@ -170,9 +170,12 @@ func (v *charScrollView) clamp() {
 	}
 }
 
-func (v *charScrollView) scrollChars(delta int) {
+// scrollChars pans horizontally and reports whether the offset actually moved.
+func (v *charScrollView) scrollChars(delta int) bool {
+	before := v.offset
 	v.offset += delta
 	v.clamp()
+	return v.offset != before
 }
 
 func (v *charScrollView) scrollTo(offset int) {
@@ -335,12 +338,39 @@ func bindTableCharScroll(table *components.Table, view *charScrollView, step fun
 	prev := table.GetMouseCapture()
 	table.SetMouseCapture(func(action tview.MouseAction, event *tcell.EventMouse) (tview.MouseAction, *tcell.EventMouse) {
 		if delta := horizontalMouseDelta(action, event); delta != 0 {
-			view.scrollChars(delta * resolveMouseScrollStep(step))
+			if !view.scrollChars(delta * resolveMouseScrollStep(step)) {
+				return droppedWheel(action)
+			}
 			return tview.MouseConsumed, nil
+		}
+		if delta := verticalMouseDelta(action, event); delta != 0 && !tableCanScroll(table, delta) {
+			return droppedWheel(action)
 		}
 		if prev != nil {
 			return prev(action, event)
 		}
 		return action, event
 	})
+}
+
+// tableCanScroll reports whether a vertical wheel tick can still move a table.
+// It answers true whenever the table has not been measured yet, so an unknown
+// size never blocks scrolling.
+func tableCanScroll(table *components.Table, delta int) bool {
+	if table == nil {
+		return true
+	}
+	offset, _ := table.GetOffset()
+	if delta < 0 {
+		return offset > 0
+	}
+	_, _, _, height := table.GetInnerRect()
+	if height <= 0 {
+		return true
+	}
+	metrics := tableVerticalScroll(table, height)
+	if metrics.total == 0 {
+		return true
+	}
+	return metrics.offset < metrics.total-metrics.visible
 }

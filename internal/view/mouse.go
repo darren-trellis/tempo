@@ -154,6 +154,28 @@ func bindGraphHorizontalScroll(graph *components.NodeGraph) {
 	})
 }
 
+// droppedWheel swallows a wheel gesture without reporting it as consumed.
+// tview redraws whenever a mouse handler consumes an event, and its widgets
+// consume every wheel tick and only clamp when they draw. A flick against a
+// boundary therefore queues a full redraw per tick and the next gesture waits
+// behind them, so a tick that cannot move the pane is better dropped.
+func droppedWheel(action tview.MouseAction) (tview.MouseAction, *tcell.EventMouse) {
+	return action, nil
+}
+
+func verticalMouseDelta(action tview.MouseAction, event *tcell.EventMouse) int {
+	if event != nil && event.Modifiers()&tcell.ModShift != 0 {
+		return 0
+	}
+	switch action {
+	case tview.MouseScrollUp:
+		return -1
+	case tview.MouseScrollDown:
+		return 1
+	}
+	return 0
+}
+
 func horizontalMouseDelta(action tview.MouseAction, event *tcell.EventMouse) int {
 	switch action {
 	case tview.MouseScrollLeft:
