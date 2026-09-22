@@ -705,9 +705,10 @@ func (wl *WorkflowList) renderWorkflowIO() {
 		label = "Output"
 	}
 	tree := ioTreeEnabled(wl.app)
-	if wl.workflowIOTree == nil || !wl.workflowIOTree.setContent(content, tree) {
-		wl.workflowIOView.SetText(formatIOContent(label, content, tree))
+	if wl.workflowIOTree != nil && wl.workflowIOTree.setContent(content, tree) {
+		return
 	}
+	wl.workflowIOView.SetText(formatIOContent(label, content, tree))
 	wl.workflowIOView.ScrollToBeginning()
 }
 
@@ -768,9 +769,10 @@ func (wl *WorkflowList) renderSelectedActivityDetail() {
 	case activityDetailInput:
 		if wl.eventDetail != nil {
 			tree := ioTreeEnabled(wl.app)
-			if wl.eventDetailTree == nil || !wl.eventDetailTree.setContent(a.Input, tree) {
-				wl.eventDetail.SetText(formatActivityInput(a, tree))
+			if wl.eventDetailTree != nil && wl.eventDetailTree.setContent(a.Input, tree) {
+				return
 			}
+			wl.eventDetail.SetText(formatActivityInput(a, tree))
 			wl.eventDetail.ScrollToBeginning()
 		}
 	case activityDetailOutput:
@@ -780,9 +782,10 @@ func (wl *WorkflowList) renderSelectedActivityDetail() {
 				content = a.Failure
 			}
 			tree := ioTreeEnabled(wl.app)
-			if wl.eventDetailTree == nil || !wl.eventDetailTree.setContent(content, tree) {
-				wl.eventDetail.SetText(formatActivityOutput(a, tree))
+			if wl.eventDetailTree != nil && wl.eventDetailTree.setContent(content, tree) {
+				return
 			}
+			wl.eventDetail.SetText(formatActivityOutput(a, tree))
 			wl.eventDetail.ScrollToBeginning()
 		}
 	default:

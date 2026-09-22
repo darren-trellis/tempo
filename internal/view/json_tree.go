@@ -14,12 +14,19 @@ import (
 const jsonTreeTabWidth = 4
 
 type jsonTreeRow struct {
-	text  string
-	value string
+	text     string
+	value    string
+	path     string
+	foldable bool
+}
+
+type jsonTreeBuilder struct {
+	rows   []jsonTreeRow
+	folded map[string]bool
 }
 
 func formatJSONTree(s string) string {
-	rows, ok := buildJSONTreeRows(s)
+	rows, ok := buildJSONTreeRows(s, nil)
 	if !ok {
 		return highlightFormattedJSONWorkflow(strings.TrimSpace(s))
 	}
@@ -30,7 +37,7 @@ func formatJSONTree(s string) string {
 	return strings.Join(lines, "\n")
 }
 
-func buildJSONTreeRows(s string) ([]jsonTreeRow, bool) {
+func buildJSONTreeRows(s string, folded map[string]bool) ([]jsonTreeRow, bool) {
 	s = strings.TrimSpace(s)
 	if s == "" {
 		return nil, false
@@ -39,33 +46,37 @@ func buildJSONTreeRows(s string) ([]jsonTreeRow, bool) {
 	if !ok {
 		return nil, false
 	}
-	var rows []jsonTreeRow
+	b := &jsonTreeBuilder{folded: folded}
 	if len(values) == 1 {
-		appendJSONTreeRoot(&rows, values[0])
+		b.appendRoot(values[0])
 	} else {
-		appendJSONTreeRoot(&rows, values)
+		b.appendRoot(values)
 	}
-	return rows, true
+	return b.rows, true
 }
 
-func appendJSONTreeRoot(rows *[]jsonTreeRow, v any) {
+func (b *jsonTreeBuilder) appendRoot(v any) {
 	switch val := v.(type) {
 	case map[string]any:
 		keys := sortedJSONKeys(val)
 		for i, key := range keys {
-			appendJSONTreeEntry(rows, key, val[key], "", i+1 == len(keys), false)
+			b.appendEntry(key, val[key], nil, "", i+1 == len(keys), false)
 		}
 	case []any:
-		appendJSONTreeRow(rows, jsonTreeDim(jsonTreeFoldMarker()+fmt.Sprintf("[%d]", len(val))), val)
+		folded := b.isFolded(nil)
+		b.add(jsonTreeDim(jsonTreeFoldMarker(folded)+fmt.Sprintf("[%d]", len(val)))+jsonTreeEllipsis(folded), val, nil, true)
+		if folded {
+			return
+		}
 		for i, item := range val {
-			appendJSONTreeEntry(rows, strconv.Itoa(i), item, "", i+1 == len(val), true)
+			b.appendEntry(strconv.Itoa(i), item, nil, "", i+1 == len(val), true)
 		}
 	default:
-		appendJSONTreeRow(rows, jsonTreeScalar(v), v)
+		b.add(jsonTreeScalar(v), v, nil, false)
 	}
 }
 
-func appendJSONTreeEntry(rows *[]jsonTreeRow, key string, value any, prefix string, isLast, branched bool) {
+func (b *jsonTreeBuilder) appendEntry(key string, value any, parent []string, prefix string, isLast, branched bool) {
 	branch := ""
 	if branched {
 		branch = jsonTreeBranch(isLast)
@@ -75,41 +86,77 @@ func appendJSONTreeEntry(rows *[]jsonTreeRow, key string, value any, prefix stri
 	if branched {
 		childPrefix = prefix + jsonTreeGuide(isLast)
 	}
+	path := append(append(make([]string, 0, len(parent)+1), parent...), key)
 
 	switch val := value.(type) {
 	case map[string]any:
 		if len(val) == 0 {
-			appendJSONTreeRow(rows, lead+jsonTreeKey(key)+jsonTreeDim(": ")+jsonTreeScalar(val), val)
+			b.add(lead+jsonTreeKey(key)+jsonTreeDim(": ")+jsonTreeScalar(val), val, path, false)
 			return
 		}
-		appendJSONTreeRow(rows, lead+jsonTreeDim(jsonTreeFoldMarker())+jsonTreeKey(key), val)
+		folded := b.isFolded(path)
+		b.add(lead+jsonTreeDim(jsonTreeFoldMarker(folded))+jsonTreeKey(key)+jsonTreeEllipsis(folded), val, path, true)
+		if folded {
+			return
+		}
 		keys := sortedJSONKeys(val)
 		for i, child := range keys {
-			appendJSONTreeEntry(rows, child, val[child], childPrefix, i+1 == len(keys), true)
+			b.appendEntry(child, val[child], path, childPrefix, i+1 == len(keys), true)
 		}
 	case []any:
 		if len(val) == 0 {
-			appendJSONTreeRow(rows, lead+jsonTreeKey(key)+jsonTreeDim(": ")+jsonTreeScalar(val), val)
+			b.add(lead+jsonTreeKey(key)+jsonTreeDim(": ")+jsonTreeScalar(val), val, path, false)
 			return
 		}
-		appendJSONTreeRow(rows, lead+jsonTreeDim(jsonTreeFoldMarker())+jsonTreeKey(key)+jsonTreeDim(fmt.Sprintf(" [%d]", len(val))), val)
+		folded := b.isFolded(path)
+		b.add(lead+jsonTreeDim(jsonTreeFoldMarker(folded))+jsonTreeKey(key)+jsonTreeDim(fmt.Sprintf(" [%d]", len(val)))+jsonTreeEllipsis(folded), val, path, true)
+		if folded {
+			return
+		}
 		for i, item := range val {
-			appendJSONTreeEntry(rows, strconv.Itoa(i), item, childPrefix, i+1 == len(val), true)
+			b.appendEntry(strconv.Itoa(i), item, path, childPrefix, i+1 == len(val), true)
 		}
 	default:
-		appendJSONTreeRow(rows, lead+jsonTreeKey(key)+jsonTreeDim(": ")+jsonTreeScalar(value), value)
+		b.add(lead+jsonTreeKey(key)+jsonTreeDim(": ")+jsonTreeScalar(value), value, path, false)
 	}
 }
 
-func appendJSONTreeRow(rows *[]jsonTreeRow, text string, value any) {
+func (b *jsonTreeBuilder) isFolded(path []string) bool {
+	return b.folded[jsonTreePathKey(path)]
+}
+
+func (b *jsonTreeBuilder) add(text string, value any, path []string, foldable bool) {
 	encoded, err := json.MarshalIndent(value, "", "  ")
 	if err != nil {
 		encoded = []byte(fmt.Sprint(value))
 	}
-	*rows = append(*rows, jsonTreeRow{text: text, value: string(encoded)})
+	b.rows = append(b.rows, jsonTreeRow{
+		text:     text,
+		value:    string(encoded),
+		path:     jsonTreePathKey(path),
+		foldable: foldable,
+	})
 }
 
-func jsonTreeFoldMarker() string { return "◇ " }
+// jsonTreePathKey names a node by its ancestry so folds and the highlight
+// survive a rebuild. The separator cannot appear in a JSON key.
+func jsonTreePathKey(path []string) string {
+	return strings.Join(path, "\x00")
+}
+
+func jsonTreeFoldMarker(folded bool) string {
+	if folded {
+		return workflowTreeCollapsed + " "
+	}
+	return workflowTreeExpanded + " "
+}
+
+func jsonTreeEllipsis(folded bool) string {
+	if !folded {
+		return ""
+	}
+	return jsonTreeDim(" …")
+}
 
 func jsonTreeBranch(isLast bool) string {
 	if isLast {

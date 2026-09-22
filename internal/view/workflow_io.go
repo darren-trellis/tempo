@@ -91,6 +91,7 @@ func workflowIOHints(maximized, tree bool) []components.KeyHint {
 	}
 	if tree {
 		hints = append(hints,
+			components.KeyHint{Key: "space", Description: "Fold"},
 			components.KeyHint{Key: "y", Description: "Yank Row"},
 			components.KeyHint{Key: "Y", Description: "Yank All"},
 		)

@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/atterpac/jig/theme"
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 )
@@ -88,7 +89,7 @@ func TestFormatIOContentUsesTreeWhenAsked(t *testing.T) {
 }
 
 func TestJSONTreeRowsCarryTheirJSONValues(t *testing.T) {
-	rows, ok := buildJSONTreeRows(`{"object":{"name":"tempo"},"scalar":7}`)
+	rows, ok := buildJSONTreeRows(`{"object":{"name":"tempo"},"scalar":7}`, nil)
 	if !ok {
 		t.Fatal("expected valid tree")
 	}
@@ -125,8 +126,106 @@ func TestJSONTreeSelectionHighlightsAndMovesRows(t *testing.T) {
 	if value, ok := selection.value(); !ok || !strings.Contains(value, `"nested": true`) {
 		t.Fatalf("object row value=%q ok=%v", value, ok)
 	}
-	if got := view.GetHighlights(); len(got) != 1 || got[0] != jsonTreeRegionID(1) {
-		t.Fatalf("highlight=%v", got)
+}
+
+// The highlight is painted into the text because tview's region highlighting
+// only inverts styled runes, which striped the row in several colors and
+// stopped at the end of the text.
+func TestJSONTreeHighlightCoversTheWholeRow(t *testing.T) {
+	view := tview.NewTextView().SetDynamicColors(true)
+	view.SetRect(0, 0, 40, 10)
+	selection := newJSONTreeSelection(view)
+	if !selection.setContent(`{"a":1,"bbbbbbbb":2}`, true) {
+		t.Fatal("expected selectable JSON tree")
+	}
+	lines := strings.Split(view.GetText(false), "\n")
+	if len(lines) != 2 {
+		t.Fatalf("lines=%q", lines)
+	}
+	selected, other := lines[0], lines[1]
+	if !strings.HasPrefix(selected, "["+theme.ColorToHex(accentTextColor())+":"+theme.TagAccent()+":b]") {
+		t.Fatalf("selected row should carry the selection style, got %q", selected)
+	}
+	if strings.Contains(selected, theme.TagFgDim()) || strings.Count(selected, "[") != 2 {
+		t.Fatalf("selected row should be one uniform style, got %q", selected)
+	}
+	if width := tview.TaggedStringWidth(selected); width != 40 {
+		t.Fatalf("selected row should span the pane, width=%d", width)
+	}
+	if strings.Contains(other, theme.TagAccent()+":b]") {
+		t.Fatalf("unselected row should stay unstyled, got %q", other)
+	}
+}
+
+func TestJSONTreeSpaceFoldsAndUnfoldsTheSelectedNode(t *testing.T) {
+	view := tview.NewTextView().SetDynamicColors(true)
+	view.SetRect(0, 0, 40, 10)
+	selection := newJSONTreeSelection(view)
+	if !selection.setContent(`{"outer":{"inner":1},"tail":2}`, true) {
+		t.Fatal("expected selectable JSON tree")
+	}
+	if got := len(selection.rows); got != 3 {
+		t.Fatalf("expected outer, inner and tail rows, got %d", got)
+	}
+
+	space := tcell.NewEventKey(tcell.KeyRune, ' ', tcell.ModNone)
+	if !selection.handleKey(space) {
+		t.Fatal("space should fold the selected node")
+	}
+	if got := len(selection.rows); got != 2 {
+		t.Fatalf("folding should hide the child row, got %d rows", got)
+	}
+	plain := stripTreeTags(view.GetText(false))
+	if !strings.Contains(plain, workflowTreeCollapsed) || strings.Contains(plain, "inner") {
+		t.Fatalf("folded node should collapse, got %q", plain)
+	}
+
+	if !selection.handleKey(space) {
+		t.Fatal("space should unfold the selected node")
+	}
+	if got := len(selection.rows); got != 3 {
+		t.Fatalf("unfolding should restore the child row, got %d rows", got)
+	}
+	if row, ok := selection.selectedRow(); !ok || row.path != "outer" {
+		t.Fatalf("the cursor should stay on the folded node, got %+v", row)
+	}
+}
+
+// A scalar has nothing to fold, so space must leave the tree alone rather than
+// rebuilding it around a path that cannot collapse.
+func TestJSONTreeSpaceOnAScalarDoesNothing(t *testing.T) {
+	view := tview.NewTextView().SetDynamicColors(true)
+	selection := newJSONTreeSelection(view)
+	if !selection.setContent(`{"a":1,"b":2}`, true) {
+		t.Fatal("expected selectable JSON tree")
+	}
+	before := view.GetText(false)
+	if !selection.handleKey(tcell.NewEventKey(tcell.KeyRune, ' ', tcell.ModNone)) {
+		t.Fatal("space should stay inside the tree")
+	}
+	if got := view.GetText(false); got != before {
+		t.Fatalf("a scalar row should not change when folded, got %q", got)
+	}
+}
+
+// Preview panes re-render on every refresh, which must not throw away folds or
+// move the cursor back to the top.
+func TestJSONTreeKeepsFoldsWhenTheSameContentIsRendered(t *testing.T) {
+	view := tview.NewTextView().SetDynamicColors(true)
+	view.SetRect(0, 0, 40, 10)
+	selection := newJSONTreeSelection(view)
+	content := `{"outer":{"inner":1},"tail":2}`
+	selection.setContent(content, true)
+	selection.handleKey(tcell.NewEventKey(tcell.KeyRune, ' ', tcell.ModNone))
+
+	selection.setContent(content, true)
+	if got := len(selection.rows); got != 2 {
+		t.Fatalf("a refresh should keep the fold, got %d rows", got)
+	}
+
+	selection.setContent(`{"other":3}`, true)
+	if len(selection.folded) != 0 || selection.selected != 0 {
+		t.Fatalf("new content should start fresh, folded=%v selected=%d", selection.folded, selection.selected)
 	}
 }
 

@@ -833,6 +833,7 @@ func (wl *WorkflowList) previewSideHints() []KeyHint {
 		}
 		if ioTreeEnabled(wl.app) {
 			hints = append(hints,
+				KeyHint{Key: "space", Description: "Fold"},
 				KeyHint{Key: "y", Description: "Yank Row"},
 				KeyHint{Key: "Y", Description: "Yank All"},
 			)
