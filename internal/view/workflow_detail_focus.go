@@ -66,6 +66,13 @@ func handleTextViewScroll(view *tview.TextView, event *tcell.EventKey) bool {
 	return false
 }
 
+func wrapToggleMessage(wrap bool) string {
+	if wrap {
+		return "Wrap on"
+	}
+	return "Wrap off"
+}
+
 func setTextViewWrap(view *tview.TextView, wrap bool) {
 	if view == nil {
 		return

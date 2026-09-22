@@ -1061,6 +1061,12 @@ func (wl *WorkflowList) capturePreviewTextView(view *tview.TextView) func(*tcell
 	}
 }
 
+func (wl *WorkflowList) reportWrap(wrap bool) {
+	if wl != nil && wl.app != nil {
+		wl.app.ToastInfo(wrapToggleMessage(wrap))
+	}
+}
+
 func (wl *WorkflowList) togglePreviewIOWrap(view *tview.TextView) bool {
 	if wl == nil || view == nil {
 		return false
@@ -1069,6 +1075,7 @@ func (wl *WorkflowList) togglePreviewIOWrap(view *tview.TextView) bool {
 	case wl.workflowIOView:
 		wl.workflowIOWrap = !wl.workflowIOWrap
 		setTextViewWrap(view, wl.workflowIOWrap)
+		wl.reportWrap(wl.workflowIOWrap)
 		return true
 	case wl.eventDetail:
 		if wl.previewKind != previewActivities ||
@@ -1077,6 +1084,7 @@ func (wl *WorkflowList) togglePreviewIOWrap(view *tview.TextView) bool {
 		}
 		wl.eventDetailWrap = !wl.eventDetailWrap
 		setTextViewWrap(view, wl.eventDetailWrap)
+		wl.reportWrap(wl.eventDetailWrap)
 		return true
 	default:
 		return false

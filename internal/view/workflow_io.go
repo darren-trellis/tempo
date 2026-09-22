@@ -227,6 +227,7 @@ func showWorkflowIO(app *App, background tview.Primitive, workflowType, input, o
 				wrapped = !wrapped
 				setTextViewWrap(inputView, wrapped)
 				setTextViewWrap(outputView, wrapped)
+				app.ToastInfo(wrapToggleMessage(wrapped))
 				return nil
 			case 'e':
 				if focusedInput {
