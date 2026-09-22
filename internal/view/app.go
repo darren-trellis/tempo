@@ -510,6 +510,8 @@ func (a *App) Run() error {
 		go a.checkForUpdates()
 	}
 
+	a.installPasteScreen()
+
 	return a.app.Run()
 }
 
