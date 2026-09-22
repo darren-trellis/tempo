@@ -167,6 +167,84 @@ func TestMergeWorkflowRefreshesUnhandledStatus(t *testing.T) {
 	}
 }
 
+func TestCustomSearchAttributeColumn(t *testing.T) {
+	when := time.Date(2026, 3, 2, 15, 4, 5, 0, time.UTC)
+	w := temporal.Workflow{
+		ID: "wf-1",
+		SearchAttributes: map[string]string{
+			"CustomerId": "acme",
+			"ClosedAt":   when.Format(time.RFC3339Nano),
+		},
+	}
+	id := config.SearchAttributeColumnID("CustomerId")
+	got, _ := workflowColumnValue(id, time.Now(), w, config.TimeFormatRelative)
+	if got != "acme" {
+		t.Fatalf("CustomerId=%q", got)
+	}
+	header, ok := workflowColumnHeader(id)
+	if !ok || header != "CustomerId" {
+		t.Fatalf("header=%q ok=%v", header, ok)
+	}
+	closed, _ := workflowColumnValue(config.SearchAttributeColumnID("ClosedAt"), when.Add(time.Hour), w, config.TimeFormatRelative)
+	if closed != "1h ago" {
+		t.Fatalf("ClosedAt=%q", closed)
+	}
+
+	a := &App{}
+	a.catalog.putAttrs("default", []temporal.SearchAttribute{{Name: "CustomerId"}, {Name: "Amount"}})
+	wl := NewWorkflowList(a, "default")
+	wl.allWorkflows = []temporal.Workflow{{
+		SearchAttributes: map[string]string{"BatchId": "b1"},
+	}}
+	cfg := &config.Config{}
+	cfg.SetWorkflowColumns(append(config.DefaultWorkflowColumns(), config.WorkflowColumnConfig{
+		ID: config.SearchAttributeColumnID("CustomerId"), Width: 20,
+	}))
+	wl.app.config = cfg
+
+	found := false
+	for _, col := range wl.columnLayout() {
+		if col.id == id && col.header == "CustomerId" && col.width == 20 {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("layout: %+v", wl.columnLayout())
+	}
+	cells := wl.styledWorkflowCells(time.Now(), w, 0)
+	var text string
+	for i, col := range wl.columnLayout() {
+		if col.id == id {
+			text = cells[i].Text
+		}
+	}
+	if !strings.Contains(text, "acme") {
+		t.Fatalf("cell=%q", text)
+	}
+
+	hidden := map[string]bool{}
+	for _, item := range wl.columnEditorItems() {
+		if name, ok := config.SearchAttributeColumnName(item.id); ok {
+			hidden[name] = item.hidden
+		}
+	}
+	if hidden["CustomerId"] {
+		t.Fatal("a saved search attribute column should stay visible")
+	}
+	if !hidden["Amount"] || !hidden["BatchId"] {
+		t.Fatalf("other attributes should be offered hidden: %+v", hidden)
+	}
+
+	resolved := config.ResolveWorkflowColumns([]config.WorkflowColumnConfig{
+		{ID: "SA:CustomerId", Width: 12},
+		{ID: "sa:CustomerId", Width: 8},
+		{ID: "nope"},
+	})
+	if len(resolved) != 1 || resolved[0].ID != id || resolved[0].Width != 12 {
+		t.Fatalf("resolved search attribute columns: %+v", resolved)
+	}
+}
+
 func TestTreeModeKeepsParentIDColumn(t *testing.T) {
 	wl := NewWorkflowList(&App{}, "default")
 	wl.workflowTreeMode = true

@@ -222,19 +222,20 @@ type NamespaceDetail struct {
 
 // Workflow represents a workflow execution.
 type Workflow struct {
-	ID          string
-	RunID       string
-	Type        string
-	Status      string // "Running", "Completed", "Failed", "Canceled", "Terminated", "TimedOut"
-	Namespace   string
-	TaskQueue   string
-	StartTime   time.Time
-	EndTime     *time.Time
-	ParentID    *string
-	Memo        map[string]string
-	Input       string // JSON-formatted workflow input
-	Output      string // JSON-formatted workflow result (or failure message)
-	TaskFailure bool   // Running execution has an unhandled workflow task failure
+	ID               string
+	RunID            string
+	Type             string
+	Status           string // "Running", "Completed", "Failed", "Canceled", "Terminated", "TimedOut"
+	Namespace        string
+	TaskQueue        string
+	StartTime        time.Time
+	EndTime          *time.Time
+	ParentID         *string
+	Memo             map[string]string
+	SearchAttributes map[string]string
+	Input            string // JSON-formatted workflow input
+	Output           string // JSON-formatted workflow result (or failure message)
+	TaskFailure      bool   // Running execution has an unhandled workflow task failure
 }
 
 // HistoryEvent represents a workflow history event.

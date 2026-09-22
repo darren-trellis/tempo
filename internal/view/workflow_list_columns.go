@@ -2,7 +2,9 @@ package view
 
 import (
 	"fmt"
+	"sort"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/atterpac/jig/components"
@@ -49,6 +51,9 @@ func (wl *WorkflowList) columnLayout() []workflowColumn {
 }
 
 func workflowColumnHeader(id string) (string, bool) {
+	if name, ok := config.SearchAttributeColumnName(id); ok {
+		return name, true
+	}
 	switch id {
 	case config.WorkflowColumnWorkflowID:
 		return "WORKFLOW ID", true
@@ -200,8 +205,24 @@ func workflowColumnValue(id string, now time.Time, w temporal.Workflow, timeFmt 
 	case config.WorkflowColumnRunID:
 		return w.RunID, nil
 	default:
+		if name, ok := config.SearchAttributeColumnName(id); ok {
+			return formatSearchAttributeColumn(w.SearchAttributes[name], now, timeFmt), nil
+		}
 		return "", nil
 	}
+}
+
+func formatSearchAttributeColumn(raw string, now time.Time, timeFmt string) string {
+	if raw == "" {
+		return ""
+	}
+	if when, err := time.Parse(time.RFC3339Nano, raw); err == nil {
+		return formatDisplayTime(now, when, timeFmt)
+	}
+	if when, err := time.Parse(time.RFC3339, raw); err == nil {
+		return formatDisplayTime(now, when, timeFmt)
+	}
+	return raw
 }
 
 func applyWorkflowColumnHeaders(table *components.Table, cols []workflowColumn) {
@@ -434,7 +455,7 @@ func (wl *WorkflowList) showColumnEditor() {
 		success:  "Saved workflow columns",
 		header:   workflowColumnHeader,
 		items:    wl.columnEditorItems,
-		defaults: defaultColumnEditorItems,
+		defaults: wl.defaultWorkflowColumnEditorItems,
 		snapshot: wl.columnSnapshot,
 		preview:  wl.previewColumns,
 		restore:  wl.restoreColumns,
@@ -750,6 +771,74 @@ func (wl *WorkflowList) columnEditorItems() []columnEditorItem {
 			hidden: true,
 		})
 	}
+	items = append(items, wl.hiddenSearchAttributeColumns(visible)...)
+	return items
+}
+
+func (wl *WorkflowList) hiddenSearchAttributeColumns(visible map[string]config.WorkflowColumnConfig) []columnEditorItem {
+	var items []columnEditorItem
+	for _, name := range wl.customSearchAttributeNames() {
+		id := config.SearchAttributeColumnID(name)
+		if id == "" {
+			continue
+		}
+		if _, ok := visible[id]; ok {
+			continue
+		}
+		items = append(items, columnEditorItem{
+			id:     id,
+			width:  config.DefaultWorkflowColumnWidth(id),
+			hidden: true,
+		})
+	}
+	return items
+}
+
+func (wl *WorkflowList) customSearchAttributeNames() []string {
+	if wl == nil {
+		return nil
+	}
+	seen := map[string]struct{}{}
+	var names []string
+	add := func(name string) {
+		name = strings.TrimSpace(name)
+		if name == "" {
+			return
+		}
+		if _, ok := seen[name]; ok {
+			return
+		}
+		seen[name] = struct{}{}
+		names = append(names, name)
+	}
+	if wl.app != nil {
+		ns := wl.namespace
+		attrs := wl.app.catalog.getAttrs(ns)
+		if len(attrs) == 0 {
+			if alt := wl.app.catalogNamespace(); alt != "" && alt != ns {
+				attrs = wl.app.catalog.getAttrs(alt)
+			}
+		}
+		for _, attr := range attrs {
+			add(attr.Name)
+		}
+	}
+	workflows := wl.allWorkflows
+	if len(workflows) == 0 {
+		workflows = wl.workflows
+	}
+	for _, w := range workflows {
+		for name := range w.SearchAttributes {
+			add(name)
+		}
+	}
+	sort.Strings(names)
+	return names
+}
+
+func (wl *WorkflowList) defaultWorkflowColumnEditorItems() []columnEditorItem {
+	items := defaultColumnEditorItems()
+	items = append(items, wl.hiddenSearchAttributeColumns(nil)...)
 	return items
 }
 

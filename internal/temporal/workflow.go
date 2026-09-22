@@ -2,7 +2,9 @@ package temporal
 
 import (
 	"encoding/json"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/atterpac/jig/theme"
 	commonpb "go.temporal.io/api/common/v1"
@@ -47,10 +49,70 @@ func workflowFromExecutionInfo(info *workflowpb.WorkflowExecutionInfo, namespace
 	if memo := info.GetMemo(); memo != nil {
 		wf.Memo = memoFields(memo)
 	}
+	wf.SearchAttributes = searchAttributeFields(info.GetSearchAttributes())
 	if wf.Status != "Running" {
 		wf.TaskFailure = false
 	}
 	return wf
+}
+
+func searchAttributeFields(attrs *commonpb.SearchAttributes) map[string]string {
+	fields := attrs.GetIndexedFields()
+	if len(fields) == 0 {
+		return nil
+	}
+	out := make(map[string]string, len(fields))
+	for name, payload := range fields {
+		name = strings.TrimSpace(name)
+		if name == "" || isReservedSearchAttribute(name) {
+			continue
+		}
+		text, ok := formatSearchAttributePayload(payload)
+		if !ok || text == "" {
+			continue
+		}
+		out[name] = text
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
+func formatSearchAttributePayload(payload *commonpb.Payload) (string, bool) {
+	if payload == nil || len(payload.GetData()) == 0 {
+		return "", false
+	}
+	dc := converter.GetDefaultDataConverter()
+	var list []string
+	if err := dc.FromPayload(payload, &list); err == nil {
+		return strings.Join(list, ", "), true
+	}
+	var text string
+	if err := dc.FromPayload(payload, &text); err == nil {
+		return text, true
+	}
+	var flag bool
+	if err := dc.FromPayload(payload, &flag); err == nil {
+		return strconv.FormatBool(flag), true
+	}
+	var n int64
+	if err := dc.FromPayload(payload, &n); err == nil {
+		return strconv.FormatInt(n, 10), true
+	}
+	var f float64
+	if err := dc.FromPayload(payload, &f); err == nil {
+		return strconv.FormatFloat(f, 'f', -1, 64), true
+	}
+	var when time.Time
+	if err := dc.FromPayload(payload, &when); err == nil && !when.IsZero() {
+		return when.UTC().Format(time.RFC3339Nano), true
+	}
+	raw := strings.Trim(strings.TrimSpace(string(payload.GetData())), `"`)
+	if raw == "" {
+		return "", false
+	}
+	return raw, true
 }
 
 func memoFields(memo *commonpb.Memo) map[string]string {

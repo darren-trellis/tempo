@@ -1160,6 +1160,8 @@ const (
 	WorkflowColumnTaskQueue  = "task_queue"
 	WorkflowColumnRunID      = "run_id"
 
+	searchAttributeColumnPrefix = "sa:"
+
 	ActivityColumnStatus   = "status"
 	ActivityColumnName     = "name"
 	ActivityColumnStarted  = "started"
@@ -1192,8 +1194,33 @@ func defaultWorkflowColumns() []WorkflowColumnConfig {
 	}
 }
 
+// SearchAttributeColumnID is the workflows-table id for a custom search attribute.
+func SearchAttributeColumnID(name string) string {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return ""
+	}
+	return searchAttributeColumnPrefix + name
+}
+
+// SearchAttributeColumnName reports the attribute a workflows column displays.
+func SearchAttributeColumnName(id string) (string, bool) {
+	id = strings.TrimSpace(id)
+	if len(id) < len(searchAttributeColumnPrefix) || !strings.EqualFold(id[:len(searchAttributeColumnPrefix)], searchAttributeColumnPrefix) {
+		return "", false
+	}
+	name := strings.TrimSpace(id[len(searchAttributeColumnPrefix):])
+	if name == "" {
+		return "", false
+	}
+	return name, true
+}
+
 // DefaultWorkflowColumnWidth returns the built-in width for a column id.
 func DefaultWorkflowColumnWidth(id string) int {
+	if _, ok := SearchAttributeColumnName(id); ok {
+		return 20
+	}
 	for _, col := range defaultWorkflowColumns() {
 		if col.ID == id {
 			return col.Width
@@ -1258,6 +1285,22 @@ func resolveColumns(cols, defaults []WorkflowColumnConfig) []WorkflowColumnConfi
 	seen := make(map[string]bool, len(cols))
 	out := make([]WorkflowColumnConfig, 0, len(cols))
 	for _, col := range cols {
+		if name, ok := SearchAttributeColumnName(col.ID); ok {
+			id := SearchAttributeColumnID(name)
+			if seen[id] {
+				continue
+			}
+			seen[id] = true
+			width := col.Width
+			if width <= 0 {
+				width = DefaultWorkflowColumnWidth(id)
+			}
+			out = append(out, WorkflowColumnConfig{
+				ID:    id,
+				Width: ClampWorkflowColumnWidth(id, width),
+			})
+			continue
+		}
 		id := strings.ToLower(strings.TrimSpace(col.ID))
 		defWidth, ok := known[id]
 		if !ok || seen[id] {

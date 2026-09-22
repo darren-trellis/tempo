@@ -2,6 +2,7 @@ package temporal
 
 import (
 	"testing"
+	"time"
 
 	commonpb "go.temporal.io/api/common/v1"
 	"go.temporal.io/api/enums/v1"
@@ -87,6 +88,72 @@ func TestExecutionHasTaskFailureCloudKeywordList(t *testing.T) {
 	}
 	if !executionHasTaskFailure(info) {
 		t.Fatal("cloud TemporalReportedProblems payload should mark unhandled failure")
+	}
+}
+
+func TestWorkflowFromExecutionInfoKeepsCustomSearchAttributes(t *testing.T) {
+	dc := converter.GetDefaultDataConverter()
+	customer, err := dc.ToPayload("acme")
+	if err != nil {
+		t.Fatal(err)
+	}
+	amount, err := dc.ToPayload(int64(42))
+	if err != nil {
+		t.Fatal(err)
+	}
+	tags, err := dc.ToPayload([]string{"gold", "vip"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	flag, err := dc.ToPayload(true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	when := time.Date(2026, 3, 2, 15, 4, 5, 0, time.UTC)
+	closed, err := dc.ToPayload(when)
+	if err != nil {
+		t.Fatal(err)
+	}
+	problems, err := dc.ToPayload([]string{reportedProblemTaskFailed})
+	if err != nil {
+		t.Fatal(err)
+	}
+	info := &workflowpb.WorkflowExecutionInfo{
+		Execution: &commonpb.WorkflowExecution{WorkflowId: "wf", RunId: "run"},
+		Status:    enums.WORKFLOW_EXECUTION_STATUS_COMPLETED,
+		SearchAttributes: &commonpb.SearchAttributes{
+			IndexedFields: map[string]*commonpb.Payload{
+				"CustomerId":                 customer,
+				"Amount":                     amount,
+				"Tags":                       tags,
+				"Active":                     flag,
+				"ClosedAt":                   closed,
+				temporalReportedProblemsAttr: problems,
+				"WorkflowId":                 customer,
+			},
+		},
+	}
+	wf := workflowFromExecutionInfo(info, "default")
+	if wf.SearchAttributes["CustomerId"] != "acme" {
+		t.Fatalf("CustomerId=%q", wf.SearchAttributes["CustomerId"])
+	}
+	if wf.SearchAttributes["Amount"] != "42" {
+		t.Fatalf("Amount=%q", wf.SearchAttributes["Amount"])
+	}
+	if wf.SearchAttributes["Tags"] != "gold, vip" {
+		t.Fatalf("Tags=%q", wf.SearchAttributes["Tags"])
+	}
+	if wf.SearchAttributes["Active"] != "true" {
+		t.Fatalf("Active=%q", wf.SearchAttributes["Active"])
+	}
+	if wf.SearchAttributes["ClosedAt"] != when.Format(time.RFC3339Nano) {
+		t.Fatalf("ClosedAt=%q", wf.SearchAttributes["ClosedAt"])
+	}
+	if _, ok := wf.SearchAttributes[temporalReportedProblemsAttr]; ok {
+		t.Fatal("system search attributes should not become columns")
+	}
+	if _, ok := wf.SearchAttributes["WorkflowId"]; ok {
+		t.Fatal("built-in search attributes should not become columns")
 	}
 }
 

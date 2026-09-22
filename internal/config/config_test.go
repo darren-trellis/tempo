@@ -149,6 +149,21 @@ func TestResolveWorkflowColumnsOrderAndUnknown(t *testing.T) {
 	}
 }
 
+func TestResolveWorkflowColumnsKeepsCustomSearchAttributes(t *testing.T) {
+	got := ResolveWorkflowColumns([]WorkflowColumnConfig{
+		{ID: "workflow_id", Width: 36},
+		{ID: "SA:CustomerId", Width: 12},
+		{ID: "sa:CustomerId", Width: 8},
+		{ID: "nope", Width: 8},
+	})
+	if len(got) != 2 {
+		t.Fatalf("columns: %+v", got)
+	}
+	if got[1].ID != SearchAttributeColumnID("CustomerId") || got[1].Width != 12 {
+		t.Fatalf("search attribute column: %+v", got[1])
+	}
+}
+
 func TestSetWorkflowColumnsOmitsDefaults(t *testing.T) {
 	cfg := &Config{}
 	cfg.SetWorkflowColumns(DefaultWorkflowColumns())
