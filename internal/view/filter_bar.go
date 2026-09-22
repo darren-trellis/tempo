@@ -620,6 +620,21 @@ func (b *filterChipBar) ensureCursorVisible() {
 	}
 }
 
+// applyFilterAt applies the chip the given digit key numbers, counting "All"
+// as the first one. An index past the end is ignored rather than passed on, so
+// a digit never falls through to something else on the workflows list.
+func (wl *WorkflowList) applyFilterAt(index int) {
+	if wl == nil || wl.filterBar == nil {
+		return
+	}
+	items := filterBarItems(wl)
+	if index < 0 || index >= len(items) {
+		return
+	}
+	wl.filterBar.setCursor(index)
+	wl.filterBar.applyItem(items[index])
+}
+
 func (b *filterChipBar) applyCursor() {
 	items := filterBarItems(b.wl)
 	if b.cursor < 0 || b.cursor >= len(items) {

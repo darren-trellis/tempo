@@ -12,6 +12,56 @@ import (
 	"github.com/rivo/tview"
 )
 
+// The digits number the chips on screen, so on the workflows list they pick a
+// filter rather than switching the primary pane's tab.
+func TestDigitsPickAFilterOnTheWorkflowsList(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	cfg := config.DefaultConfig()
+	cfg.SavedFilters = []config.SavedFilter{
+		{Name: "Running", Query: "ExecutionStatus = 'Running'"},
+		{Name: "Failed", Query: "ExecutionStatus = 'Failed'"},
+	}
+	a := NewAppWithProvider(nil, "default", cfg, "local")
+	wl := NewWorkflowList(a, "default")
+	wl.keepDataOnStart = true
+	a.app.Pages().Push(wl)
+
+	if !wl.handleListTabKey(tcell.NewEventKey(tcell.KeyRune, '2', 0)) {
+		t.Fatal("2 should be taken by the filter chips")
+	}
+	if wl.activeFilterName != "Running" {
+		t.Fatalf("2 should apply the first saved filter, got %q", wl.activeFilterName)
+	}
+	if !wl.workflowsActive() {
+		t.Fatal("a digit should not leave the workflows list")
+	}
+
+	if !wl.handleListTabKey(tcell.NewEventKey(tcell.KeyRune, '3', 0)) {
+		t.Fatal("3 should be taken by the filter chips")
+	}
+	if wl.activeFilterName != "Failed" {
+		t.Fatalf("3 should apply the second saved filter, got %q", wl.activeFilterName)
+	}
+
+	if !wl.handleListTabKey(tcell.NewEventKey(tcell.KeyRune, '1', 0)) {
+		t.Fatal("1 should be taken by the filter chips")
+	}
+	if wl.activeFilterName != "" {
+		t.Fatalf("1 should go back to All, got %q", wl.activeFilterName)
+	}
+
+	// Nothing is numbered 9, and the key must not fall through to the tabs.
+	if !wl.handleListTabKey(tcell.NewEventKey(tcell.KeyRune, '9', 0)) || !wl.workflowsActive() {
+		t.Fatal("a digit past the last chip should be swallowed")
+	}
+
+	// The other lists have no chips, so there the digits still reach the tabs.
+	wl.setListKind(listSchedules)
+	if !wl.handleListTabKey(tcell.NewEventKey(tcell.KeyRune, '1', 0)) || !wl.workflowsActive() {
+		t.Fatal("1 should return to workflows from another list")
+	}
+}
+
 func TestFilterBarItemsAllVsNamed(t *testing.T) {
 	cfg := config.DefaultConfig()
 	cfg.SavedFilters = []config.SavedFilter{{Name: "Running"}}

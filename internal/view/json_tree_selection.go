@@ -95,6 +95,12 @@ func (s *jsonTreeSelection) handleKey(event *tcell.EventKey) bool {
 		case 'j':
 			s.selectRow(s.selected + 1)
 			return true
+		case 'g':
+			s.selectRow(0)
+			return true
+		case 'G':
+			s.selectRow(len(s.rows) - 1)
+			return true
 		case ' ':
 			s.toggleFold()
 			return true
@@ -142,10 +148,32 @@ func (s *jsonTreeSelection) selectRow(index int) {
 		index = len(s.rows) - 1
 	}
 	if index == s.selected {
+		s.scrollIntoView()
 		return
 	}
 	s.selected = index
 	s.render(false)
+}
+
+// scrollIntoView nudges the pane just enough to show the cursor, where tview's
+// own ScrollToHighlight would re-center the view on every step.
+func (s *jsonTreeSelection) scrollIntoView() {
+	offset, column := s.view.GetScrollOffset()
+	next := offset
+	if _, _, _, height := s.view.GetInnerRect(); height > 0 {
+		if s.selected < next {
+			next = s.selected
+		}
+		if s.selected >= next+height {
+			next = s.selected - height + 1
+		}
+	}
+	if next < 0 {
+		next = 0
+	}
+	if next != offset {
+		s.view.ScrollTo(next, column)
+	}
 }
 
 func (s *jsonTreeSelection) clickRow(event *tcell.EventMouse) bool {
@@ -174,13 +202,11 @@ func (s *jsonTreeSelection) render(toTop bool) {
 	if toTop {
 		offset, column = 0, 0
 	}
-	_, _, innerWidth, innerHeight := s.view.GetInnerRect()
-	width := innerWidth
-	for _, row := range s.rows {
-		if w := jsonTreeRowWidth(row.text); w > width {
-			width = w
-		}
-	}
+	// The bar stops at the right edge of the viewport. Padding it out to the
+	// widest row instead would push a wrapped pane into spilling the blank tail
+	// onto extra lines.
+	_, _, innerWidth, _ := s.view.GetInnerRect()
+	width := innerWidth + column
 	lines := make([]string, len(s.rows))
 	for i, row := range s.rows {
 		if i == s.selected {
@@ -190,19 +216,8 @@ func (s *jsonTreeSelection) render(toTop bool) {
 		lines[i] = row.text
 	}
 	s.view.SetText(strings.Join(lines, "\n"))
-
-	if innerHeight > 0 {
-		if s.selected < offset {
-			offset = s.selected
-		}
-		if s.selected >= offset+innerHeight {
-			offset = s.selected - innerHeight + 1
-		}
-	}
-	if offset < 0 {
-		offset = 0
-	}
 	s.view.ScrollTo(offset, column)
+	s.scrollIntoView()
 }
 
 // jsonTreeHighlightedRow paints the whole row in the selection colors the
@@ -214,13 +229,6 @@ func jsonTreeHighlightedRow(text string, width int) string {
 		plain += strings.Repeat(" ", pad)
 	}
 	return fmt.Sprintf("[%s:%s:b]%s[-:-:-]", theme.ColorToHex(accentTextColor()), theme.TagAccent(), plain)
-}
-
-// jsonTreeRowWidth measures a row as it appears on screen. The tags have to go
-// before measuring: a theme that yields an unparseable color leaves the tag
-// counted as text, which would pad the highlight to the wrong width.
-func jsonTreeRowWidth(text string) int {
-	return tview.TaggedStringWidth(stripStyleTags(text))
 }
 
 // stripStyleTags drops tview style tags. Content brackets are already escaped

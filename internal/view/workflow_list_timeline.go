@@ -85,6 +85,9 @@ func (wl *WorkflowList) setupTimeline() {
 	wl.timelineView.SetMouseScrollStep(func() int {
 		return mouseScrollStepFromApp(wl.app)
 	})
+	wl.timelineView.SetShowScrollbars(func() bool {
+		return appShowsScrollbars(wl.app)
+	})
 	wl.timelinePanel = &timelineFrame{
 		Panel: components.NewPanel().SetTitle(fmt.Sprintf("%s Timeline", theme.IconEvent)),
 		list:  wl,
@@ -113,7 +116,7 @@ func (wl *WorkflowList) setupTimeline() {
 			return nil
 		}
 		switch event.Rune() {
-		case 'L':
+		case '?':
 			if wl.app != nil {
 				wl.app.showTimelineLegend()
 			}

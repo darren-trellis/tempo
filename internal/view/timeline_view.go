@@ -42,6 +42,7 @@ type TimelineView struct {
 	onSelect          func(lane *TimelineLane)
 	onSelectionChange func(lane *TimelineLane)
 	mouseScrollStep   func() int
+	showScrollbars    func() bool
 }
 
 // NewTimelineView creates a new timeline/Gantt chart view.
@@ -65,6 +66,51 @@ func (tv *TimelineView) Destroy() {}
 func (tv *TimelineView) SetMouseScrollStep(fn func() int) *TimelineView {
 	tv.mouseScrollStep = fn
 	return tv
+}
+
+func (tv *TimelineView) SetShowScrollbars(fn func() bool) *TimelineView {
+	tv.showScrollbars = fn
+	return tv
+}
+
+func (tv *TimelineView) scrollbarsOn() bool {
+	if tv == nil || tv.showScrollbars == nil {
+		return true
+	}
+	return tv.showScrollbars()
+}
+
+// laneScroll measures the lanes against the rows available for them.
+func (tv *TimelineView) laneScroll() scrollMetrics {
+	if tv == nil {
+		return scrollMetrics{}
+	}
+	return scrollMetrics{offset: tv.scrollY, visible: tv.visibleLaneCount(), total: len(tv.lanes)}
+}
+
+// timeScroll measures the zoomed chart against the columns available for it.
+func (tv *TimelineView) timeScroll(width int) scrollMetrics {
+	if tv == nil || width <= 0 {
+		return scrollMetrics{}
+	}
+	return scrollMetrics{offset: tv.scrollX, visible: width, total: tv.contentWidth(width)}
+}
+
+// chartWidth is the width the bars get, which is one column short of the view
+// whenever the vertical scrollbar is showing.
+func (tv *TimelineView) chartWidth() int {
+	if tv == nil {
+		return 0
+	}
+	_, _, width, _ := tv.GetInnerRect()
+	return tv.chartWidthFor(width)
+}
+
+func (tv *TimelineView) chartWidthFor(width int) int {
+	if width > 1 && tv.scrollbarsOn() && tv.laneScroll().overflow() {
+		return width - 1
+	}
+	return width
 }
 
 // SetNodes populates the timeline from event tree nodes.
@@ -156,7 +202,8 @@ func (tv *TimelineView) Draw(screen tcell.Screen) {
 		return
 	}
 
-	tv.drawHeader(screen, x, y, width)
+	chartWidth := tv.chartWidthFor(width)
+	tv.drawHeader(screen, x, y, chartWidth)
 
 	timeRange := tv.endTime.Sub(tv.startTime)
 	if timeRange <= 0 {
@@ -173,17 +220,21 @@ func (tv *TimelineView) Draw(screen tcell.Screen) {
 	for i := startLane; i < endLane; i++ {
 		lane := tv.lanes[i]
 		laneY := y + 2 + (i - startLane)
-		tv.drawLaneBar(screen, x, laneY, width, lane, timeRange, i == tv.selectedLane)
+		tv.drawLaneBar(screen, x, laneY, chartWidth, lane, timeRange, i == tv.selectedLane)
 	}
 
 	// Draw cursor line for selected lane
 	if tv.selectedLane >= 0 && tv.selectedLane < len(tv.lanes) {
-		tv.drawCursor(screen, x, y, width, height, timeRange)
+		tv.drawCursor(screen, x, y, chartWidth, height, timeRange)
 	}
 
-	// Draw legend at bottom if space
-	if height > len(tv.lanes)+4 {
-		tv.drawLegend(screen, x, y+height-1, width)
+	if tv.scrollbarsOn() {
+		if lanes := tv.laneScroll(); lanes.overflow() {
+			drawScrollbar(screen, x+width-1, y+2, visibleLanes, lanes, true)
+		}
+		if times := tv.timeScroll(chartWidth); times.overflow() {
+			drawScrollbar(screen, x, y+height-1, chartWidth, times, false)
+		}
 	}
 }
 
@@ -441,32 +492,6 @@ func (tv *TimelineView) Selection() (TimelineSelection, bool) {
 		}
 	}
 	return sel, true
-}
-
-// drawLegend draws the event type key at the bottom. The selected lane's
-// offsets live on the status bar.
-func (tv *TimelineView) drawLegend(screen tcell.Screen, x, y, width int) {
-	pos := x
-	for _, typ := range timelineLegendTypes() {
-		label := timelineTypeLabel(typ)
-		if typ == temporal.GroupChildWorkflow {
-			label = "Child"
-		}
-		if pos+1+len(label)+1 > x+width {
-			break
-		}
-
-		style := tcell.StyleDefault.Foreground(timelineTypeColor(typ)).Background(theme.Bg())
-		screen.SetContent(pos, y, timelineTypeGlyph(typ), nil, style)
-		pos++
-
-		labelStyle := tcell.StyleDefault.Foreground(theme.FgDim()).Background(theme.Bg())
-		for _, r := range label {
-			screen.SetContent(pos, y, r, nil, labelStyle)
-			pos++
-		}
-		pos += 1
-	}
 }
 
 // barStyle returns the bar character and color for a status.
@@ -826,7 +851,7 @@ func (tv *TimelineView) contentWidth(width int) int {
 }
 
 func (tv *TimelineView) maxScrollX() int {
-	_, _, width, _ := tv.GetInnerRect()
+	width := tv.chartWidth()
 	max := tv.contentWidth(width) - width
 	if max < 0 {
 		return 0

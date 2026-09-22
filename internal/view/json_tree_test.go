@@ -191,6 +191,51 @@ func TestJSONTreeSpaceFoldsAndUnfoldsTheSelectedNode(t *testing.T) {
 	}
 }
 
+// A row padded out to the widest line spilled its blank tail onto extra lines
+// in a wrapped pane, which looked like the folded row had grown.
+func TestJSONTreeHighlightStopsAtThePaneEdge(t *testing.T) {
+	view := tview.NewTextView().SetDynamicColors(true).SetWordWrap(true)
+	view.SetRect(0, 0, 20, 8)
+	selection := newJSONTreeSelection(view)
+	long := strings.Repeat("x", 120)
+	if !selection.setContent(`{"a":{"b":1},"z":"`+long+`"}`, true) {
+		t.Fatal("expected selectable JSON tree")
+	}
+	selection.handleKey(tcell.NewEventKey(tcell.KeyRune, ' ', tcell.ModNone))
+
+	selected := strings.Split(view.GetText(false), "\n")[0]
+	if width := tview.TaggedStringWidth(stripStyleTags(selected)); width != 20 {
+		t.Fatalf("the highlight should stop at the pane edge, width=%d", width)
+	}
+}
+
+func TestJSONTreeJumpsToFirstAndLastRow(t *testing.T) {
+	view := tview.NewTextView().SetDynamicColors(true)
+	view.SetRect(0, 0, 30, 3)
+	selection := newJSONTreeSelection(view)
+	if !selection.setContent(`{"a":1,"b":2,"c":3,"d":4,"e":5}`, true) {
+		t.Fatal("expected selectable JSON tree")
+	}
+	if !selection.handleKey(tcell.NewEventKey(tcell.KeyRune, 'G', tcell.ModNone)) {
+		t.Fatal("G should stay inside the tree")
+	}
+	if selection.selected != 4 {
+		t.Fatalf("G should land on the last row, got %d", selection.selected)
+	}
+	if offset, _ := view.GetScrollOffset(); offset != 2 {
+		t.Fatalf("G should scroll the last row into view, offset=%d", offset)
+	}
+	if !selection.handleKey(tcell.NewEventKey(tcell.KeyRune, 'g', tcell.ModNone)) {
+		t.Fatal("g should stay inside the tree")
+	}
+	if selection.selected != 0 {
+		t.Fatalf("g should land on the first row, got %d", selection.selected)
+	}
+	if offset, _ := view.GetScrollOffset(); offset != 0 {
+		t.Fatalf("g should scroll back to the top, offset=%d", offset)
+	}
+}
+
 // A scalar has nothing to fold, so space must leave the tree alone rather than
 // rebuilding it around a path that cannot collapse.
 func TestJSONTreeSpaceOnAScalarDoesNothing(t *testing.T) {

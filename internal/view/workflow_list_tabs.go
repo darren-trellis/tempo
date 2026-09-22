@@ -506,20 +506,31 @@ func (wl *WorkflowList) handleListTabKey(event *tcell.EventKey) bool {
 	case ']':
 		wl.cycleListKind(1)
 		return true
-	case '1':
-		wl.setListKind(listWorkflows)
-		return true
-	case '2':
-		wl.setListKind(listTaskQueues)
-		return true
-	case '3':
-		wl.setListKind(listSchedules)
-		return true
-	case '4':
-		wl.setListKind(listWorkers)
+	}
+	digit := event.Rune() - '1'
+	if digit < 0 || digit > 8 {
+		return false
+	}
+	// On the workflows list the digits pick a saved filter, which is what they
+	// number on screen. The other lists have no chips, so there the digits stay
+	// on the tabs and remain the way back to workflows.
+	if wl.listKind == listWorkflows {
+		wl.applyFilterAt(int(digit))
 		return true
 	}
-	return false
+	switch digit {
+	case 0:
+		wl.setListKind(listWorkflows)
+	case 1:
+		wl.setListKind(listTaskQueues)
+	case 2:
+		wl.setListKind(listSchedules)
+	case 3:
+		wl.setListKind(listWorkers)
+	default:
+		return false
+	}
+	return true
 }
 
 func listTabWidth(name, icon string) int {

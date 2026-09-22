@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/atterpac/jig/theme"
+	"github.com/galaxy-io/tempo/internal/config"
 	"github.com/galaxy-io/tempo/internal/temporal"
 	"github.com/gdamore/tcell/v2"
 )
@@ -76,11 +77,55 @@ func TestTimelineHasFocusWithoutApp(t *testing.T) {
 	}
 }
 
+func TestTimelineChartDrawsNoInlineLegend(t *testing.T) {
+	// Three lanes in a ten row panel is where the inline legend used to fit.
+	tv := timelineWithLanes(3)
+	screen := timelineScreen(t, tv, 80, 10)
+
+	var body strings.Builder
+	for y := 0; y < 10; y++ {
+		for x := 0; x < 80; x++ {
+			ch, _, _, _ := screen.GetContent(x, y)
+			body.WriteRune(ch)
+		}
+		body.WriteByte('\n')
+	}
+	got := body.String()
+	for _, label := range []string{"Activity", "Timer", "Signal", "Child"} {
+		if strings.Contains(got, label) {
+			t.Fatalf("the legend belongs in the modal, but the chart still shows %q:\n%s", label, got)
+		}
+	}
+}
+
+func TestTimelineQuestionMarkOpensTheLegend(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	a := NewAppWithProvider(nil, "default", config.DefaultConfig(), "local")
+	wl := NewWorkflowList(a, "default")
+	wl.keepDataOnStart = true
+	a.app.Pages().Push(wl)
+	wl.toggleTimeline()
+
+	capture := wl.timelineView.GetInputCapture()
+	if capture == nil {
+		t.Fatal("timeline should have an input capture")
+	}
+	if ev := capture(tcell.NewEventKey(tcell.KeyRune, '?', tcell.ModNone)); ev != nil {
+		t.Fatal("? should be consumed by the timeline")
+	}
+	if _, ok := a.app.Pages().Current().(*TimelineLegendModal); !ok {
+		t.Fatalf("? should open the legend modal, got %T", a.app.Pages().Current())
+	}
+}
+
 func TestTimelineHintsIncludeLegend(t *testing.T) {
 	wl := NewWorkflowList(&App{}, "default")
 	wl.focusPane = focusTimeline
-	if desc := hintDescription(wl.Hints(), "L"); desc != "Legend" {
+	if desc := hintDescription(wl.Hints(), "?"); desc != "Legend" {
 		t.Fatalf("timeline hint: %q", desc)
+	}
+	if desc := hintDescription(wl.Hints(), "L"); desc != "" {
+		t.Fatalf("the legend moved off L, got %q", desc)
 	}
 	if desc := hintDescription(wl.Hints(), "z"); desc != "" {
 		t.Fatalf("timeline should not offer z, got %q", desc)

@@ -932,7 +932,7 @@ func (wl *WorkflowList) setupPreview() {
 		return event
 	})
 
-	wl.eventDetailPanel = components.NewPanel().SetTitle(fmt.Sprintf("%s Activity Details", theme.IconActivity))
+	wl.eventDetailPanel = components.NewPanel()
 	wl.eventDetailPanel.SetContent(wl.activityDetailTabs)
 
 	wl.workflowIOView = tview.NewTextView().
@@ -986,7 +986,7 @@ func (wl *WorkflowList) setupPreview() {
 	if wl.hierarchyView.graph != nil {
 		wl.hierarchyView.graph.SetBackgroundColor(theme.Bg())
 	}
-	wl.hierarchyGraphPanel = components.NewPanel().SetTitle(fmt.Sprintf("%s Graph", theme.IconGrid))
+	wl.hierarchyGraphPanel = components.NewPanel()
 	wl.hierarchyGraphPanel.SetContent(wl.hierarchyView.graph)
 	hierarchyInput := func(event *tcell.EventKey) *tcell.EventKey {
 		if wl.hierarchyView.handleGraphKeys(event) {
@@ -1458,38 +1458,32 @@ func (wl *WorkflowList) previewTabAt(x, y int) (previewKind, bool) {
 	return previewTabAtX(tx, x)
 }
 
+// syncPreviewChrome swaps in the tertiary pane's content. The pane carries no
+// title: its tabs already name what it holds.
 func (wl *WorkflowList) syncPreviewChrome() {
-	if wl.previewKind == previewHierarchy && wl.hierarchyGraphPanel != nil {
-		wl.hierarchyGraphPanel.SetTitle(fmt.Sprintf("%s Graph", theme.IconGrid))
+	if wl.previewKind == previewHierarchy {
 		return
 	}
 	if wl.eventDetailPanel == nil {
 		return
 	}
-	if wl.previewKind == previewActivities {
-		wl.eventDetailPanel.SetTitle(fmt.Sprintf("%s Activity Details", theme.IconActivity))
+	switch wl.previewKind {
+	case previewActivities:
 		if wl.activityDetailTabs != nil {
 			wl.eventDetailPanel.SetContent(wl.activityDetailTabs)
 		}
-		return
-	}
-	if wl.previewKind == previewEvents {
-		wl.eventDetailPanel.SetTitle(fmt.Sprintf("%s Event Details", theme.IconEvent))
+	case previewEvents:
 		if wl.activityDetailScroll != nil {
 			wl.eventDetailPanel.SetContent(wl.activityDetailScroll)
 		}
-		return
-	}
-	if wl.previewKind == previewDetails {
-		wl.eventDetailPanel.SetTitle(fmt.Sprintf("%s Input/Output", theme.IconInfo))
+	case previewDetails:
 		if wl.workflowIOTabs != nil {
 			wl.eventDetailPanel.SetContent(wl.workflowIOTabs)
 		}
-		return
-	}
-	wl.eventDetailPanel.SetTitle(fmt.Sprintf("%s Event Details", theme.IconEvent))
-	if wl.eventDetail != nil {
-		wl.eventDetailPanel.SetContent(wl.eventDetail)
+	default:
+		if wl.eventDetail != nil {
+			wl.eventDetailPanel.SetContent(wl.eventDetail)
+		}
 	}
 }
 

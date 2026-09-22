@@ -168,9 +168,9 @@ func TestWorkflowListSchedulesAndWorkersTabs(t *testing.T) {
 		t.Fatal("schedules should not have a dedicated footer key")
 	}
 
-	if !wl.handleListTabKey(tcell.NewEventKey(tcell.KeyRune, '3', 0)) {
-		t.Fatal("3 should switch to schedules")
-	}
+	// The digits belong to the filter chips on the workflows list, so the tabs
+	// are reached by cycling.
+	wl.setListKind(listSchedules)
 	if !wl.schedulesActive() {
 		t.Fatal("schedules tab should be active")
 	}
@@ -190,7 +190,6 @@ func TestWorkflowListSchedulesAndWorkersTabs(t *testing.T) {
 	if wl.HandleEscape() || !wl.schedulesActive() {
 		t.Fatal("escape on the schedule list should not switch tabs")
 	}
-	wl.setListKind(listWorkflows)
 
 	if !wl.handleListTabKey(tcell.NewEventKey(tcell.KeyRune, '4', 0)) {
 		t.Fatal("4 should switch to workers")

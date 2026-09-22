@@ -568,6 +568,132 @@ func TestTimelineCursorSkipsSpilledLaneNames(t *testing.T) {
 	}
 }
 
+// timelineWithLanes builds a timeline of n completed activities over a minute.
+func timelineWithLanes(n int) *TimelineView {
+	start := time.Date(2026, 8, 23, 12, 0, 0, 0, time.UTC)
+	tv := NewTimelineView()
+	for i := 0; i < n; i++ {
+		at := start.Add(time.Duration(i) * time.Second)
+		end := at.Add(2 * time.Second)
+		tv.lanes = append(tv.lanes, TimelineLane{
+			Name:      "readGatewayOpsActivity",
+			Type:      temporal.GroupActivity,
+			Status:    "Completed",
+			StartTime: at,
+			EndTime:   &end,
+		})
+	}
+	tv.startTime = start
+	tv.endTime = start.Add(time.Minute)
+	return tv
+}
+
+func timelineScreen(t *testing.T, tv *TimelineView, width, height int) tcell.SimulationScreen {
+	t.Helper()
+	tv.SetRect(0, 0, width, height)
+	screen := tcell.NewSimulationScreen("UTF-8")
+	if err := screen.Init(); err != nil {
+		t.Fatal(err)
+	}
+	screen.SetSize(width, height)
+	tv.Draw(screen)
+	return screen
+}
+
+func TestTimelineDrawsVerticalScrollbarWhenLanesOverflow(t *testing.T) {
+	tv := timelineWithLanes(30)
+	screen := timelineScreen(t, tv, 80, 10)
+	if !tv.laneScroll().overflow() {
+		t.Fatal("30 lanes in 7 rows should overflow")
+	}
+	if !edgeHasGlyph(screen, 79, 2, tv.visibleLaneCount(), scrollbarThinVert) {
+		t.Fatal("overflowing lanes should draw a vertical scrollbar on the right edge")
+	}
+	if tv.chartWidth() != 79 {
+		t.Fatalf("the chart should give up a column to the scrollbar, got %d", tv.chartWidth())
+	}
+
+	// The bars must not run underneath the scrollbar column.
+	for y := 2; y < 2+tv.visibleLaneCount(); y++ {
+		mainc, _, _, _ := screen.GetContent(79, y)
+		if mainc != scrollbarThinVert {
+			t.Fatalf("row %d should leave the last column to the scrollbar, got %q", y, string(mainc))
+		}
+	}
+}
+
+func TestTimelineHidesVerticalScrollbarWhenLanesFit(t *testing.T) {
+	tv := timelineWithLanes(3)
+	screen := timelineScreen(t, tv, 80, 10)
+	if tv.laneScroll().overflow() {
+		t.Fatal("3 lanes in 7 rows should not overflow")
+	}
+	if edgeHasGlyph(screen, 79, 2, tv.visibleLaneCount(), scrollbarThinVert) {
+		t.Fatal("lanes that fit should not draw a vertical scrollbar")
+	}
+	if tv.chartWidth() != 80 {
+		t.Fatalf("the chart should keep the full width, got %d", tv.chartWidth())
+	}
+}
+
+func TestTimelineDrawsHorizontalScrollbarWhenZoomed(t *testing.T) {
+	tv := timelineWithLanes(3)
+	tv.SetRect(0, 0, 80, 10)
+	tv.zoomLevel = 2
+
+	screen := timelineScreen(t, tv, 80, 10)
+	if !tv.timeScroll(tv.chartWidth()).overflow() {
+		t.Fatal("a zoomed chart should overflow horizontally")
+	}
+	mainc, _, _, _ := screen.GetContent(1, 9)
+	if mainc != scrollbarThinHoriz {
+		t.Fatalf("zoomed chart should draw a horizontal scrollbar on the bottom row, got %q", string(mainc))
+	}
+}
+
+func TestTimelineHorizontalScrollbarTracksScrolling(t *testing.T) {
+	tv := timelineWithLanes(3)
+	tv.SetRect(0, 0, 80, 10)
+	tv.zoomLevel = 2
+	screen := timelineScreen(t, tv, 80, 10)
+
+	thumbX := func() int {
+		for x := 0; x < 80; x++ {
+			mainc, _, style, _ := screen.GetContent(x, 9)
+			if mainc != scrollbarThinHoriz {
+				continue
+			}
+			if fg, _, _ := style.Decompose(); fg != theme.FgDim() {
+				return x
+			}
+		}
+		return -1
+	}
+	left := thumbX()
+	if left < 0 {
+		t.Fatal("expected a horizontal thumb")
+	}
+
+	tv.scroll(10_000)
+	tv.Draw(screen)
+	right := thumbX()
+	if right <= left {
+		t.Fatalf("the thumb should follow the scroll, left=%d right=%d", left, right)
+	}
+}
+
+func TestTimelineScrollbarsRespectTheSetting(t *testing.T) {
+	tv := timelineWithLanes(30)
+	tv.SetShowScrollbars(func() bool { return false })
+	screen := timelineScreen(t, tv, 80, 10)
+	if edgeHasGlyph(screen, 79, 2, tv.visibleLaneCount(), scrollbarThinVert) {
+		t.Fatal("scrollbars turned off should not draw a vertical bar")
+	}
+	if tv.chartWidth() != 80 {
+		t.Fatalf("with scrollbars off the chart should keep the full width, got %d", tv.chartWidth())
+	}
+}
+
 func TestTimelinePageAndEdgeKeys(t *testing.T) {
 	start := time.Date(2026, 8, 23, 12, 0, 0, 0, time.UTC)
 	events := []temporal.EnhancedHistoryEvent{
