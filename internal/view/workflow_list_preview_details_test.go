@@ -182,10 +182,6 @@ func TestPreviewIOEditorPayload(t *testing.T) {
 	}
 	wl.workflowIOView.SetText(strings.Repeat("x", 200))
 	wl.workflowIOView.SetRect(0, 0, 20, 4)
-	scrollTextViewHoriz(wl.workflowIOView, 10)
-	if _, col := wl.workflowIOView.GetScrollOffset(); col == 0 {
-		t.Fatal("test setup should horizontally scroll the workflow input")
-	}
 	if ev := wl.workflowIOView.GetInputCapture()(tcell.NewEventKey(tcell.KeyRune, 'w', 0)); ev != nil {
 		t.Fatal("w on workflow input/output should toggle wrapping")
 	}

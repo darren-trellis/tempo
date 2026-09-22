@@ -124,16 +124,16 @@ func showWorkflowIO(app *App, background tview.Primitive, workflowType, input, o
 
 	inputView := tview.NewTextView().
 		SetDynamicColors(true).
-		SetScrollable(true).
-		SetWrap(false)
+		SetScrollable(true)
+	setTextViewWrap(inputView, false)
 	inputView.SetBackgroundColor(theme.Bg())
 	inputView.SetTextColor(theme.Fg())
 	attachTextViewScrollbar(inputView, app)
 
 	outputView := tview.NewTextView().
 		SetDynamicColors(true).
-		SetScrollable(true).
-		SetWrap(false)
+		SetScrollable(true)
+	setTextViewWrap(outputView, false)
 	outputView.SetBackgroundColor(theme.Bg())
 	outputView.SetTextColor(theme.Fg())
 	attachTextViewScrollbar(outputView, app)
@@ -227,6 +227,8 @@ func showWorkflowIO(app *App, background tview.Primitive, workflowType, input, o
 				wrapped = !wrapped
 				setTextViewWrap(inputView, wrapped)
 				setTextViewWrap(outputView, wrapped)
+				inputTree.relayout()
+				outputTree.relayout()
 				app.ToastInfo(wrapToggleMessage(wrapped))
 				return nil
 			case 'e':

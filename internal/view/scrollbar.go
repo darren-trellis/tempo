@@ -117,7 +117,13 @@ func textViewScrollMetrics(view *tview.TextView, width, height int) (vert, horiz
 		total = view.GetOriginalLineCount()
 	}
 	vert = scrollMetrics{offset: row, visible: height, total: total}
-	horiz = scrollMetrics{offset: col, visible: width, total: textViewContentWidth(view)}
+	// Wrapped text fits the pane, so the horizontal scrollbar has nothing to
+	// track. Measuring the unwrapped line kept it on screen after wrap was on.
+	if textViewWraps(view) {
+		horiz = scrollMetrics{visible: width, total: width}
+	} else {
+		horiz = scrollMetrics{offset: col, visible: width, total: textViewContentWidth(view)}
+	}
 	return vert, horiz
 }
 

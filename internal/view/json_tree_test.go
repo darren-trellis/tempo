@@ -209,6 +209,86 @@ func TestJSONTreeHighlightStopsAtThePaneEdge(t *testing.T) {
 	}
 }
 
+// A wrapped value is still one row: every visual line is highlighted, and moving
+// down lands on the next value rather than the continuation.
+func TestJSONTreeWrapHighlightsEveryVisualLine(t *testing.T) {
+	view := tview.NewTextView().SetDynamicColors(true).SetScrollable(true)
+	setTextViewWrap(view, true)
+	view.SetRect(0, 0, 24, 8)
+	selection := newJSONTreeSelection(view)
+	if !selection.setContent(`{"name":"abcdefghijklmnopqrstuvwxyz","tail":1}`, true) {
+		t.Fatal("expected selectable JSON tree")
+	}
+	start, span := selection.visualSpan(0)
+	if start != 0 || span < 2 {
+		t.Fatalf("the long value should wrap onto several lines, start=%d span=%d", start, span)
+	}
+	lines := strings.Split(view.GetText(false), "\n")
+	open := "[" + theme.ColorToHex(accentTextColor()) + ":" + theme.TagAccent() + ":b]"
+	for i := 0; i < span; i++ {
+		if !strings.HasPrefix(lines[i], open) {
+			t.Fatalf("visual line %d should be highlighted, got %q", i, lines[i])
+		}
+		if width := tview.TaggedStringWidth(lines[i]); width != 24 {
+			t.Fatalf("visual line %d should fill the pane, width=%d", i, width)
+		}
+	}
+	if strings.HasPrefix(lines[span], open) {
+		t.Fatalf("the next value should not be highlighted, got %q", lines[span])
+	}
+
+	screen := tcell.NewSimulationScreen("UTF-8")
+	if err := screen.Init(); err != nil {
+		t.Fatal(err)
+	}
+	screen.SetSize(24, 8)
+	view.Draw(screen)
+	_, _, width, _ := view.GetInnerRect()
+	_, firstBG, _ := func() (tcell.Color, tcell.Color, tcell.AttrMask) {
+		_, _, style, _ := screen.GetContent(0, 0)
+		return style.Decompose()
+	}()
+	if firstBG == theme.Bg() {
+		t.Fatal("the selected row should not use the pane background")
+	}
+	for row := 0; row < span && row < 8; row++ {
+		for col := 0; col < width; col++ {
+			_, _, style, _ := screen.GetContent(col, row)
+			_, bg, _ := style.Decompose()
+			if bg != firstBG {
+				t.Fatalf("row %d col %d background=%v, want the highlight %v", row, col, bg, firstBG)
+			}
+		}
+	}
+	if _, horiz := textViewScrollMetrics(view, width, 8); horiz.overflow() {
+		t.Fatalf("wrap should retire the horizontal scrollbar, horiz=%+v", horiz)
+	}
+
+	if !selection.handleKey(tcell.NewEventKey(tcell.KeyDown, 0, tcell.ModNone)) {
+		t.Fatal("down should leave the wrapped value")
+	}
+	if value, ok := selection.value(); !ok || value != "1" {
+		t.Fatalf("down should select the next value, got %q ok=%v", value, ok)
+	}
+}
+
+func TestJSONTreeWrapOffKeepsOneLine(t *testing.T) {
+	view := tview.NewTextView().SetDynamicColors(true).SetScrollable(true)
+	setTextViewWrap(view, false)
+	view.SetRect(0, 0, 24, 6)
+	selection := newJSONTreeSelection(view)
+	if !selection.setContent(`{"name":"abcdefghijklmnopqrstuvwxyz"}`, true) {
+		t.Fatal("expected selectable JSON tree")
+	}
+	if _, span := selection.visualSpan(0); span != 1 {
+		t.Fatalf("wrap off should keep the value on one line, span=%d", span)
+	}
+	_, _, width, height := view.GetInnerRect()
+	if _, horiz := textViewScrollMetrics(view, width, height); !horiz.overflow() {
+		t.Fatalf("wrap off should keep the horizontal scrollbar, horiz=%+v", horiz)
+	}
+}
+
 func TestJSONTreeJumpsToFirstAndLastRow(t *testing.T) {
 	view := tview.NewTextView().SetDynamicColors(true)
 	view.SetRect(0, 0, 30, 3)

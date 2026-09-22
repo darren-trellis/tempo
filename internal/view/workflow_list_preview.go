@@ -876,6 +876,7 @@ func (wl *WorkflowList) setupPreview() {
 		SetWordWrap(true).
 		SetScrollable(true)
 	wl.eventDetailWrap = true
+	setTextViewWrap(wl.eventDetail, true)
 	wl.eventDetail.SetBackgroundColor(theme.Bg())
 	wl.eventDetail.SetTextColor(theme.Fg())
 	attachTextViewScrollbar(wl.eventDetail, wl.app)
@@ -941,6 +942,7 @@ func (wl *WorkflowList) setupPreview() {
 		SetWordWrap(true).
 		SetScrollable(true)
 	wl.workflowIOWrap = true
+	setTextViewWrap(wl.workflowIOView, true)
 	wl.workflowIOView.SetBackgroundColor(theme.Bg())
 	wl.workflowIOView.SetTextColor(theme.Fg())
 	attachTextViewScrollbar(wl.workflowIOView, wl.app)
@@ -1075,6 +1077,7 @@ func (wl *WorkflowList) togglePreviewIOWrap(view *tview.TextView) bool {
 	case wl.workflowIOView:
 		wl.workflowIOWrap = !wl.workflowIOWrap
 		setTextViewWrap(view, wl.workflowIOWrap)
+		wl.workflowIOTree.relayout()
 		wl.reportWrap(wl.workflowIOWrap)
 		return true
 	case wl.eventDetail:
@@ -1084,6 +1087,7 @@ func (wl *WorkflowList) togglePreviewIOWrap(view *tview.TextView) bool {
 		}
 		wl.eventDetailWrap = !wl.eventDetailWrap
 		setTextViewWrap(view, wl.eventDetailWrap)
+		wl.eventDetailTree.relayout()
 		wl.reportWrap(wl.eventDetailWrap)
 		return true
 	default:

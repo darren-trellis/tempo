@@ -1,9 +1,30 @@
 package view
 
 import (
+	"sync"
+
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 )
+
+// textViewWrapped records the wrap flag, which tview keeps private, so the
+// scrollbar and the JSON tree can tell a wrapped pane from one that pans.
+var textViewWrapped sync.Map
+
+func noteTextViewWrap(view *tview.TextView, wrap bool) {
+	if view == nil {
+		return
+	}
+	textViewWrapped.Store(view, wrap)
+}
+
+func textViewWraps(view *tview.TextView) bool {
+	if view == nil {
+		return false
+	}
+	wrap, ok := textViewWrapped.Load(view)
+	return ok && wrap.(bool)
+}
 
 func textViewPageSize(view *tview.TextView) int {
 	_, _, _, height := view.GetInnerRect()
@@ -77,6 +98,7 @@ func setTextViewWrap(view *tview.TextView, wrap bool) {
 	if view == nil {
 		return
 	}
+	noteTextViewWrap(view, wrap)
 	view.SetWrap(wrap).SetWordWrap(wrap)
 	if wrap {
 		row, _ := view.GetScrollOffset()
@@ -101,6 +123,12 @@ func scrollTextView(view *tview.TextView, delta int) {
 
 func scrollTextViewHoriz(view *tview.TextView, delta int) {
 	if view == nil {
+		return
+	}
+	// A wrapped pane fits the text, so a horizontal pan would only clip it.
+	if textViewWraps(view) {
+		row, _ := view.GetScrollOffset()
+		view.ScrollTo(row, 0)
 		return
 	}
 	row, col := view.GetScrollOffset()
