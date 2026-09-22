@@ -212,9 +212,9 @@ func (a *App) setup() {
 			}
 		}
 
-		// Help: pane views open a hint modal; open modals put hints on the bottom bar.
-		if event.Rune() == '?' {
-			a.handleQuestionMark()
+		// Help: pane views open a hint modal; open modals put hints on the
+		// bottom bar and leave the key alone so it can be typed into a field.
+		if event.Rune() == '?' && a.handleQuestionMark() {
 			return nil
 		}
 
@@ -873,19 +873,20 @@ func (a *App) modalHasFocus() bool {
 	return a != nil && a.app != nil && a.app.Pages() != nil && a.app.Pages().CurrentIsModal()
 }
 
-func (a *App) handleQuestionMark() {
+func (a *App) handleQuestionMark() bool {
 	if a == nil || a.app == nil || a.app.Pages() == nil {
-		return
+		return false
 	}
 	current := a.app.Pages().Current()
 	if helpModalOf(current) != nil {
 		a.closeHelp()
-		return
+		return true
 	}
 	if a.app.Pages().CurrentIsModal() {
-		return
+		return false
 	}
 	a.showHelp()
+	return true
 }
 
 func (a *App) syncModalHints(c nav.Component) {

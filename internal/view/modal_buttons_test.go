@@ -69,3 +69,20 @@ func TestModalShowsFooterHintsAutomatically(t *testing.T) {
 		t.Fatal("closing the modal should hide footer hints")
 	}
 }
+
+func TestQuestionMarkStaysTypeableInsideAModal(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	a := NewAppWithProvider(nil, "default", config.DefaultConfig(), "local")
+	wl := NewWorkflowList(a, "default")
+	wl.keepDataOnStart = true
+	a.app.Pages().Push(wl)
+	if !a.handleQuestionMark() {
+		t.Fatal("? should open help from a pane view")
+	}
+	a.closeHelp()
+
+	a.PushModal(newModal(components.ModalConfig{Title: "Cancel", Width: 40, Height: 10}))
+	if a.handleQuestionMark() {
+		t.Fatal("? should reach the modal's fields instead of being swallowed")
+	}
+}
