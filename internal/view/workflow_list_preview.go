@@ -873,10 +873,8 @@ func (wl *WorkflowList) setupPreview() {
 	wl.eventDetail = tview.NewTextView().
 		SetDynamicColors(true).
 		SetTextAlign(tview.AlignLeft).
-		SetWordWrap(true).
 		SetScrollable(true)
-	wl.eventDetailWrap = true
-	setTextViewWrap(wl.eventDetail, true)
+	setTextViewWrap(wl.eventDetail, false)
 	wl.eventDetail.SetBackgroundColor(theme.Bg())
 	wl.eventDetail.SetTextColor(theme.Fg())
 	attachTextViewScrollbar(wl.eventDetail, wl.app)
@@ -939,10 +937,8 @@ func (wl *WorkflowList) setupPreview() {
 	wl.workflowIOView = tview.NewTextView().
 		SetDynamicColors(true).
 		SetTextAlign(tview.AlignLeft).
-		SetWordWrap(true).
 		SetScrollable(true)
-	wl.workflowIOWrap = true
-	setTextViewWrap(wl.workflowIOView, true)
+	setTextViewWrap(wl.workflowIOView, false)
 	wl.workflowIOView.SetBackgroundColor(theme.Bg())
 	wl.workflowIOView.SetTextColor(theme.Fg())
 	attachTextViewScrollbar(wl.workflowIOView, wl.app)

@@ -185,10 +185,10 @@ func TestPreviewIOEditorPayload(t *testing.T) {
 	if ev := wl.workflowIOView.GetInputCapture()(tcell.NewEventKey(tcell.KeyRune, 'w', 0)); ev != nil {
 		t.Fatal("w on workflow input/output should toggle wrapping")
 	}
-	if wl.workflowIOWrap {
-		t.Fatal("workflow input/output should start wrapped and toggle off")
+	if !wl.workflowIOWrap {
+		t.Fatal("workflow input/output should start unwrapped and toggle on")
 	}
-	if got := wl.app.hintBarMessage(); got != "Wrap off" {
+	if got := wl.app.hintBarMessage(); got != "Wrap on" {
 		t.Fatalf("toggling wrap should report it, got %q", got)
 	}
 
@@ -207,10 +207,10 @@ func TestPreviewIOEditorPayload(t *testing.T) {
 	if ev := wl.eventDetail.GetInputCapture()(tcell.NewEventKey(tcell.KeyRune, 'w', 0)); ev != nil {
 		t.Fatal("w on activity input/output should toggle wrapping")
 	}
-	if wl.eventDetailWrap {
-		t.Fatal("activity input/output should start wrapped and toggle off")
+	if !wl.eventDetailWrap {
+		t.Fatal("activity input/output should start unwrapped and toggle on")
 	}
-	if got := wl.app.hintBarMessage(); got != "Wrap off" {
+	if got := wl.app.hintBarMessage(); got != "Wrap on" {
 		t.Fatalf("toggling activity wrap should report it, got %q", got)
 	}
 	wl.activityDetailKind = activityDetailOutput
