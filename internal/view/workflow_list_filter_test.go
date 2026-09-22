@@ -170,14 +170,21 @@ func TestConvertedSearchStaysEditableAndClearsOnEscape(t *testing.T) {
 	wl.allWorkflows = []temporal.Workflow{{ID: "only-match"}}
 	wl.originalWorkflows = wl.allWorkflows
 	wl.showFilter()
-	if got := a.prompt().input.GetText(); got != "missing-id" {
-		t.Fatalf("/ should reopen the search term, got %q", got)
+	if got := a.prompt().input.GetText(); got != "" {
+		t.Fatalf("/ should open an empty prompt, got %q", got)
 	}
 	if ev := a.prompt().capture(tcell.NewEventKey(tcell.KeyEscape, 0, tcell.ModNone)); ev != nil {
 		t.Fatal("esc should close the filter prompt")
 	}
 	if a.IsFilterMode() {
 		t.Fatal("esc should leave filter mode")
+	}
+	if wl.filterText != "missing-id" || wl.visibilityQuery != workflowIDFilterQuery("missing-id") {
+		t.Fatalf("esc in the prompt should keep the search, filter=%q query=%q", wl.filterText, wl.visibilityQuery)
+	}
+
+	if !wl.HandleEscape() {
+		t.Fatal("esc on the workflows tab should clear the search")
 	}
 	if wl.filterText != "" || wl.visibilityQuery != "" {
 		t.Fatalf("esc should clear the search, filter=%q query=%q", wl.filterText, wl.visibilityQuery)
@@ -187,15 +194,102 @@ func TestConvertedSearchStaysEditableAndClearsOnEscape(t *testing.T) {
 	}
 }
 
-func TestEmptyFilterSubmitClearsConvertedQuery(t *testing.T) {
+func submitPrompt(t *testing.T, a *App, text string) {
+	t.Helper()
+	a.prompt().input.SetText(text)
+	if ev := a.prompt().capture(tcell.NewEventKey(tcell.KeyEnter, 0, tcell.ModNone)); ev != nil {
+		t.Fatal("enter should submit the search")
+	}
+}
+
+func cancelPrompt(t *testing.T, a *App) {
+	t.Helper()
+	if ev := a.prompt().capture(tcell.NewEventKey(tcell.KeyEscape, 0, tcell.ModNone)); ev != nil {
+		t.Fatal("esc should close the search")
+	}
+}
+
+func TestSearchPromptStartsEmptyAndRestoresOnEscape(t *testing.T) {
+	a := &App{}
+	query := "charge"
+	var applied []string
+	apply := func(text string) {
+		query = text
+		applied = append(applied, text)
+	}
+
+	a.ShowSearchPrompt(query, apply, nil)
+	if got := a.prompt().input.GetText(); got != "" {
+		t.Fatalf("prompt should start empty, got %q", got)
+	}
+	cancelPrompt(t, a)
+	if query != "charge" || len(applied) != 0 {
+		t.Fatalf("esc with nothing typed should leave the search alone, query=%q applied=%q", query, applied)
+	}
+
+	a.ShowSearchPrompt(query, apply, nil)
+	a.prompt().input.SetText("refund")
+	cancelPrompt(t, a)
+	if query != "charge" {
+		t.Fatalf("esc should put the previous search back, got %q", query)
+	}
+
+	a.ShowSearchPrompt(query, apply, nil)
+	submitPrompt(t, a, "refund")
+	if query != "refund" {
+		t.Fatalf("enter should apply the search, got %q", query)
+	}
+}
+
+func TestSearchPromptKeepsTheSavedFilterAndSearch(t *testing.T) {
 	a := &App{}
 	wl := NewWorkflowList(a, "default")
+	wl.keepDataOnStart = true
 	wl.loadMockData()
-	wl.filterText = "missing-id"
-	wl.convertFilterToVisibilityQuery()
-	wl.commitFilter("")
-	if wl.filterText != "" || wl.visibilityQuery != "" {
-		t.Fatalf("empty submit should clear, filter=%q query=%q", wl.filterText, wl.visibilityQuery)
+	wl.applySavedFilter(config.SavedFilter{Name: "Running", Query: "ExecutionStatus = 'Running'"})
+
+	wl.showFilter()
+	submitPrompt(t, a, "payment")
+	if wl.filterText != "payment" || len(wl.workflows) == 0 {
+		t.Fatalf("search should apply, filter=%q rows=%d", wl.filterText, len(wl.workflows))
+	}
+
+	wl.showFilter()
+	if got := a.prompt().input.GetText(); got != "" {
+		t.Fatalf("/ should open an empty prompt, got %q", got)
+	}
+	cancelPrompt(t, a)
+	if wl.activeFilterName != "Running" || wl.visibilityQuery != "ExecutionStatus = 'Running'" {
+		t.Fatalf("saved filter should stay, name=%q query=%q", wl.activeFilterName, wl.visibilityQuery)
+	}
+	if wl.filterText != "payment" {
+		t.Fatalf("esc in the prompt should keep the search, got %q", wl.filterText)
+	}
+
+	wl.showFilter()
+	a.prompt().input.SetText("fulfill")
+	if wl.filterText != "fulfill" {
+		t.Fatalf("typing should preview the search, got %q", wl.filterText)
+	}
+	cancelPrompt(t, a)
+	if wl.filterText != "payment" || len(wl.workflows) == 0 || wl.workflows[0].ID != "payment-xyz789" {
+		t.Fatalf("esc should put the previous search back, filter=%q rows=%v", wl.filterText, workflowIDs(wl.workflows))
+	}
+
+	wl.showFilter()
+	submitPrompt(t, a, "")
+	if wl.filterText != "payment" || wl.activeFilterName != "Running" {
+		t.Fatalf("an empty enter should keep the search, filter=%q name=%q", wl.filterText, wl.activeFilterName)
+	}
+
+	if !wl.HandleEscape() {
+		t.Fatal("esc on the workflows tab should clear the search")
+	}
+	if wl.filterText != "" {
+		t.Fatalf("search should clear, got %q", wl.filterText)
+	}
+	if wl.activeFilterName != "Running" || wl.visibilityQuery != "ExecutionStatus = 'Running'" {
+		t.Fatalf("clearing the search should keep the saved filter, name=%q query=%q", wl.activeFilterName, wl.visibilityQuery)
 	}
 }
 

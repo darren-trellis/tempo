@@ -81,17 +81,7 @@ func (nl *NamespaceList) setup() {
 		SetRatio(0.6).
 		ConfigureEmpty(theme.IconInfo, "No Selection", "Select a namespace to view details").
 		EnableSearch(func(current string, cb components.SearchCallbacks) {
-			nl.app.ShowFilterMode(current, FilterModeCallbacks{
-				OnChange: cb.OnChange,
-				OnSubmit: cb.OnSubmit,
-				OnCancel: func() {
-					nl.ClearSearch()
-					nl.applyFilter("")
-					if cb.OnCancel != nil {
-						cb.OnCancel()
-					}
-				},
-			})
+			nl.app.ShowSearchPrompt(current, cb.OnChange, cb.OnSubmit)
 		}).
 		SetOnSearch(func(query string) {
 			nl.applyFilter(query)

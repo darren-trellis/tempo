@@ -155,17 +155,7 @@ func (tq *TaskQueueView) updateTitle() {
 }
 
 func (tq *TaskQueueView) showSearch() {
-	tq.app.ShowFilterMode(tq.searchText, FilterModeCallbacks{
-		OnChange: func(text string) {
-			tq.applyFilter(text)
-		},
-		OnSubmit: func(text string) {
-			tq.applyFilter(text)
-		},
-		OnCancel: func() {
-			tq.applyFilter("")
-		},
-	})
+	tq.app.ShowSearchPrompt(tq.searchText, tq.applyFilter, nil)
 }
 
 // RefreshTheme updates all component colors after a theme change.

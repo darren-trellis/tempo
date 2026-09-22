@@ -1113,11 +1113,7 @@ func (wl *WorkflowList) showFocusedIOSearch() bool {
 	if wl == nil || wl.app == nil || !wl.previewIOViewFocused() {
 		return false
 	}
-	wl.app.ShowFilterMode(wl.focusedIOQuery(), FilterModeCallbacks{
-		OnChange: wl.applyFocusedIOSearch,
-		OnSubmit: wl.applyFocusedIOSearch,
-		OnCancel: func() { wl.applyFocusedIOSearch("") },
-	})
+	wl.app.ShowSearchPrompt(wl.focusedIOQuery(), wl.applyFocusedIOSearch, nil)
 	return true
 }
 

@@ -245,34 +245,15 @@ func showWorkflowIO(app *App, background tview.Primitive, workflowType, input, o
 					query = inputQuery
 					target = inputView
 				}
-				app.ShowFilterMode(query, FilterModeCallbacks{
-					OnChange: func(text string) {
-						if targetInput {
-							inputQuery = text
-						} else {
-							outputQuery = text
-						}
-						scrollTextViewToMatch(target, text)
-						searchStatus()
-					},
-					OnSubmit: func(text string) {
-						if targetInput {
-							inputQuery = text
-						} else {
-							outputQuery = text
-						}
-						scrollTextViewToMatch(target, text)
-						searchStatus()
-					},
-					OnCancel: func() {
-						if targetInput {
-							inputQuery = ""
-						} else {
-							outputQuery = ""
-						}
-						searchStatus()
-					},
-				})
+				app.ShowSearchPrompt(query, func(text string) {
+					if targetInput {
+						inputQuery = text
+					} else {
+						outputQuery = text
+					}
+					scrollTextViewToMatch(target, text)
+					searchStatus()
+				}, nil)
 				return nil
 			case 'w':
 				on := !ioWrapOn(app)

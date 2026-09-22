@@ -3,8 +3,11 @@ package view
 import (
 	"context"
 	"fmt"
+	"sync"
 	"testing"
+	"time"
 
+	"github.com/atterpac/jig/layout"
 	"github.com/galaxy-io/tempo/internal/config"
 	"github.com/galaxy-io/tempo/internal/temporal"
 	"gopkg.in/yaml.v3"
@@ -156,6 +159,14 @@ type pageListProvider struct {
 	list func(context.Context, string, temporal.ListOptions) ([]temporal.Workflow, string, error)
 }
 
+type countingPageProvider struct {
+	pageListProvider
+}
+
+func (p *countingPageProvider) CountWorkflows(context.Context, string, string) (temporal.WorkflowCounts, error) {
+	return temporal.WorkflowCounts{}, nil
+}
+
 func (p *pageListProvider) ListWorkflows(ctx context.Context, namespace string, opts temporal.ListOptions) ([]temporal.Workflow, string, error) {
 	return p.list(ctx, namespace, opts)
 }
@@ -170,6 +181,53 @@ func TestMaybeFetchPagesSkipsLocalFilter(t *testing.T) {
 	wl.maybeFetchPages()
 	if wl.pageBusy {
 		t.Fatal("local / filter should not slide the loaded window")
+	}
+
+	wl.visibilityQuery = "ExecutionStatus = 'Running'"
+	wl.maybeFetchPages()
+	if wl.pageBusy {
+		t.Fatal("a / search under a saved filter should not slide the loaded window")
+	}
+}
+
+func TestWorkflowActionReloadsTheLoadedPages(t *testing.T) {
+	var tokens []string
+	var mu sync.Mutex
+	provider := &countingPageProvider{pageListProvider: pageListProvider{
+		list: func(_ context.Context, _ string, opts temporal.ListOptions) ([]temporal.Workflow, string, error) {
+			mu.Lock()
+			tokens = append(tokens, opts.PageToken)
+			mu.Unlock()
+			if opts.PageToken == "" {
+				return []temporal.Workflow{{ID: "pay-1", RunID: "r"}}, "p1", nil
+			}
+			return []temporal.Workflow{{ID: "pay-2", RunID: "r"}}, "", nil
+		},
+	}}
+	a := &App{provider: provider, app: layout.NewApp(layout.AppConfig{})}
+	wl := NewWorkflowList(a, "default")
+	wl.pager.reset("")
+	wl.pager.accept(0, "", "p1", []temporal.Workflow{{ID: "pay-1", RunID: "r"}})
+	wl.pager.accept(1, "p1", "", []temporal.Workflow{{ID: "pay-2", RunID: "r"}})
+	wl.allWorkflows = wl.pager.items()
+	wl.filterText = "pay"
+	wl.applyFilter()
+
+	wl.reloadLoadedPages()
+	deadline := time.Now().Add(time.Second)
+	for time.Now().Before(deadline) {
+		mu.Lock()
+		n := len(tokens)
+		mu.Unlock()
+		if n >= 2 {
+			break
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if len(tokens) != 2 || !containsString(tokens, "") || !containsString(tokens, "p1") {
+		t.Fatalf("an action should reload every loaded page, got tokens %q", tokens)
 	}
 }
 

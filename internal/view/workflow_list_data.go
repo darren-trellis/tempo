@@ -109,7 +109,7 @@ func (wl *WorkflowList) fetchWorkflows(live bool) {
 			wl.liveBusy = false
 			return
 		}
-		if wl.filterText != "" && wl.visibilityQuery == "" {
+		if wl.localSearchActive() {
 			wl.refreshCounts()
 			return
 		}
@@ -214,6 +214,17 @@ func (wl *WorkflowList) startWindow(live bool) {
 			wl.maybeFetchPages()
 		})
 	}()
+}
+
+// reloadLoadedPages re-fetches the pages already on screen, so an action on a
+// row deep in the list, or inside a search, keeps the rows around it.
+func (wl *WorkflowList) reloadLoadedPages() {
+	if wl.preloaded || wl.app == nil || wl.app.Provider() == nil || len(wl.pager.pages) == 0 {
+		wl.loadData()
+		return
+	}
+	wl.pageGen++
+	wl.refreshLoadedPages()
 }
 
 func (wl *WorkflowList) refreshLoadedPages() {
@@ -378,7 +389,7 @@ func (wl *WorkflowList) maybeFetchPages() {
 	if wl == nil || wl.preloaded || wl.pageBusy || wl.liveBusy || wl.listEdgePin != listEdgeNone {
 		return
 	}
-	if wl.filterText != "" && wl.visibilityQuery == "" {
+	if wl.localSearchActive() {
 		return
 	}
 	if !wl.workflowsActive() || wl.app == nil || wl.app.Provider() == nil {

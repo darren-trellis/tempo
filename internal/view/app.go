@@ -1725,6 +1725,37 @@ func (a *App) ShowFilterMode(initialText string, callbacks FilterModeCallbacks) 
 	}
 }
 
+// ShowSearchPrompt opens an empty "/" prompt the way vim does: typing previews
+// the search, and Esc or an empty Enter puts the previous search back.
+func (a *App) ShowSearchPrompt(previous string, onChange, onSubmit func(string)) {
+	if onSubmit == nil {
+		onSubmit = onChange
+	}
+	current := previous
+	restore := func() {
+		if current == previous {
+			return
+		}
+		current = previous
+		onChange(previous)
+	}
+	a.ShowFilterMode("", FilterModeCallbacks{
+		OnChange: func(text string) {
+			current = text
+			onChange(text)
+		},
+		OnSubmit: func(text string) {
+			if text == "" {
+				restore()
+				return
+			}
+			current = text
+			onSubmit(text)
+		},
+		OnCancel: restore,
+	})
+}
+
 // ExitFilterMode exits filter mode and restores default command bar behavior.
 func (a *App) ExitFilterMode() {
 	a.stopFilterDebounce()

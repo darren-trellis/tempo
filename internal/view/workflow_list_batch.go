@@ -172,7 +172,7 @@ func (wl *WorkflowList) executeBatchCancel(indices []int, reason string) {
 
 		wl.app.JigApp().QueueUpdateDraw(func() {
 			wl.toggleSelectionMode()
-			wl.loadData()
+			wl.reloadLoadedPages()
 			msg := fmt.Sprintf("Cancelled %d workflow(s)", succeeded)
 			if failed > 0 {
 				msg += fmt.Sprintf(", %d failed", failed)
@@ -285,7 +285,7 @@ func (wl *WorkflowList) executeBatchTerminate(indices []int, reason string) {
 
 		wl.app.JigApp().QueueUpdateDraw(func() {
 			wl.toggleSelectionMode()
-			wl.loadData()
+			wl.reloadLoadedPages()
 			msg := fmt.Sprintf("Terminated %d workflow(s)", succeeded)
 			if failed > 0 {
 				msg += fmt.Sprintf(", %d failed", failed)
@@ -396,7 +396,7 @@ func (wl *WorkflowList) executeBatchDelete(indices []int) {
 
 		wl.app.JigApp().QueueUpdateDraw(func() {
 			wl.toggleSelectionMode()
-			wl.loadData()
+			wl.reloadLoadedPages()
 			msg := fmt.Sprintf("Deleted %d workflow(s)", succeeded)
 			if failed > 0 {
 				msg += fmt.Sprintf(", %d failed", failed)

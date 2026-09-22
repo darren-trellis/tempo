@@ -21,7 +21,7 @@ func (wl *WorkflowList) applyFilterWithFallback(serverFallback bool) {
 		filtered = wl.allWorkflows
 	} else {
 		filtered = matchingWorkflows(wl.allWorkflows, wl.filterText)
-		if len(filtered) == 0 && serverFallback && wl.visibilityQuery == "" {
+		if len(filtered) == 0 && serverFallback && (wl.visibilityQuery == "" || wl.searchOwnsQuery()) {
 			wl.convertFilterToVisibilityQuery()
 			return
 		}
@@ -65,38 +65,62 @@ func searchTermFromVisibilityQuery(query string) string {
 }
 
 func (wl *WorkflowList) showFilter() {
-	wl.originalWorkflows = wl.allWorkflows
-
-	wl.app.ShowFilterMode(wl.searchFilterTerm(), FilterModeCallbacks{
-		OnSubmit: func(text string) {
-			wl.commitFilter(text)
-		},
-		OnCancel: func() {
-			wl.clearAllFilters()
-		},
-		OnChange: func(text string) {
-			wl.filterText = text
-			if text == "" {
-				if wl.visibilityQuery != "" {
-					wl.clearAllFilters()
-					return
-				}
-				wl.applyFilterWithServerSearch("")
-				return
-			}
-			wl.applyFilterWithServerSearch(text)
-		},
-	})
+	if wl.originalWorkflows == nil {
+		wl.originalWorkflows = wl.allWorkflows
+	}
+	wl.lastCompletionQuery = ""
+	previous := wl.filterText
+	wl.app.ShowSearchPrompt(previous, func(text string) {
+		if text == previous {
+			wl.restoreSearch(text)
+			return
+		}
+		wl.filterText = text
+		wl.applyFilterWithServerSearch(text)
+	}, wl.commitFilter)
 }
 
 func (wl *WorkflowList) commitFilter(text string) {
 	if text == "" {
-		wl.clearAllFilters()
+		wl.clearSearch()
 		return
 	}
 	wl.filterText = text
 	wl.applyFilterWithFallback(true)
 	wl.updatePanelTitle()
+}
+
+// searchOwnsQuery reports whether the visibility query only exists because a
+// search found nothing locally and moved to the server.
+func (wl *WorkflowList) searchOwnsQuery() bool {
+	return wl.visibilityQuery != "" && wl.activeFilterName == "" && len(wl.filterClauses) == 0 &&
+		!wl.adHoc.active() && searchTermFromVisibilityQuery(wl.visibilityQuery) != ""
+}
+
+// localSearchActive reports whether the rows shown are a search over the loaded
+// pages, which paging or reloading would change underneath it.
+func (wl *WorkflowList) localSearchActive() bool {
+	return wl.filterText != "" && wl.visibilityQuery != workflowIDFilterQuery(wl.filterText)
+}
+
+func (wl *WorkflowList) restoreSearch(text string) {
+	wl.filterText = text
+	wl.lastCompletionQuery = ""
+	wl.serverCompletions = nil
+	if text == "" && !wl.searchOwnsQuery() {
+		wl.originalWorkflows = nil
+	}
+	wl.applyFilter()
+	wl.updateFilterTitle("", "")
+}
+
+// clearSearch drops the / search and leaves the selected filter in place.
+func (wl *WorkflowList) clearSearch() {
+	if wl.searchOwnsQuery() {
+		wl.clearAllFilters()
+		return
+	}
+	wl.restoreSearch("")
 }
 
 // applyFilterWithServerSearch filters locally, and if no results, triggers server search.
@@ -203,9 +227,8 @@ func (wl *WorkflowList) clearTransientWorkflowFilter() bool {
 	if wl == nil {
 		return false
 	}
-	searching := wl.filterText != "" || (wl.originalWorkflows != nil && wl.activeFilterName == "")
-	if searching {
-		wl.clearAllFilters()
+	if wl.filterText != "" || wl.searchOwnsQuery() {
+		wl.clearSearch()
 		return true
 	}
 	if wl.adHoc.active() {

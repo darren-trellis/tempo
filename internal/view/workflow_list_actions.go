@@ -27,7 +27,7 @@ func (wl *WorkflowList) afterWorkflowAction() {
 	if w, ok := wl.selectedWorkflow(); ok && wl.previewCache != nil {
 		wl.previewCache.delete(w.ID, w.RunID)
 	}
-	wl.loadData()
+	wl.reloadLoadedPages()
 }
 
 func (wl *WorkflowList) showCancelSelected() {
@@ -96,7 +96,7 @@ func (wl *WorkflowList) showDeleteSelected() {
 			wl.previewCache.delete(t.ID, t.RunID)
 		}
 		wl.clearPreview()
-		wl.loadData()
+		wl.reloadLoadedPages()
 	})
 }
 
@@ -117,34 +117,14 @@ func (wl *WorkflowList) showPreviewEventSearch() {
 	if !wl.previewModeEnabled() || wl.previewKind != previewEvents || wl.app == nil {
 		return
 	}
-	wl.app.ShowFilterMode(wl.previewEventSearch, FilterModeCallbacks{
-		OnChange: func(text string) {
-			wl.applyPreviewEventSearch(text)
-		},
-		OnSubmit: func(text string) {
-			wl.applyPreviewEventSearch(text)
-		},
-		OnCancel: func() {
-			wl.applyPreviewEventSearch("")
-		},
-	})
+	wl.app.ShowSearchPrompt(wl.previewEventSearch, wl.applyPreviewEventSearch, nil)
 }
 
 func (wl *WorkflowList) showPreviewActivitySearch() {
 	if !wl.previewModeEnabled() || wl.previewKind != previewActivities || wl.app == nil {
 		return
 	}
-	wl.app.ShowFilterMode(wl.previewActivitySearch, FilterModeCallbacks{
-		OnChange: func(text string) {
-			wl.applyPreviewActivitySearch(text)
-		},
-		OnSubmit: func(text string) {
-			wl.applyPreviewActivitySearch(text)
-		},
-		OnCancel: func() {
-			wl.applyPreviewActivitySearch("")
-		},
-	})
+	wl.app.ShowSearchPrompt(wl.previewActivitySearch, wl.applyPreviewActivitySearch, nil)
 }
 
 func (wl *WorkflowList) applyPreviewActivitySearch(query string) {

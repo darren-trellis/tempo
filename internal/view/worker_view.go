@@ -153,17 +153,7 @@ func (wv *WorkerView) showSearch() {
 	if wv.app == nil {
 		return
 	}
-	wv.app.ShowFilterMode(wv.searchText, FilterModeCallbacks{
-		OnChange: func(text string) {
-			wv.applyFilter(text)
-		},
-		OnSubmit: func(text string) {
-			wv.applyFilter(text)
-		},
-		OnCancel: func() {
-			wv.applyFilter("")
-		},
-	})
+	wv.app.ShowSearchPrompt(wv.searchText, wv.applyFilter, nil)
 }
 
 func (wv *WorkerView) setLoading(loading bool) {

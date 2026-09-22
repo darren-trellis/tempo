@@ -103,17 +103,7 @@ func (sl *ScheduleList) setup() {
 		SetRatio(0.6).
 		ConfigureEmpty(theme.IconInfo, "No Selection", "Select a schedule to view details").
 		EnableSearch(func(current string, cb components.SearchCallbacks) {
-			sl.app.ShowFilterMode(current, FilterModeCallbacks{
-				OnChange: cb.OnChange,
-				OnSubmit: cb.OnSubmit,
-				OnCancel: func() {
-					sl.ClearSearch()
-					sl.applyFilter("")
-					if cb.OnCancel != nil {
-						cb.OnCancel()
-					}
-				},
-			})
+			sl.app.ShowSearchPrompt(current, cb.OnChange, cb.OnSubmit)
 		}).
 		SetOnSearch(func(query string) {
 			sl.applyFilter(query)
