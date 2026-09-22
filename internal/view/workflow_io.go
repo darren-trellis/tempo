@@ -178,6 +178,10 @@ func showWorkflowIO(app *App, background tview.Primitive, workflowType, input, o
 			view = inputView
 			query = inputQuery
 		}
+		if query == "" {
+			app.setSearchStatus("")
+			return
+		}
 		app.setSearchStatus(searchLabel(query, countSearchMatches(view.GetText(true), query)))
 	}
 	applyIOFocus := func() {
@@ -202,13 +206,16 @@ func showWorkflowIO(app *App, background tview.Primitive, workflowType, input, o
 	}
 
 	inputHandler := func(event *tcell.EventKey) *tcell.EventKey {
+		wasInput := focusedInput
 		if outputView.HasFocus() {
 			focusedInput = false
 		} else if inputView.HasFocus() {
 			focusedInput = true
 		}
-		applyIOFocus()
-		searchStatus()
+		if focusedInput != wasInput {
+			applyIOFocus()
+			searchStatus()
+		}
 
 		switch event.Key() {
 		case tcell.KeyEscape:
@@ -225,6 +232,9 @@ func showWorkflowIO(app *App, background tview.Primitive, workflowType, input, o
 			tree = inputTree
 		}
 		if tree.handleKey(event) {
+			if event.Key() == tcell.KeyEnter || event.Rune() == ' ' {
+				searchStatus()
+			}
 			return nil
 		}
 		if handleTextViewScroll(view, event) {

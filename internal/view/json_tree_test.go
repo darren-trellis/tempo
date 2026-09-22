@@ -204,7 +204,8 @@ func TestJSONTreeHighlightStopsAtThePaneEdge(t *testing.T) {
 	selection.handleKey(tcell.NewEventKey(tcell.KeyRune, ' ', tcell.ModNone))
 
 	selected := strings.Split(view.GetText(false), "\n")[0]
-	if width := tview.TaggedStringWidth(stripStyleTags(selected)); width != 20 {
+	bar := selected[:strings.LastIndex(selected, "[-:-:-]")]
+	if width := tview.TaggedStringWidth(stripStyleTags(bar)); width != 20 {
 		t.Fatalf("the highlight should stop at the pane edge, width=%d", width)
 	}
 }

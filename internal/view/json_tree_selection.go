@@ -22,6 +22,10 @@ type jsonTreeSelection struct {
 	visual     []int // visual line where each logical row starts
 	visualRows int
 	laidWidth  int
+	text       string
+	rowsWidth  int
+	wrapped    [][]string
+	wrapWidth  int
 }
 
 func newJSONTreeSelection(view *tview.TextView) *jsonTreeSelection {
@@ -29,6 +33,12 @@ func newJSONTreeSelection(view *tview.TextView) *jsonTreeSelection {
 	if view == nil {
 		return selection
 	}
+	setTextViewSize(view, func() (int, int, bool) {
+		if !selection.active() {
+			return 0, 0, false
+		}
+		return selection.visualRows, selection.rowsWidth, true
+	})
 	prev := view.GetMouseCapture()
 	view.SetMouseCapture(func(action tview.MouseAction, event *tcell.EventMouse) (tview.MouseAction, *tcell.EventMouse) {
 		if action == tview.MouseLeftClick && selection.clickRow(event) {
@@ -76,7 +86,7 @@ func (s *jsonTreeSelection) setContent(content string, enabled bool) bool {
 		s.folded = nil
 		s.selected = 0
 	}
-	s.rows = nil
+	s.setRows(nil)
 	if !enabled {
 		return false
 	}
@@ -84,7 +94,7 @@ func (s *jsonTreeSelection) setContent(content string, enabled bool) bool {
 	if !ok || len(rows) == 0 {
 		return false
 	}
-	s.rows = rows
+	s.setRows(rows)
 	if s.selected >= len(rows) {
 		s.selected = len(rows) - 1
 	}
@@ -145,7 +155,7 @@ func (s *jsonTreeSelection) toggleFold() {
 	if !built || len(rows) == 0 {
 		return
 	}
-	s.rows = rows
+	s.setRows(rows)
 	// Folding a node removes its children, so follow the path back to wherever
 	// the cursor's row ended up.
 	if index, found := s.indexOfPath(row.path); found {
@@ -154,6 +164,43 @@ func (s *jsonTreeSelection) toggleFold() {
 		s.selected = len(rows) - 1
 	}
 	s.render(false)
+}
+
+func (s *jsonTreeSelection) setRows(rows []jsonTreeRow) {
+	s.rows = rows
+	s.wrapped = nil
+	s.rowsWidth = 0
+	for _, row := range rows {
+		if w := tview.TaggedStringWidth(row.text); w > s.rowsWidth {
+			s.rowsWidth = w
+		}
+	}
+}
+
+// panPadding extends the highlighted row with blank space out to the widest
+// row. tview only pans as far as the longest line it has parsed, and it parses
+// no further than the page, so the selected row, always on screen, keeps every
+// column reachable.
+func (s *jsonTreeSelection) panPadding(text string, barWidth int) string {
+	w := tview.TaggedStringWidth(stripStyleTags(text))
+	if w < barWidth {
+		w = barWidth
+	}
+	if s.rowsWidth <= w {
+		return ""
+	}
+	return strings.Repeat(" ", s.rowsWidth-w)
+}
+
+func (s *jsonTreeSelection) wrappedRow(index, width int) []string {
+	if s.wrapWidth != width || len(s.wrapped) != len(s.rows) {
+		s.wrapped = make([][]string, len(s.rows))
+		s.wrapWidth = width
+	}
+	if s.wrapped[index] == nil {
+		s.wrapped[index] = wrapTaggedLines(s.rows[index].text, width)
+	}
+	return s.wrapped[index]
 }
 
 func (s *jsonTreeSelection) selectRow(index int) {
@@ -294,15 +341,16 @@ func (s *jsonTreeSelection) layout(toTop bool, width int) {
 		case wrapping && i == s.selected:
 			lines = append(lines, jsonTreeHighlightedWrapped(row.text, s.laidWidth)...)
 		case wrapping:
-			lines = append(lines, wrapTaggedLines(row.text, s.laidWidth)...)
+			lines = append(lines, s.wrappedRow(i, s.laidWidth)...)
 		case i == s.selected:
-			lines = append(lines, jsonTreeHighlightedRow(row.text, width))
+			lines = append(lines, jsonTreeHighlightedRow(row.text, width)+s.panPadding(row.text, width))
 		default:
 			lines = append(lines, row.text)
 		}
 	}
 	s.visualRows = len(lines)
-	s.view.SetText(strings.Join(lines, "\n"))
+	s.text = strings.Join(lines, "\n")
+	s.view.SetText(s.text)
 	s.view.ScrollTo(offset, column)
 	s.scrollIntoView()
 }
@@ -461,6 +509,8 @@ func (s *jsonTreeSelection) value() (string, bool) {
 	return row.value, true
 }
 
+// active reports whether the view still shows the tree. A status message
+// written straight into the view replaces it until the next setContent.
 func (s *jsonTreeSelection) active() bool {
-	return s != nil && s.view != nil && len(s.rows) > 0
+	return s != nil && s.view != nil && len(s.rows) > 0 && s.view.GetText(false) == s.text
 }

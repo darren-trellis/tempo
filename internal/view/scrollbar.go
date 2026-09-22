@@ -1,6 +1,8 @@
 package view
 
 import (
+	"sync"
+
 	"github.com/atterpac/jig/components"
 	"github.com/atterpac/jig/theme"
 	"github.com/gdamore/tcell/v2"
@@ -107,14 +109,37 @@ func tableVerticalScroll(table *components.Table, height int) scrollMetrics {
 	return scrollMetrics{offset: rowOffset, visible: visible, total: table.GetDataRowCount()}
 }
 
+// textViewSizes holds, per text view, a function that reports the line count
+// and widest line without re-parsing the text. Measuring a large text on every
+// draw made each keypress in it slow.
+var textViewSizes sync.Map
+
+func setTextViewSize(view *tview.TextView, size func() (lines, width int, ok bool)) {
+	if view == nil {
+		return
+	}
+	textViewSizes.Store(view, size)
+}
+
+func knownTextViewSize(view *tview.TextView) (lines, width int, ok bool) {
+	size, found := textViewSizes.Load(view)
+	if !found {
+		return 0, 0, false
+	}
+	return size.(func() (int, int, bool))()
+}
+
 func textViewScrollMetrics(view *tview.TextView, width, height int) (vert, horiz scrollMetrics) {
 	if view == nil || width <= 0 || height <= 0 {
 		return scrollMetrics{}, scrollMetrics{}
 	}
 	row, col := view.GetScrollOffset()
-	total := view.GetWrappedLineCount()
-	if total < 1 {
-		total = view.GetOriginalLineCount()
+	total, contentWidth, known := knownTextViewSize(view)
+	if !known {
+		total = view.GetWrappedLineCount()
+		if total < 1 {
+			total = view.GetOriginalLineCount()
+		}
 	}
 	vert = scrollMetrics{offset: row, visible: height, total: total}
 	// Wrapped text fits the pane, so the horizontal scrollbar has nothing to
@@ -122,7 +147,10 @@ func textViewScrollMetrics(view *tview.TextView, width, height int) (vert, horiz
 	if textViewWraps(view) {
 		horiz = scrollMetrics{visible: width, total: width}
 	} else {
-		horiz = scrollMetrics{offset: col, visible: width, total: textViewContentWidth(view)}
+		if !known {
+			contentWidth = textViewContentWidth(view)
+		}
+		horiz = scrollMetrics{offset: col, visible: width, total: contentWidth}
 	}
 	return vert, horiz
 }
@@ -131,14 +159,31 @@ func textViewContentWidth(view *tview.TextView) int {
 	if view == nil {
 		return 0
 	}
+	if _, width, ok := knownTextViewSize(view); ok {
+		return width
+	}
+	text := view.GetText(false)
+	if cached, ok := textViewWidths.Load(view); ok {
+		if c := cached.(textViewWidth); c.text == text {
+			return c.width
+		}
+	}
 	width := 0
 	for _, line := range splitTextViewLines(view.GetText(true)) {
 		if n := tview.TaggedStringWidth(line); n > width {
 			width = n
 		}
 	}
+	textViewWidths.Store(view, textViewWidth{text: text, width: width})
 	return width
 }
+
+type textViewWidth struct {
+	text  string
+	width int
+}
+
+var textViewWidths sync.Map
 
 func splitTextViewLines(text string) []string {
 	if text == "" {

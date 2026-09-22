@@ -1198,7 +1198,7 @@ func (wl *WorkflowList) syncSearchTitles() {
 	if wl.eventDetailPanel != nil {
 		view, query := wl.focusedIOView()
 		count := 0
-		if view != nil {
+		if view != nil && query != "" {
 			count = countSearchMatches(view.GetText(true), query)
 		}
 		wl.eventDetailPanel.SetTitle(searchLabel(query, count))
