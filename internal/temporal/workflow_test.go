@@ -1,6 +1,7 @@
 package temporal
 
 import (
+	"reflect"
 	"testing"
 	"time"
 
@@ -154,6 +155,48 @@ func TestWorkflowFromExecutionInfoKeepsCustomSearchAttributes(t *testing.T) {
 	}
 	if _, ok := wf.SearchAttributes["WorkflowId"]; ok {
 		t.Fatal("built-in search attributes should not become columns")
+	}
+}
+
+func TestSearchAttributeValuesKeepTheirTypes(t *testing.T) {
+	dc := converter.GetDefaultDataConverter()
+	typed := func(value any, typ string) *commonpb.Payload {
+		payload, err := dc.ToPayload(value)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if typ != "" {
+			payload.Metadata["type"] = []byte(typ)
+		}
+		return payload
+	}
+	when := time.Date(2026, 3, 2, 15, 4, 5, 0, time.UTC)
+	info := &workflowpb.WorkflowExecutionInfo{
+		Execution: &commonpb.WorkflowExecution{WorkflowId: "wf", RunId: "run"},
+		SearchAttributes: &commonpb.SearchAttributes{
+			IndexedFields: map[string]*commonpb.Payload{
+				"CustomerId": typed("acme", "Keyword"),
+				"Amount":     typed(int64(42), "Int"),
+				"Score":      typed(1.5, "Double"),
+				"Tags":       typed([]string{"gold", "vip"}, "KeywordList"),
+				"Active":     typed(true, "Bool"),
+				"ClosedAt":   typed(when, "Datetime"),
+				"Untyped":    typed(int64(7), ""),
+			},
+		},
+	}
+	got := workflowFromExecutionInfo(info, "default").SearchAttributeValues
+	want := map[string]any{
+		"CustomerId": "acme",
+		"Amount":     42,
+		"Score":      1.5,
+		"Tags":       []any{"gold", "vip"},
+		"Active":     true,
+		"ClosedAt":   when,
+		"Untyped":    float64(7),
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("got %#v\nwant %#v", got, want)
 	}
 }
 

@@ -233,9 +233,12 @@ type Workflow struct {
 	ParentID         *string
 	Memo             map[string]string
 	SearchAttributes map[string]string
-	Input            string // JSON-formatted workflow input
-	Output           string // JSON-formatted workflow result (or failure message)
-	TaskFailure      bool   // Running execution has an unhandled workflow task failure
+	// SearchAttributeValues holds the same attributes decoded to their native
+	// types (int, float64, bool, time.Time, []any of strings, string).
+	SearchAttributeValues map[string]any
+	Input                 string // JSON-formatted workflow input
+	Output                string // JSON-formatted workflow result (or failure message)
+	TaskFailure           bool   // Running execution has an unhandled workflow task failure
 }
 
 // HistoryEvent represents a workflow history event.

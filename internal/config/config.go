@@ -157,6 +157,7 @@ type Config struct {
 	Autosave             *bool                       `yaml:"autosave,omitempty"`
 	Commands             map[string]CommandConfig    `yaml:"commands,omitempty"`
 	WorkflowColumns      []WorkflowColumnConfig      `yaml:"workflow_columns,omitempty"`
+	CustomColumns        []CustomColumnConfig        `yaml:"custom_columns,omitempty"`
 	ActivityColumns      []WorkflowColumnConfig      `yaml:"activity_columns,omitempty"`
 	WorkflowTimeFormat   string                      `yaml:"workflow_time_format,omitempty"`
 	ActivityTimeFormat   string                      `yaml:"activity_time_format,omitempty"`
@@ -1060,6 +1061,7 @@ const (
 	WorkflowColumnRunID      = "run_id"
 
 	searchAttributeColumnPrefix = "sa:"
+	customColumnPrefix          = "custom:"
 
 	ActivityColumnStatus   = "status"
 	ActivityColumnName     = "name"
@@ -1093,31 +1095,107 @@ func defaultWorkflowColumns() []WorkflowColumnConfig {
 	}
 }
 
-// SearchAttributeColumnID is the workflows-table id for a custom search attribute.
-func SearchAttributeColumnID(name string) string {
+// CustomColumnConfig is a workflows column whose value is computed by an
+// expr-lang expression over the workflow's metadata and search attributes.
+// Once workflow_columns is set, it only shows if listed there as custom:<id>.
+type CustomColumnConfig struct {
+	ID     string `yaml:"id"`
+	Header string `yaml:"header,omitempty"`
+	Expr   string `yaml:"expr"`
+}
+
+func prefixedColumnID(prefix, name string) string {
 	name = strings.TrimSpace(name)
 	if name == "" {
 		return ""
 	}
-	return searchAttributeColumnPrefix + name
+	return prefix + name
 }
 
-// SearchAttributeColumnName reports the attribute a workflows column displays.
-func SearchAttributeColumnName(id string) (string, bool) {
+func prefixedColumnName(prefix, id string) (string, bool) {
 	id = strings.TrimSpace(id)
-	if len(id) < len(searchAttributeColumnPrefix) || !strings.EqualFold(id[:len(searchAttributeColumnPrefix)], searchAttributeColumnPrefix) {
+	if len(id) < len(prefix) || !strings.EqualFold(id[:len(prefix)], prefix) {
 		return "", false
 	}
-	name := strings.TrimSpace(id[len(searchAttributeColumnPrefix):])
+	name := strings.TrimSpace(id[len(prefix):])
 	if name == "" {
 		return "", false
 	}
 	return name, true
 }
 
+// SearchAttributeColumnID is the workflows-table id for a custom search attribute.
+func SearchAttributeColumnID(name string) string {
+	return prefixedColumnID(searchAttributeColumnPrefix, name)
+}
+
+// SearchAttributeColumnName reports the attribute a workflows column displays.
+func SearchAttributeColumnName(id string) (string, bool) {
+	return prefixedColumnName(searchAttributeColumnPrefix, id)
+}
+
+// CustomColumnID is the workflows-table id for a custom column definition.
+func CustomColumnID(name string) string {
+	return prefixedColumnID(customColumnPrefix, name)
+}
+
+// CustomColumnName reports the custom column definition a workflows column displays.
+func CustomColumnName(id string) (string, bool) {
+	return prefixedColumnName(customColumnPrefix, id)
+}
+
+func dynamicColumnID(id string) (string, bool) {
+	if name, ok := SearchAttributeColumnName(id); ok {
+		return SearchAttributeColumnID(name), true
+	}
+	if name, ok := CustomColumnName(id); ok {
+		return CustomColumnID(name), true
+	}
+	return "", false
+}
+
+// CustomColumn returns the definition behind a custom:<id> column, with its
+// header defaulting to the id.
+func (c *Config) CustomColumn(id string) (CustomColumnConfig, bool) {
+	name, ok := CustomColumnName(id)
+	if !ok || c == nil {
+		return CustomColumnConfig{}, false
+	}
+	for _, col := range c.CustomColumns {
+		if strings.TrimSpace(col.ID) != name {
+			continue
+		}
+		col.ID = name
+		col.Header = strings.TrimSpace(col.Header)
+		if col.Header == "" {
+			col.Header = name
+		}
+		return col, true
+	}
+	return CustomColumnConfig{}, false
+}
+
+// CustomColumnIDs returns the workflows-table id of every custom column definition.
+func (c *Config) CustomColumnIDs() []string {
+	if c == nil {
+		return nil
+	}
+	seen := make(map[string]bool, len(c.CustomColumns))
+	var ids []string
+	for _, col := range c.CustomColumns {
+		id := CustomColumnID(col.ID)
+		if id == "" || seen[id] {
+			continue
+		}
+		seen[id] = true
+		ids = append(ids, id)
+	}
+	return ids
+}
+
 // DefaultWorkflowColumnWidth returns the built-in width for a column id.
 func DefaultWorkflowColumnWidth(id string) int {
-	if _, ok := SearchAttributeColumnName(id); ok {
+	if _, ok := dynamicColumnID(id); ok {
 		return 20
 	}
 	for _, col := range defaultWorkflowColumns() {
@@ -1175,8 +1253,7 @@ func resolveColumns(cols, defaults []WorkflowColumnConfig) []WorkflowColumnConfi
 	seen := make(map[string]bool, len(cols))
 	out := make([]WorkflowColumnConfig, 0, len(cols))
 	for _, col := range cols {
-		if name, ok := SearchAttributeColumnName(col.ID); ok {
-			id := SearchAttributeColumnID(name)
+		if id, ok := dynamicColumnID(col.ID); ok {
 			if seen[id] {
 				continue
 			}
@@ -1217,10 +1294,20 @@ func ResolveWorkflowColumns(cols []WorkflowColumnConfig) []WorkflowColumnConfig 
 	return resolveColumns(cols, defaultWorkflowColumns())
 }
 
+// DefaultWorkflowColumnLayout is the layout used while workflow_columns is
+// unset: the built-in columns followed by every custom column.
+func (c *Config) DefaultWorkflowColumnLayout() []WorkflowColumnConfig {
+	cols := defaultWorkflowColumns()
+	for _, id := range c.CustomColumnIDs() {
+		cols = append(cols, WorkflowColumnConfig{ID: id, Width: DefaultWorkflowColumnWidth(id)})
+	}
+	return cols
+}
+
 // WorkflowColumnLayout returns the resolved workflows table layout.
 func (c *Config) WorkflowColumnLayout() []WorkflowColumnConfig {
-	if c == nil {
-		return defaultWorkflowColumns()
+	if c == nil || len(c.WorkflowColumns) == 0 {
+		return c.DefaultWorkflowColumnLayout()
 	}
 	return ResolveWorkflowColumns(c.WorkflowColumns)
 }
@@ -1231,7 +1318,7 @@ func (c *Config) SetWorkflowColumns(cols []WorkflowColumnConfig) {
 		return
 	}
 	resolved := ResolveWorkflowColumns(cols)
-	if workflowColumnsEqual(resolved, defaultWorkflowColumns()) {
+	if workflowColumnsEqual(resolved, c.DefaultWorkflowColumnLayout()) {
 		c.WorkflowColumns = nil
 		return
 	}

@@ -50,6 +50,7 @@ func workflowFromExecutionInfo(info *workflowpb.WorkflowExecutionInfo, namespace
 		wf.Memo = memoFields(memo)
 	}
 	wf.SearchAttributes = searchAttributeFields(info.GetSearchAttributes())
+	wf.SearchAttributeValues = searchAttributeValues(info.GetSearchAttributes())
 	if wf.Status != "Running" {
 		wf.TaskFailure = false
 	}
@@ -77,6 +78,50 @@ func searchAttributeFields(attrs *commonpb.SearchAttributes) map[string]string {
 		return nil
 	}
 	return out
+}
+
+func searchAttributeValues(attrs *commonpb.SearchAttributes) map[string]any {
+	fields := attrs.GetIndexedFields()
+	if len(fields) == 0 {
+		return nil
+	}
+	out := make(map[string]any, len(fields))
+	for name, payload := range fields {
+		name = strings.TrimSpace(name)
+		if name == "" || isReservedSearchAttribute(name) {
+			continue
+		}
+		if value, ok := searchAttributeValue(payload); ok {
+			out[name] = value
+		}
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
+func searchAttributeValue(payload *commonpb.Payload) (any, bool) {
+	if payload == nil || len(payload.GetData()) == 0 {
+		return nil, false
+	}
+	var value any
+	if err := converter.GetDefaultDataConverter().FromPayload(payload, &value); err != nil || value == nil {
+		return nil, false
+	}
+	switch searchAttributeTypeFromMetadata(string(payload.GetMetadata()["type"])) {
+	case SearchAttributeInt:
+		if f, ok := value.(float64); ok {
+			return int(f), true
+		}
+	case SearchAttributeDatetime:
+		if text, ok := value.(string); ok {
+			if when, err := time.Parse(time.RFC3339Nano, text); err == nil {
+				return when, true
+			}
+		}
+	}
+	return value, true
 }
 
 func formatSearchAttributePayload(payload *commonpb.Payload) (string, bool) {

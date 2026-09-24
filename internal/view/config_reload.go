@@ -1,6 +1,7 @@
 package view
 
 import (
+	"slices"
 	"time"
 
 	"github.com/atterpac/jig/theme"
@@ -77,6 +78,7 @@ func (a *App) applyLoadedConfig(cfg *config.Config, force bool) {
 	var oldConn config.ConnectionConfig
 	var oldCols []config.WorkflowColumnConfig
 	var oldActivityCols []config.WorkflowColumnConfig
+	var oldCustomCols []config.CustomColumnConfig
 	oldWorkflowTime := ""
 	oldActivityTime := ""
 	oldPrimaryTab := ""
@@ -88,6 +90,7 @@ func (a *App) applyLoadedConfig(cfg *config.Config, force bool) {
 		oldTheme = old.Theme
 		oldCols = old.WorkflowColumnLayout()
 		oldActivityCols = old.ActivityColumnLayout()
+		oldCustomCols = old.CustomColumns
 		oldWorkflowTime = old.ResolvedWorkflowTimeFormat()
 		oldActivityTime = old.ResolvedActivityTimeFormat()
 		oldPageSize = old.WorkflowPageLimit()
@@ -108,7 +111,8 @@ func (a *App) applyLoadedConfig(cfg *config.Config, force bool) {
 	newConn, hasConn := cfg.GetProfile(newProfile)
 	needReconnect := hasConn && (newProfile != oldProfile || !config.ConnectionSettingsEqual(oldConn, newConn))
 	needTheme := cfg.Theme != "" && cfg.Theme != oldTheme
-	needColumns := !workflowColumnsEqual(cfg.WorkflowColumnLayout(), oldCols)
+	needColumns := !workflowColumnsEqual(cfg.WorkflowColumnLayout(), oldCols) ||
+		!slices.Equal(cfg.CustomColumns, oldCustomCols)
 	needActivityColumns := !workflowColumnsEqual(cfg.ActivityColumnLayout(), oldActivityCols)
 	needWorkflowTime := cfg.ResolvedWorkflowTimeFormat() != oldWorkflowTime
 	needActivityTime := cfg.ResolvedActivityTimeFormat() != oldActivityTime

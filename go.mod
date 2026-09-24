@@ -7,6 +7,7 @@ require (
 	github.com/Masterminds/semver/v3 v3.4.0
 	github.com/atterpac/jig v0.1.5
 	github.com/creativeprojects/go-selfupdate v1.5.2
+	github.com/expr-lang/expr v1.17.8
 	github.com/gdamore/tcell/v2 v2.13.4
 	github.com/google/uuid v1.6.0
 	github.com/rivo/tview v0.42.0

@@ -13,24 +13,27 @@ import (
 	"github.com/galaxy-io/tempo/internal/config"
 	"github.com/galaxy-io/tempo/internal/temporal"
 	"github.com/gdamore/tcell/v2"
+	"github.com/rivo/tview"
 )
 
 type workflowColumn struct {
 	id     string
 	header string
 	width  int
+	custom *customColumnProgram
 }
 
 func (wl *WorkflowList) columnLayout() []workflowColumn {
-	var raw []config.WorkflowColumnConfig
-	if cfg := wl.app.Config(); cfg != nil {
-		raw = cfg.WorkflowColumnLayout()
-	} else {
-		raw = config.DefaultWorkflowColumns()
-	}
-
+	cfg := wl.app.Config()
+	raw := cfg.WorkflowColumnLayout()
 	cols := make([]workflowColumn, 0, len(raw))
 	for _, col := range raw {
+		if def, ok := cfg.CustomColumn(col.ID); ok {
+			program := compileCustomColumn(def.Expr)
+			wl.reportCustomColumnError(def, program)
+			cols = append(cols, workflowColumn{id: col.ID, header: def.Header, width: col.Width, custom: program})
+			continue
+		}
 		header, ok := workflowColumnHeader(col.ID)
 		if !ok {
 			continue
@@ -48,6 +51,21 @@ func (wl *WorkflowList) columnLayout() []workflowColumn {
 		}
 	}
 	return cols
+}
+
+func (wl *WorkflowList) reportCustomColumnError(def config.CustomColumnConfig, program *customColumnProgram) {
+	if program.err == nil || !program.reported.CompareAndSwap(false, true) {
+		return
+	}
+	message, _, _ := strings.Cut(program.err.Error(), "\n")
+	wl.app.ToastError(fmt.Sprintf("Custom column %s: %s", def.ID, message))
+}
+
+func (wl *WorkflowList) columnHeader(id string) (string, bool) {
+	if def, ok := wl.app.Config().CustomColumn(id); ok {
+		return def.Header, true
+	}
+	return workflowColumnHeader(id)
 }
 
 func workflowColumnHeader(id string) (string, bool) {
@@ -81,14 +99,17 @@ func workflowColumnHeader(id string) (string, bool) {
 func (c workflowColumn) cell(now time.Time, w temporal.Workflow, prefix, timeFmt string) components.TableCell {
 	var text string
 	var status *theme.Status
-	if c.id == config.WorkflowColumnStatus {
+	switch {
+	case c.id == config.WorkflowColumnStatus:
 		text, status = workflowStatusText(w, c.width)
-	} else {
+	case c.custom != nil:
+		text = tview.Escape(fitWidth(c.custom.value(now, w, timeFmt), c.width))
+	default:
 		text, status = workflowColumnValue(c.id, now, w, timeFmt)
 		if c.id == config.WorkflowColumnWorkflowID && prefix != "" {
 			text = colorizeWorkflowTreePrefix(fitWidth(prefix+text, c.width), prefix)
 		} else {
-			text = fitWidth(text, c.width)
+			text = tview.Escape(fitWidth(text, c.width))
 		}
 	}
 	return components.TableCell{
@@ -453,7 +474,7 @@ func (wl *WorkflowList) showColumnEditor() {
 	wl.showTableColumnEditor(tableColumnEditor{
 		title:    fmt.Sprintf("%s Workflow Columns", theme.IconWorkflow),
 		success:  "Saved workflow columns",
-		header:   workflowColumnHeader,
+		header:   wl.columnHeader,
 		items:    wl.columnEditorItems,
 		defaults: wl.defaultWorkflowColumnEditorItems,
 		snapshot: wl.columnSnapshot,
@@ -744,16 +765,9 @@ func (wl *WorkflowList) restoreColumns(snapshot []config.WorkflowColumnConfig) {
 func (wl *WorkflowList) columnEditorItems() []columnEditorItem {
 	visible := make(map[string]config.WorkflowColumnConfig)
 	order := make([]string, 0)
-	if cfg := wl.app.Config(); cfg != nil {
-		for _, col := range cfg.WorkflowColumnLayout() {
-			visible[col.ID] = col
-			order = append(order, col.ID)
-		}
-	} else {
-		for _, col := range config.DefaultWorkflowColumns() {
-			visible[col.ID] = col
-			order = append(order, col.ID)
-		}
+	for _, col := range wl.app.Config().WorkflowColumnLayout() {
+		visible[col.ID] = col
+		order = append(order, col.ID)
 	}
 
 	items := make([]columnEditorItem, 0, len(config.KnownWorkflowColumnIDs()))
@@ -761,30 +775,23 @@ func (wl *WorkflowList) columnEditorItems() []columnEditorItem {
 		col := visible[id]
 		items = append(items, columnEditorItem{id: col.ID, width: col.Width})
 	}
-	for _, id := range config.KnownWorkflowColumnIDs() {
-		if _, ok := visible[id]; ok {
-			continue
-		}
-		items = append(items, columnEditorItem{
-			id:     id,
-			width:  config.DefaultWorkflowColumnWidth(id),
-			hidden: true,
-		})
-	}
-	items = append(items, wl.hiddenSearchAttributeColumns(visible)...)
-	return items
+	return append(items, wl.hiddenWorkflowColumns(visible, config.KnownWorkflowColumnIDs())...)
 }
 
-func (wl *WorkflowList) hiddenSearchAttributeColumns(visible map[string]config.WorkflowColumnConfig) []columnEditorItem {
-	var items []columnEditorItem
+func (wl *WorkflowList) hiddenWorkflowColumns(visible map[string]config.WorkflowColumnConfig, ids []string) []columnEditorItem {
+	ids = append(ids, wl.app.Config().CustomColumnIDs()...)
 	for _, name := range wl.customSearchAttributeNames() {
-		id := config.SearchAttributeColumnID(name)
+		ids = append(ids, config.SearchAttributeColumnID(name))
+	}
+	var items []columnEditorItem
+	for _, id := range ids {
 		if id == "" {
 			continue
 		}
 		if _, ok := visible[id]; ok {
 			continue
 		}
+		visible[id] = config.WorkflowColumnConfig{}
 		items = append(items, columnEditorItem{
 			id:     id,
 			width:  config.DefaultWorkflowColumnWidth(id),
@@ -837,17 +844,14 @@ func (wl *WorkflowList) customSearchAttributeNames() []string {
 }
 
 func (wl *WorkflowList) defaultWorkflowColumnEditorItems() []columnEditorItem {
-	items := defaultColumnEditorItems()
-	items = append(items, wl.hiddenSearchAttributeColumns(nil)...)
-	return items
-}
-
-func defaultColumnEditorItems() []columnEditorItem {
-	items := make([]columnEditorItem, 0, len(config.DefaultWorkflowColumns()))
-	for _, col := range config.DefaultWorkflowColumns() {
+	defaults := wl.app.Config().DefaultWorkflowColumnLayout()
+	visible := make(map[string]config.WorkflowColumnConfig, len(defaults))
+	items := make([]columnEditorItem, 0, len(defaults))
+	for _, col := range defaults {
+		visible[col.ID] = col
 		items = append(items, columnEditorItem{id: col.ID, width: col.Width})
 	}
-	return items
+	return append(items, wl.hiddenWorkflowColumns(visible, nil)...)
 }
 
 func (wl *WorkflowList) activityColumnSnapshot() []config.WorkflowColumnConfig {
