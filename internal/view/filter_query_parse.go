@@ -7,90 +7,29 @@ import (
 	"github.com/galaxy-io/tempo/internal/config"
 )
 
-// filterClausesFromQuery turns a visibility query into builder clauses, falling
-// back to a single raw clause when the query uses more than the form can show.
+// filterClausesFromQuery turns a visibility query into the builder's rows,
+// which are joined with AND. Each top-level AND operand becomes a row;
+// operands the form cannot show, OR groups included, stay as raw rows of their
+// original text, and a query that is an OR at the top is one raw row.
 func filterClausesFromQuery(query string) []config.FilterClause {
-	if clauses, ok := parseVisibilityQuery(query); ok {
-		return clauses
-	}
-	query = strings.TrimSpace(query)
-	if query == "" {
+	root := parseFilterTree(query)
+	switch {
+	case root == nil:
 		return nil
+	case root.isLeaf():
+		return []config.FilterClause{root.clause}
+	case root.op != filterGroupAnd:
+		return []config.FilterClause{rawFilterLeaf(strings.TrimSpace(query)).clause}
 	}
-	return []config.FilterClause{{Key: filterOpRaw, Op: filterOpRaw, Value: query}}
-}
-
-// parseVisibilityQuery splits a query into clauses the form can edit and
-// recompile without changing its meaning. Anything else (OR, grouping, IN,
-// BETWEEN, >=) reports false so the caller keeps the query verbatim.
-func parseVisibilityQuery(query string) ([]config.FilterClause, bool) {
-	parts, ok := splitQueryConjuncts(query)
-	if !ok {
-		return nil, false
-	}
-	clauses := make([]config.FilterClause, 0, len(parts))
-	for _, part := range parts {
-		clause, ok := parseQueryConjunct(part)
-		if !ok {
-			return nil, false
-		}
-		clauses = append(clauses, clause)
-	}
-	if len(clauses) == 0 {
-		return nil, false
-	}
-	return clauses, true
-}
-
-func splitQueryConjuncts(query string) ([]string, bool) {
-	query = strings.TrimSpace(query)
-	if query == "" || strings.ContainsAny(query, "()") {
-		return nil, false
-	}
-	runes := []rune(query)
-	var parts []string
-	var current strings.Builder
-	var quote rune
-	for i := 0; i < len(runes); i++ {
-		r := runes[i]
-		if quote != 0 {
-			current.WriteRune(r)
-			if r == quote {
-				quote = 0
-			}
+	clauses := make([]config.FilterClause, 0, len(root.children))
+	for _, child := range root.children {
+		if child.isLeaf() {
+			clauses = append(clauses, child.clause)
 			continue
 		}
-		if r == '\'' || r == '"' {
-			quote = r
-			current.WriteRune(r)
-			continue
-		}
-		word, width, ok := queryKeywordAt(runes, i)
-		if ok {
-			if word != "and" {
-				return nil, false
-			}
-			parts = append(parts, current.String())
-			current.Reset()
-			i += width - 1
-			continue
-		}
-		current.WriteRune(r)
+		clauses = append(clauses, rawFilterLeaf("("+child.source+")").clause)
 	}
-	if quote != 0 {
-		return nil, false
-	}
-	parts = append(parts, current.String())
-
-	out := make([]string, 0, len(parts))
-	for _, part := range parts {
-		part = strings.TrimSpace(part)
-		if part == "" {
-			return nil, false
-		}
-		out = append(out, part)
-	}
-	return out, true
+	return clauses
 }
 
 // queryKeywordAt reports a boolean connective starting at i, so that an

@@ -12,6 +12,11 @@ import (
 	"github.com/rivo/tview"
 )
 
+const (
+	filterAndGlyph = "∧"
+	filterOrGlyph  = "∨"
+)
+
 // copyFilterName suggests a free name for a copy of base, counting up until
 // it finds one no filter has taken.
 func copyFilterName(cfg *config.Config, base string) string {
@@ -21,6 +26,80 @@ func copyFilterName(cfg *config.Config, base string) string {
 			return name
 		}
 		name = fmt.Sprintf("%s (copy %d)", base, i)
+	}
+}
+
+// filterTreeRow is one line of the Filters dialog: a saved filter, or a
+// clause or group inside one. path locates node from the filter's root.
+type filterTreeRow struct {
+	filter int
+	node   *filterNode
+	path   []int
+	text   string
+}
+
+func (r filterTreeRow) isFilter() bool {
+	return r.node == nil
+}
+
+func filterTreeRows(wl *WorkflowList, filters []config.SavedFilter) []filterTreeRow {
+	var rows []filterTreeRow
+	for i, f := range filters {
+		rows = append(rows, filterTreeRow{filter: i, text: "[::b]" + tview.Escape(f.Name) + "[::-]"})
+		root := parseFilterTree(compiledFilterQueryFor(wl, f))
+		if root == nil {
+			continue
+		}
+		if root.isLeaf() {
+			rows = append(rows, filterTreeNodeRow(i, root, []int{}, filterGroupAnd, []bool{true}))
+			continue
+		}
+		rows = appendFilterTreeChildren(rows, i, root, nil, nil)
+	}
+	return rows
+}
+
+func appendFilterTreeChildren(rows []filterTreeRow, filter int, group *filterNode, path []int, lastAtLevel []bool) []filterTreeRow {
+	for i, child := range group.children {
+		childPath := append(append([]int(nil), path...), i)
+		childLast := append(append([]bool(nil), lastAtLevel...), i == len(group.children)-1)
+		rows = append(rows, filterTreeNodeRow(filter, child, childPath, group.op, childLast))
+		if !child.isLeaf() {
+			rows = appendFilterTreeChildren(rows, filter, child, childPath, childLast)
+		}
+	}
+	return rows
+}
+
+// filterTreeNodeRow renders a node with the glyph of the operator that joins
+// it to its siblings, so every row shows whether it is ANDed or ORed in.
+func filterTreeNodeRow(filter int, node *filterNode, path []int, joinedBy string, lastAtLevel []bool) filterTreeRow {
+	prefix := "[" + theme.TagFgDim() + "]" + workflowTreePrefix(lastAtLevel) + "[-]"
+	return filterTreeRow{
+		filter: filter,
+		node:   node,
+		path:   path,
+		text:   prefix + filterJoinGlyph(joinedBy) + " " + filterNodeLabel(node),
+	}
+}
+
+func filterJoinGlyph(op string) string {
+	if op == filterGroupOr {
+		return "[" + theme.TagWarning() + "]" + filterOrGlyph + "[-]"
+	}
+	return "[" + theme.TagAccent() + "]" + filterAndGlyph + "[-]"
+}
+
+func filterNodeLabel(node *filterNode) string {
+	switch {
+	case node.op == filterGroupAnd:
+		return "[" + theme.TagFgDim() + "]all of[-]"
+	case node.op == filterGroupOr:
+		return "[" + theme.TagFgDim() + "]any of[-]"
+	case isRawFilterClause(node.clause):
+		return tview.Escape(strings.TrimSpace(node.clause.Value))
+	default:
+		return tview.Escape(filterClauseSummary(node.clause))
 	}
 }
 
@@ -37,17 +116,27 @@ func (wl *WorkflowList) showFilterManager() {
 	table := components.NewTable()
 	table.SetBorder(false)
 
+	var rows []filterTreeRow
+
+	filterRow := func(idx int) int {
+		for i, row := range rows {
+			if row.filter == idx && row.isFilter() {
+				return i
+			}
+		}
+		return -1
+	}
+
 	refresh := func() {
 		row := table.SelectedRow()
 		table.ClearRows()
-		table.SetHeaders("NAME", "FILTER")
-		filters := cfg.GetSavedFilters()
-		if len(filters) == 0 {
-			table.AddRow("(none)", "Press n to create a filter")
-		} else {
-			for _, f := range filters {
-				table.AddRow(tview.Escape(f.Name), tview.Escape(savedFilterSummary(f)))
-			}
+		table.SetHeaders("FILTER")
+		rows = filterTreeRows(wl, cfg.GetSavedFilters())
+		if len(rows) == 0 {
+			table.AddRow("Press n to create a filter")
+		}
+		for _, r := range rows {
+			table.AddRow(r.text)
 		}
 		if row < 0 {
 			row = 0
@@ -60,13 +149,26 @@ func (wl *WorkflowList) showFilterManager() {
 		}
 	}
 
-	selectedFilter := func() (int, bool) {
-		filters := cfg.GetSavedFilters()
+	selectFilter := func(idx int) {
+		if row := filterRow(idx); row >= 0 {
+			table.SelectRow(row)
+		}
+	}
+
+	selectedRow := func() (filterTreeRow, bool) {
 		row := table.SelectedRow()
-		if row < 0 || row >= len(filters) {
+		if row < 0 || row >= len(rows) {
+			return filterTreeRow{}, false
+		}
+		return rows[row], true
+	}
+
+	selectedFilter := func() (int, bool) {
+		row, ok := selectedRow()
+		if !ok {
 			return -1, false
 		}
-		return row, true
+		return row.filter, true
 	}
 
 	applySelected := func() {
@@ -91,12 +193,7 @@ func (wl *WorkflowList) showFilterManager() {
 		})
 	}
 
-	editFilter := func() {
-		idx, ok := selectedFilter()
-		if !ok {
-			createFilter()
-			return
-		}
+	editFilter := func(idx int) {
 		f := cfg.GetSavedFilters()[idx]
 		wl.openFilterBuilder(&filterBuilderState{
 			wl:             wl,
@@ -104,6 +201,44 @@ func (wl *WorkflowList) showFilterManager() {
 			name:           f.Name,
 			persistOnApply: true,
 			onSaved:        refresh,
+		})
+	}
+
+	// rewriteFilter swaps the node at path for with, or drops it when with is
+	// nil, and saves the recompiled query in place.
+	rewriteFilter := func(idx int, path []int, with *filterNode) {
+		f := cfg.GetSavedFilters()[idx]
+		root := parseFilterTree(compiledFilterQueryFor(wl, f)).replaced(path, with)
+		if root == nil {
+			wl.app.ToastWarning("A filter needs at least one clause")
+			return
+		}
+		f.Query = root.query(wl)
+		f.Clauses = nil
+		wl.persistSavedFilter(f)
+		if wl.activeFilterName == f.Name {
+			wl.applySavedFilter(f)
+		}
+		row := table.SelectedRow()
+		refresh()
+		if row >= len(rows) {
+			row = len(rows) - 1
+		}
+		table.SelectRow(row)
+	}
+
+	editSelected := func() {
+		row, ok := selectedRow()
+		if !ok {
+			createFilter()
+			return
+		}
+		if row.isFilter() || !row.node.isLeaf() {
+			editFilter(row.filter)
+			return
+		}
+		wl.showClauseEditor(row.node.clause, func(clauses []config.FilterClause) {
+			rewriteFilter(row.filter, row.path, parseFilterTree(compileFilterClausesFor(wl, clauses)))
 		})
 	}
 
@@ -123,7 +258,7 @@ func (wl *WorkflowList) showFilterManager() {
 				wl.activeFilterName = name
 			}
 			refresh()
-			table.SelectRow(idx)
+			selectFilter(idx)
 			if name != f.Name {
 				wl.app.ToastSuccess("Renamed filter " + name)
 			}
@@ -148,18 +283,13 @@ func (wl *WorkflowList) showFilterManager() {
 			cfg.MoveSavedFilter(len(cfg.GetSavedFilters())-1, idx+1)
 			_ = wl.app.SaveConfig()
 			refresh()
-			table.SelectRow(idx + 1)
+			selectFilter(idx + 1)
 			wl.app.ToastSuccess("Cloned filter " + name)
 		})
 	}
 
-	deleteFilter := func() {
-		idx, ok := selectedFilter()
-		if !ok {
-			return
-		}
-		f := cfg.GetSavedFilters()[idx]
-		name := f.Name
+	deleteFilter := func(idx int) {
+		name := cfg.GetSavedFilters()[idx].Name
 		if err := cfg.DeleteFilter(name); err != nil {
 			wl.app.ToastWarning(err.Error())
 			return
@@ -169,6 +299,21 @@ func (wl *WorkflowList) showFilterManager() {
 			wl.applyAllWorkflowsFilter()
 		}
 		refresh()
+		if n := len(cfg.GetSavedFilters()); n > 0 {
+			selectFilter(min(idx, n-1))
+		}
+	}
+
+	deleteSelected := func() {
+		row, ok := selectedRow()
+		if !ok {
+			return
+		}
+		if row.isFilter() {
+			deleteFilter(row.filter)
+			return
+		}
+		rewriteFilter(row.filter, row.path, nil)
 	}
 
 	move := func(delta int) {
@@ -180,16 +325,8 @@ func (wl *WorkflowList) showFilterManager() {
 		cfg.MoveSavedFilter(idx, next)
 		_ = wl.app.SaveConfig()
 		refresh()
-		filters := cfg.GetSavedFilters()
-		if next < 0 {
-			next = 0
-		}
-		if next >= len(filters) {
-			next = len(filters) - 1
-		}
-		if next >= 0 {
-			table.SelectRow(next)
-		}
+		next = max(0, min(next, len(cfg.GetSavedFilters())-1))
+		selectFilter(next)
 	}
 
 	bindings := input.NewKeyBindings().
@@ -198,7 +335,7 @@ func (wl *WorkflowList) showFilterManager() {
 			return true
 		}).
 		OnRune('e', func(e *tcell.EventKey) bool {
-			editFilter()
+			editSelected()
 			return true
 		}).
 		OnRune('r', func(e *tcell.EventKey) bool {
@@ -210,7 +347,7 @@ func (wl *WorkflowList) showFilterManager() {
 			return true
 		}).
 		OnRune('d', func(e *tcell.EventKey) bool {
-			deleteFilter()
+			deleteSelected()
 			return true
 		}).
 		OnRune('J', func(e *tcell.EventKey) bool {
@@ -225,7 +362,7 @@ func (wl *WorkflowList) showFilterManager() {
 	refresh()
 	for i, f := range cfg.GetSavedFilters() {
 		if wl.activeFilterName != "" && f.Name == wl.activeFilterName {
-			table.SelectRow(i)
+			selectFilter(i)
 			break
 		}
 	}

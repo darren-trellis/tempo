@@ -334,6 +334,13 @@ func compileFilterClausesFor(wl *WorkflowList, clauses []config.FilterClause) st
 		}
 		parts = append(parts, part)
 	}
+	if len(parts) > 1 {
+		for i, part := range parts {
+			if root := parseFilterTree(part); root != nil && root.op == filterGroupOr && root.source == part {
+				parts[i] = "(" + part + ")"
+			}
+		}
+	}
 	return strings.Join(parts, " AND ")
 }
 
@@ -416,20 +423,6 @@ func filterClauseSummary(clause config.FilterClause) string {
 		value = label
 	}
 	return fmt.Sprintf("%s %s %s", clause.Key, filterOpLabel(clause.Op), value)
-}
-
-func savedFilterSummary(f config.SavedFilter) string {
-	clauses := savedFilterClauses(f)
-	if len(clauses) == 0 {
-		return strings.TrimSpace(f.Query)
-	}
-	parts := make([]string, 0, len(clauses))
-	for _, clause := range clauses {
-		if s := filterClauseSummary(clause); s != "" {
-			parts = append(parts, s)
-		}
-	}
-	return strings.Join(parts, " AND ")
 }
 
 func parseFilterDateTime(value string) (string, error) {

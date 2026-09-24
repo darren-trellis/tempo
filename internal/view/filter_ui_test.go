@@ -618,8 +618,8 @@ func TestFilterManagerOpensOnTheActiveFilter(t *testing.T) {
 	if !ok {
 		t.Fatalf("current=%T", a.app.Pages().Current())
 	}
-	if got := overlayModalTable(t, om).SelectedRow(); got != 2 {
-		t.Fatalf("the active filter should be selected, got row %d", got)
+	if got := overlayModalTable(t, om).SelectedRow(); got != 4 {
+		t.Fatalf("the active filter's row, below two filters of one clause each, should be selected, got row %d", got)
 	}
 	wl.closeModal()
 
@@ -1054,7 +1054,7 @@ func TestRenameFilterWithNothingSelectedDoesNothing(t *testing.T) {
 
 func TestFilterManagerShowsFullQueryAndScrolls(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
-	longQuery := "WorkflowType = 'VeryLongWorkflowTypeNameThatShouldNotBeTruncated' AND ExecutionStatus = 'Running' AND WorkflowId STARTS_WITH 'order-'"
+	longQuery := "WorkflowType = 'VeryLongWorkflowTypeNameThatShouldNotBeTruncatedEvenWhenItIsWiderThanTheDialog' AND ExecutionStatus = 'Running' AND WorkflowId STARTS_WITH 'order-'"
 	cfg := config.DefaultConfig()
 	cfg.SavedFilters = nil
 	for i := 0; i < 40; i++ {
@@ -1076,12 +1076,12 @@ func TestFilterManagerShowsFullQueryAndScrolls(t *testing.T) {
 	table := overlayModalTable(t, om)
 	scroll := overlayModalScroll(t, om)
 
-	row := table.GetRowData(0)
-	if len(row) < 2 || !strings.Contains(row[1], "VeryLongWorkflowTypeNameThatShouldNotBeTruncated") {
-		t.Fatalf("FILTER column should keep the full query, got %q", row)
+	row := table.GetRowData(1)
+	if len(row) < 1 || !strings.Contains(row[0], "VeryLongWorkflowTypeNameThatShouldNotBeTruncatedEvenWhenItIsWiderThanTheDialog") {
+		t.Fatalf("clause rows should keep the full clause, got %q", row)
 	}
-	if strings.Contains(row[1], "...") {
-		t.Fatalf("FILTER column should not truncate, got %q", row[1])
+	if strings.Contains(row[0], "...") {
+		t.Fatalf("clause rows should not truncate, got %q", row[0])
 	}
 
 	om.SetRect(0, 0, 80, 24)

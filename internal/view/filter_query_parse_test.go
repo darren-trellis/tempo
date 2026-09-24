@@ -7,6 +7,22 @@ import (
 	"github.com/galaxy-io/tempo/internal/config"
 )
 
+// parseVisibilityQuery reports the query as form clauses when it is nothing
+// but an AND of comparisons the form can edit and recompile without changing
+// their meaning.
+func parseVisibilityQuery(query string) ([]config.FilterClause, bool) {
+	clauses := filterClausesFromQuery(query)
+	if len(clauses) == 0 {
+		return nil, false
+	}
+	for _, clause := range clauses {
+		if isRawFilterClause(clause) {
+			return nil, false
+		}
+	}
+	return clauses, true
+}
+
 func TestParseVisibilityQueryProducesClauses(t *testing.T) {
 	tests := []struct {
 		name  string
@@ -45,6 +61,14 @@ func TestParseVisibilityQueryProducesClauses(t *testing.T) {
 			want:  []config.FilterClause{{Key: "CustomerId", Op: filterOpEq, Value: "research and development"}},
 		},
 		{
+			name:  "redundant parentheses",
+			query: `(WorkflowType = 'A' AND CustomerId = 'x')`,
+			want: []config.FilterClause{
+				{Key: "WorkflowType", Op: filterOpEq, Value: "A"},
+				{Key: "CustomerId", Op: filterOpEq, Value: "x"},
+			},
+		},
+		{
 			name:  "identifier prefixed with and",
 			query: `AndroidId = 'pixel'`,
 			want:  []config.FilterClause{{Key: "AndroidId", Op: filterOpEq, Value: "pixel"}},
@@ -72,7 +96,7 @@ func TestParseVisibilityQueryProducesClauses(t *testing.T) {
 func TestParseVisibilityQueryKeepsComplexQueriesRaw(t *testing.T) {
 	for _, query := range []string{
 		`WorkflowType = 'A' OR WorkflowType = 'B'`,
-		`(WorkflowType = 'A' AND CustomerId = 'x')`,
+		`(WorkflowType = 'A' OR CustomerId = 'x')`,
 		`ExecutionStatus IN ('Running', 'Failed')`,
 		`StartTime BETWEEN '2026-01-01' AND '2026-02-01'`,
 		`CloseTime >= '2026-01-01T00:00:00Z'`,
