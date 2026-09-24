@@ -1,12 +1,15 @@
 package temporal
 
 import (
+	"context"
+	"fmt"
 	"strings"
 	"time"
 	"unicode"
 
 	"github.com/galaxy-io/tempo/internal/config"
 	workerpb "go.temporal.io/api/worker/v1"
+	"go.temporal.io/api/workflowservice/v1"
 )
 
 func WorkerFromHeartbeat(hb *workerpb.WorkerHeartbeat) (Worker, bool) {
@@ -268,4 +271,33 @@ func isAllDigits(s string) bool {
 		}
 	}
 	return true
+}
+
+func (c *Client) ListWorkers(ctx context.Context, namespace string) ([]Worker, error) {
+	cl, err := c.conn()
+	if err != nil {
+		return nil, err
+	}
+	var workers []Worker
+	var token []byte
+	for {
+		resp, err := cl.WorkflowService().ListWorkers(ctx, &workflowservice.ListWorkersRequest{
+			Namespace:     namespace,
+			PageSize:      100,
+			NextPageToken: token,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("failed to list workers: %w", err)
+		}
+		for _, info := range resp.GetWorkersInfo() {
+			if w, ok := WorkerFromHeartbeat(info.GetWorkerHeartbeat()); ok {
+				workers = append(workers, w)
+			}
+		}
+		token = resp.GetNextPageToken()
+		if len(token) == 0 {
+			break
+		}
+	}
+	return workers, nil
 }
