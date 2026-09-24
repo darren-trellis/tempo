@@ -39,7 +39,7 @@ func inferUIURL(address string) string {
 	}
 }
 
-// WorkflowUIURL builds the Temporal Web UI history page for a workflow run.
+// WorkflowUIURL builds the Temporal Web UI timeline page for a workflow run.
 func WorkflowUIURL(base, namespace, workflowID, runID string) string {
 	base = strings.TrimRight(strings.TrimSpace(base), "/")
 	if base == "" || namespace == "" || workflowID == "" {
@@ -48,7 +48,7 @@ func WorkflowUIURL(base, namespace, workflowID, runID string) string {
 	path := fmt.Sprintf("%s/namespaces/%s/workflows/%s",
 		base, url.PathEscape(namespace), url.PathEscape(workflowID))
 	if runID != "" {
-		path += "/" + url.PathEscape(runID) + "/history"
+		path += "/" + url.PathEscape(runID) + "/timeline"
 	}
 	return path
 }

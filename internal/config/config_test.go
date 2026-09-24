@@ -80,7 +80,7 @@ func TestResolveUIURL(t *testing.T) {
 
 func TestWorkflowUIURL(t *testing.T) {
 	got := WorkflowUIURL("https://cloud.temporal.io/", "orders.abc12", "order/123", "run-1")
-	want := "https://cloud.temporal.io/namespaces/orders.abc12/workflows/order%2F123/run-1/history"
+	want := "https://cloud.temporal.io/namespaces/orders.abc12/workflows/order%2F123/run-1/timeline"
 	if got != want {
 		t.Fatalf("WorkflowUIURL()=%q want %q", got, want)
 	}

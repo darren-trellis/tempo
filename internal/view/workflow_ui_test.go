@@ -21,7 +21,7 @@ func TestWorkflowUILinkInfersLocalhost(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := "http://localhost:8080/namespaces/orders/workflows/order%2F123/run-1/history"
+	want := "http://localhost:8080/namespaces/orders/workflows/order%2F123/run-1/timeline"
 	if got != want {
 		t.Fatalf("link=%q want %q", got, want)
 	}
@@ -45,7 +45,7 @@ func TestWorkflowUILinkUsesProfileURL(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := "https://temporal.staging.example.com/namespaces/staging/workflows/wf/run/history"
+	want := "https://temporal.staging.example.com/namespaces/staging/workflows/wf/run/timeline"
 	if got != want {
 		t.Fatalf("link=%q want %q", got, want)
 	}
