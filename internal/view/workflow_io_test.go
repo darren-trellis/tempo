@@ -127,6 +127,18 @@ func TestMockPreviewEventsCarryIO(t *testing.T) {
 	}
 }
 
+func TestFailedWorkflowOutputIsTheWholeFailure(t *testing.T) {
+	whole := `{"failure":{"message":"Activity task failed","cause":{"message":"Missing required fields"}}}`
+	events := []temporal.EnhancedHistoryEvent{{
+		Type:        "WorkflowExecutionFailed",
+		Failure:     "Activity task failed",
+		FailureJSON: whole,
+	}}
+	if _, output := workflowIOFromEvents(events); output != whole {
+		t.Fatalf("output = %q, want the whole failure", output)
+	}
+}
+
 func TestWorkflowIOModalSearchUsesTheStatusBar(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	a := NewAppWithProvider(nil, "default", config.DefaultConfig(), "local")

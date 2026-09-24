@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -24,6 +25,8 @@ import (
 	"go.temporal.io/api/taskqueue/v1"
 	"go.temporal.io/api/workflowservice/v1"
 	"go.temporal.io/sdk/client"
+	"google.golang.org/protobuf/encoding/protojson"
+	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/durationpb"
 )
 
@@ -721,7 +724,10 @@ func extractEnhancedEvent(event *historypb.HistoryEvent) EnhancedHistoryEvent {
 	case enums.EVENT_TYPE_WORKFLOW_EXECUTION_FAILED:
 		attrs := event.GetWorkflowExecutionFailedEventAttributes()
 		if attrs != nil && attrs.GetFailure() != nil {
+			attrs = proto.Clone(attrs).(*historypb.WorkflowExecutionFailedEventAttributes)
+			decodeEncodedFailures(attrs.GetFailure())
 			populateFailureDetails(&he, attrs.GetFailure())
+			he.FailureJSON = eventAttributesJSON(attrs)
 		}
 
 	case enums.EVENT_TYPE_WORKFLOW_EXECUTION_CANCELED:
@@ -735,9 +741,15 @@ func extractEnhancedEvent(event *historypb.HistoryEvent) EnhancedHistoryEvent {
 		if attrs != nil && attrs.GetReason() != "" {
 			he.Failure = attrs.GetReason()
 		}
+		if attrs != nil {
+			he.FailureJSON = eventAttributesJSON(attrs)
+		}
 
 	case enums.EVENT_TYPE_WORKFLOW_EXECUTION_TIMED_OUT:
 		he.Failure = "Workflow timed out"
+		if attrs := event.GetWorkflowExecutionTimedOutEventAttributes(); attrs != nil {
+			he.FailureJSON = eventAttributesJSON(attrs)
+		}
 
 	case enums.EVENT_TYPE_WORKFLOW_TASK_SCHEDULED:
 		attrs := event.GetWorkflowTaskScheduledEventAttributes()
@@ -974,6 +986,102 @@ func populateFailureDetails(event *EnhancedHistoryEvent, failure *failurepb.Fail
 	event.FailureSource = failure.GetSource()
 	event.FailureStackTrace = failure.GetStackTrace()
 	event.FailureCause = formatFailureCause(failure.GetCause())
+}
+
+// decodeEncodedFailures unpacks failures whose SDK moved the message and stack
+// trace into encoded attributes, leaving "Encoded failure" as the message.
+func decodeEncodedFailures(failure *failurepb.Failure) {
+	for f := failure; f != nil; f = f.GetCause() {
+		encoded := f.GetEncodedAttributes()
+		if encoded == nil || len(encoded.GetData()) == 0 {
+			continue
+		}
+		var attrs struct {
+			Message    string `json:"message"`
+			StackTrace string `json:"stack_trace"`
+		}
+		if err := json.Unmarshal(encoded.GetData(), &attrs); err != nil {
+			continue
+		}
+		if attrs.Message != "" {
+			f.Message = attrs.Message
+		}
+		if attrs.StackTrace != "" {
+			f.StackTrace = attrs.StackTrace
+		}
+		f.EncodedAttributes = nil
+	}
+}
+
+// eventAttributesJSON renders event attributes the way Temporal UI does, with
+// payloads shown as their decoded values rather than base64.
+func eventAttributesJSON(msg proto.Message) string {
+	raw, err := protojson.Marshal(msg)
+	if err != nil {
+		return ""
+	}
+	var value any
+	if err := json.Unmarshal(raw, &value); err != nil {
+		return string(raw)
+	}
+	out, err := json.Marshal(decodePayloadValues(value))
+	if err != nil {
+		return string(raw)
+	}
+	return string(out)
+}
+
+func decodePayloadValues(value any) any {
+	switch v := value.(type) {
+	case map[string]any:
+		if decoded, ok := payloadJSONValue(v); ok {
+			return decoded
+		}
+		for key, item := range v {
+			v[key] = decodePayloadValues(item)
+		}
+		return v
+	case []any:
+		for i, item := range v {
+			v[i] = decodePayloadValues(item)
+		}
+		return v
+	default:
+		return value
+	}
+}
+
+// payloadJSONValue reads a payload that protojson rendered as base64 metadata
+// and data back into the value it carries.
+func payloadJSONValue(m map[string]any) (any, bool) {
+	metadata, ok := m["metadata"].(map[string]any)
+	if !ok || len(m) > 2 {
+		return nil, false
+	}
+	encodingB64, ok := metadata["encoding"].(string)
+	if !ok {
+		return nil, false
+	}
+	encoding, err := base64.StdEncoding.DecodeString(encodingB64)
+	if err != nil {
+		return nil, false
+	}
+	dataB64, _ := m["data"].(string)
+	data, err := base64.StdEncoding.DecodeString(dataB64)
+	if err != nil {
+		return nil, false
+	}
+	switch string(encoding) {
+	case "binary/null":
+		return nil, true
+	case "json/plain":
+		var decoded any
+		if err := json.Unmarshal(data, &decoded); err != nil {
+			return nil, false
+		}
+		return decoded, true
+	}
+	return nil, false
 }
 
 func formatFailureCause(failure *failurepb.Failure) string {

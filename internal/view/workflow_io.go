@@ -26,7 +26,9 @@ func workflowIOFromEvents(events []temporal.EnhancedHistoryEvent) (input, output
 		case strings.Contains(event.Type, "WorkflowExecutionFailed"),
 			strings.Contains(event.Type, "WorkflowExecutionTerminated"),
 			strings.Contains(event.Type, "WorkflowExecutionTimedOut"):
-			if event.Failure != "" {
+			if event.FailureJSON != "" {
+				output = event.FailureJSON
+			} else if event.Failure != "" {
 				output = event.Failure
 			}
 		case strings.Contains(event.Type, "WorkflowExecutionCanceled"):

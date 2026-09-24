@@ -280,8 +280,11 @@ type EnhancedHistoryEvent struct {
 	FailureSource     string
 	FailureStackTrace string
 	FailureCause      string
-	Result            string
-	Input             string // Workflow/Activity input
+	// FailureJSON is the terminal workflow event's attributes as JSON, the
+	// whole failure the way Temporal UI shows it.
+	FailureJSON string
+	Result      string
+	Input       string // Workflow/Activity input
 }
 
 // TaskQueueInfo represents task queue status information.
