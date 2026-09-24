@@ -9,6 +9,7 @@ import (
 	"github.com/atterpac/jig/theme"
 	"github.com/galaxy-io/tempo/internal/config"
 	"github.com/gdamore/tcell/v2"
+	"github.com/rivo/tview"
 )
 
 type filterBuilderState struct {
@@ -32,10 +33,10 @@ func (wl *WorkflowList) openFilterBuilder(state *filterBuilderState) {
 		table.SetHeaders("KEY", "OPERATOR", "VALUE")
 		for _, clause := range state.clauses {
 			if isRawFilterClause(clause) {
-				table.AddRow("(raw)", "", truncate(clause.Value, 52))
+				table.AddRow("(raw)", "", tview.Escape(truncate(clause.Value, 52)))
 				continue
 			}
-			table.AddRow(clause.Key, filterOpLabel(clause.Op), filterClauseValueLabel(clause))
+			table.AddRow(tview.Escape(clause.Key), filterOpLabel(clause.Op), tview.Escape(filterClauseValueLabel(clause)))
 		}
 		if row < 0 {
 			row = 0

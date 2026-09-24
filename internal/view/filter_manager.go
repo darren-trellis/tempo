@@ -9,6 +9,7 @@ import (
 	"github.com/atterpac/jig/theme"
 	"github.com/galaxy-io/tempo/internal/config"
 	"github.com/gdamore/tcell/v2"
+	"github.com/rivo/tview"
 )
 
 // copyFilterName suggests a free name for a copy of base, counting up until
@@ -45,7 +46,7 @@ func (wl *WorkflowList) showFilterManager() {
 			table.AddRow("(none)", "Press n to create a filter")
 		} else {
 			for _, f := range filters {
-				table.AddRow(f.Name, savedFilterSummary(f))
+				table.AddRow(tview.Escape(f.Name), tview.Escape(savedFilterSummary(f)))
 			}
 		}
 		if row < 0 {

@@ -631,6 +631,49 @@ func TestFilterManagerOpensOnTheActiveFilter(t *testing.T) {
 	}
 }
 
+func TestFilterManagerShowsBracketsInNamesAndQueries(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	a := NewAppWithProvider(nil, "default", config.DefaultConfig(), "local")
+	wl := NewWorkflowList(a, "default")
+	wl.keepDataOnStart = true
+	a.app.Pages().Push(wl)
+	a.Config().SaveFilter(config.SavedFilter{Name: "Prod [EU]", Query: "WorkflowId = '[red]x'"})
+
+	wl.showFilterManager()
+	for _, want := range []string{"Prod [EU]", "[red]x"} {
+		if got := drawCurrentModal(t, a); !strings.Contains(got, want) {
+			t.Fatalf("filters modal should show %q, got:\n%s", want, got)
+		}
+	}
+	wl.closeModal()
+
+	wl.openFilterBuilder(&filterBuilderState{wl: wl, clauses: savedFilterClauses(a.Config().GetSavedFilters()[0])})
+	if got := drawCurrentModal(t, a); !strings.Contains(got, "[red]x") {
+		t.Fatalf("filter builder should show the bracketed value, got:\n%s", got)
+	}
+}
+
+func drawCurrentModal(t *testing.T, a *App) string {
+	t.Helper()
+	om, ok := a.app.Pages().Current().(*overlayModal)
+	if !ok {
+		t.Fatalf("current=%T", a.app.Pages().Current())
+	}
+	om.SetRect(0, 0, 120, 30)
+	screen := tcell.NewSimulationScreen("UTF-8")
+	if err := screen.Init(); err != nil {
+		t.Fatal(err)
+	}
+	screen.SetSize(120, 30)
+	om.Draw(screen)
+	var body strings.Builder
+	for y := 0; y < 30; y++ {
+		body.WriteString(rowText(screen, y, 120))
+		body.WriteByte('\n')
+	}
+	return body.String()
+}
+
 func TestFilterManagerHintIsNewFilter(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	a := NewAppWithProvider(nil, "default", config.DefaultConfig(), "local")
