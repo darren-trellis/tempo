@@ -85,16 +85,6 @@ type App struct {
 	filterDebounceText string
 }
 
-// NewApp creates a new application controller with no provider (uses mock data).
-func NewApp() *App {
-	a := &App{
-		currentNS: "default",
-	}
-	a.buildApp()
-	a.setup()
-	return a
-}
-
 // NewAppWithProvider creates a new application controller with a Temporal provider.
 func NewAppWithProvider(provider temporal.Provider, defaultNamespace string, cfg *config.Config, activeProfile string) *App {
 	a := &App{
@@ -877,22 +867,6 @@ func (a *App) closeSplashTest() {
 	}
 }
 
-func (a *App) timelineHasFocus() bool {
-	if a == nil || a.app == nil {
-		return false
-	}
-	if current := a.app.Pages().Current(); current != nil {
-		if v, ok := current.(*WorkflowList); ok {
-			return v.focusPane == focusTimeline
-		}
-	}
-	if tviewApp := a.app.GetApplication(); tviewApp != nil {
-		_, ok := tviewApp.GetFocus().(*TimelineView)
-		return ok
-	}
-	return false
-}
-
 func (a *App) modalHasFocus() bool {
 	return a != nil && a.app != nil && a.app.Pages() != nil && a.app.Pages().CurrentIsModal()
 }
@@ -968,65 +942,6 @@ func (a *App) showHelp() {
 
 func (a *App) closeHelp() {
 	a.app.Pages().DismissModal()
-}
-
-func (a *App) showHintSheet() {
-	// Gather hints: global + current view
-	allHints := []components.KeyHint{
-		{Key: "?", Description: "Help"},
-		{Key: "T", Description: "Theme"},
-		{Key: "P", Description: "Profile"},
-		{Key: "Ctrl+O", Description: "Mouse on/off"},
-		{Key: "Esc", Description: "Back"},
-		{Key: "q", Description: "Quit"},
-	}
-
-	current := a.app.Pages().Current()
-	if current != nil {
-		viewHints := current.Hints()
-		if len(viewHints) > 0 {
-			allHints = append(allHints, viewHints...)
-		}
-	}
-
-	// Create hint grid and calculate height
-	grid := components.NewHintGrid()
-	grid.SetHints(allHints)
-
-	// Estimate width for height calculation (use a reasonable default).
-	// The actual width will be available at draw time, but we need an estimate
-	// for the sheet height. Use 80 as a conservative estimate; the grid reflows on draw.
-	estimatedWidth := 80
-	gridHeight := grid.GetPreferredHeight(estimatedWidth)
-	// Panel border (2) + hint bar (1) = 3 lines of overhead
-	sheetHeight := gridHeight + 3
-
-	sheet := components.NewBottomSheet(components.BottomSheetConfig{
-		Title:    "Keybindings",
-		Height:   sheetHeight,
-		Backdrop: false,
-	})
-
-	sheet.SetContent(grid)
-	sheet.SetHints([]components.KeyHint{
-		{Key: "Esc/?", Description: "Close"},
-	})
-
-	sheet.SetOnClose(func() {
-		a.app.Pages().DismissModal()
-	})
-
-	// Wrap input to also dismiss on '?' (toggle behavior)
-	grid.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
-		if event.Rune() == '?' {
-			a.app.Pages().DismissModal()
-			return nil
-		}
-		return event
-	})
-
-	a.PushModal(sheet)
-	a.app.SetFocus(sheet)
 }
 
 func (a *App) closeThemeSelector() {
@@ -1182,15 +1097,12 @@ func (a *App) showThemeSelector() {
 	}
 
 	// Separate themes into dark and light categories
-	allThemes := config.ThemeNames()
 	var darkThemes, lightThemes []string
-	for _, name := range allThemes {
-		if t, ok := config.BuiltinThemes[name]; ok {
-			if t.Type == "light" {
-				lightThemes = append(lightThemes, name)
-			} else {
-				darkThemes = append(darkThemes, name)
-			}
+	for _, name := range themes.Names() {
+		if relativeLuminance(themes.Get(name).Bg()) > 0.5 {
+			lightThemes = append(lightThemes, name)
+		} else {
+			darkThemes = append(darkThemes, name)
 		}
 	}
 
@@ -1217,15 +1129,6 @@ func (a *App) showThemeSelector() {
 	// Track mapping from list index to theme name (for headers)
 	listToTheme := make(map[int]string)
 	listIdx := 0
-
-	// Find current theme index for marker
-	currentIdx := -1
-	for i, name := range allThemes {
-		if name == currentTheme {
-			currentIdx = i
-			break
-		}
-	}
 
 	// Add dark themes header
 	list.AddItem("[::d]─── Dark ───[-::-]", "", 0, nil)
@@ -1266,13 +1169,10 @@ func (a *App) showThemeSelector() {
 
 	// Find list index for current theme
 	currentListIdx := 1 // Start after dark header
-	if currentIdx >= 0 {
-		// Find it in the correct section
-		for idx, themeName := range listToTheme {
-			if themeName == currentTheme {
-				currentListIdx = idx
-				break
-			}
+	for idx, themeName := range listToTheme {
+		if themeName == currentTheme {
+			currentListIdx = idx
+			break
 		}
 	}
 	list.SetCurrentItem(currentListIdx)
@@ -1353,19 +1253,6 @@ func (a *App) showThemeSelector() {
 
 	a.PushModal(modal)
 	a.app.SetFocus(list)
-}
-
-// refreshCurrentView calls RefreshTheme on the current view if it supports it.
-//
-// Deprecated: As of jig v0.0.6, theme.SetProvider() automatically calls RefreshTheme()
-// on all registered Refreshable components and triggers a redraw. This method is no
-// longer needed for theme switching. Kept for backwards compatibility.
-func (a *App) refreshCurrentView() {
-	if current := a.app.Pages().Current(); current != nil {
-		if refreshable, ok := current.(interface{ RefreshTheme() }); ok {
-			refreshable.RefreshTheme()
-		}
-	}
 }
 
 // Profile management methods

@@ -70,7 +70,7 @@ func tempoSettings() []tempoSetting {
 				a.applyThemeLive(value)
 				return nil
 			},
-			values: config.ThemeNames,
+			values: themes.Names,
 		},
 		boolSetting("autosave", "Write in-app changes to disk", func(c *config.Config) bool {
 			return c.ShouldAutosave()
@@ -81,26 +81,6 @@ func tempoSettings() []tempoSetting {
 		boolSetting("check_updates", "Check for updates", func(c *config.Config) bool {
 			return c.ShouldCheckUpdates()
 		}, func(c *config.Config, on bool) { c.CheckUpdates = &on }),
-		{
-			name: "help_style",
-			help: "Help display",
-			get: func(c *config.Config) string {
-				if c == nil {
-					return "modal"
-				}
-				return c.GetHelpStyle()
-			},
-			apply: func(a *App, value string) error {
-				switch value {
-				case "modal", "sheet":
-					a.config.HelpStyle = value
-					return nil
-				default:
-					return fmt.Errorf("help_style must be modal or sheet")
-				}
-			},
-			values: func() []string { return []string{"modal", "sheet"} },
-		},
 		boolSetting("show_scrollbars", "Draw scrollbars", func(c *config.Config) bool {
 			return c.ShouldShowScrollbars()
 		}, func(c *config.Config, on bool) { c.ShowScrollbars = &on }),
@@ -534,8 +514,6 @@ func (a *App) editConfigSetting(s tempoSetting, onDone func()) {
 	var values []string
 	if s.values != nil {
 		values = s.values()
-	} else if s.name == "theme" {
-		values = config.ThemeNames()
 	}
 	if len(values) == 0 {
 		a.showConfigValueInput(s, onDone)

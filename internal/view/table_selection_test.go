@@ -5,24 +5,24 @@ import (
 
 	"github.com/atterpac/jig/components"
 	"github.com/atterpac/jig/theme"
-	"github.com/galaxy-io/tempo/internal/config"
+	"github.com/atterpac/jig/theme/themes"
 	"github.com/gdamore/tcell/v2"
 )
 
 func useTheme(t *testing.T, name string) {
 	t.Helper()
-	parsed, err := config.LoadTheme(name)
-	if err != nil {
-		t.Fatalf("load theme %s: %v", name, err)
+	selected := themes.Get(name)
+	if selected == nil {
+		t.Fatalf("unknown theme %s", name)
 	}
-	theme.SetProvider(config.NewJigThemeAdapter(parsed))
+	theme.SetProvider(selected)
 }
 
 // jig paints the highlighted row with a hardcoded black foreground, which
 // vanishes wherever the accent is dark. Every shipped theme should clear the
 // WCAG AA bar instead.
 func TestRowSelectionIsReadableInEveryTheme(t *testing.T) {
-	for _, name := range config.ThemeNames() {
+	for _, name := range themes.Names() {
 		t.Run(name, func(t *testing.T) {
 			useTheme(t, name)
 			fg, bg, _ := rowSelectionStyle().Decompose()
@@ -60,7 +60,7 @@ func TestRowSelectionUsesLightForegroundOnDarkAccents(t *testing.T) {
 // The row highlight and the active chip share one foreground so they cannot
 // drift apart.
 func TestActiveChipAndRowSelectionShareForeground(t *testing.T) {
-	for _, name := range config.ThemeNames() {
+	for _, name := range themes.Names() {
 		t.Run(name, func(t *testing.T) {
 			useTheme(t, name)
 			fg, _, _ := rowSelectionStyle().Decompose()

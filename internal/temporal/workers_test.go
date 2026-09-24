@@ -1,10 +1,11 @@
 package temporal
 
 import (
-	"github.com/galaxy-io/tempo/internal/config"
 	"reflect"
 	"testing"
 	"time"
+
+	"github.com/galaxy-io/tempo/internal/config"
 
 	v1 "go.temporal.io/api/deployment/v1"
 	"go.temporal.io/api/enums/v1"

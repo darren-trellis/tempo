@@ -120,11 +120,3 @@ func (p *workflowPager) trim(fromFront bool) {
 		p.pages = p.pages[:len(p.pages)-1]
 	}
 }
-
-func (p *workflowPager) loadedPageIndexes() []int {
-	out := make([]int, len(p.pages))
-	for i := range p.pages {
-		out[i] = p.firstPage + i
-	}
-	return out
-}

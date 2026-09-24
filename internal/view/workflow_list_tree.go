@@ -77,13 +77,6 @@ func (wl *WorkflowList) applyWorkflowOrder(workflows []temporal.Workflow) {
 	wl.workflowHasChildren = nil
 }
 
-func (wl *WorkflowList) workflowDepth(index int) int {
-	if index < 0 || index >= len(wl.workflowDepths) {
-		return 0
-	}
-	return wl.workflowDepths[index]
-}
-
 func (wl *WorkflowList) workflowTreePrefixAt(index int) string {
 	if index < 0 || index >= len(wl.workflowTreePrefixes) {
 		return ""

@@ -11,90 +11,9 @@ import (
 	"github.com/atterpac/jig/util"
 	"github.com/atterpac/jig/validators"
 	"github.com/galaxy-io/tempo/internal/config"
-	"github.com/galaxy-io/tempo/internal/update"
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 )
-
-// SplashModal displays a splash screen with app info.
-type SplashModal struct {
-	*shadowedModal
-	content *tview.TextView
-	onClose func()
-}
-
-func NewSplashModal() *SplashModal {
-	m := &SplashModal{
-		shadowedModal: newModal(components.ModalConfig{
-			Title:    "Tempo",
-			Width:    60,
-			Height:   18,
-			Backdrop: true,
-		}),
-	}
-	m.setup()
-	return m
-}
-
-func (m *SplashModal) setup() {
-	m.content = tview.NewTextView().SetDynamicColors(true)
-	m.content.SetBackgroundColor(theme.Bg())
-	m.content.SetTextAlign(tview.AlignCenter)
-
-	splashText := fmt.Sprintf(`
-[%s::b]   __                      [-:-:-]
-[%s::b]  / /   ___   ___  _ __ ___ [-:-:-]
-[%s::b] / /   / _ \ / _ \| '_ ' _ \[-:-:-]
-[%s::b]/ /___| (_) | (_) | | | | | |[-:-:-]
-[%s::b]\_____/\___/ \___/|_| |_| |_|[-:-:-]
-
-[%s]Temporal Workflow Explorer[-]
-
-[%s]Version: %s[-]
-
-[%s]Navigate workflows, schedules, and task queues
-with a keyboard-driven interface.[-]
-
-[%s]Press any key to continue...[-]`,
-		theme.TagAccent(),
-		theme.TagAccent(),
-		theme.TagAccent(),
-		theme.TagAccent(),
-		theme.TagAccent(),
-		theme.TagFg(),
-		theme.TagFgDim(),
-		update.Version,
-		theme.TagFg(),
-		theme.TagFgDim())
-
-	m.content.SetText(splashText)
-	m.SetContent(m.content)
-	m.SetHints([]components.KeyHint{
-		{Key: "any key", Description: "Continue"},
-	})
-	m.SetOnCancel(func() {
-		if m.onClose != nil {
-			m.onClose()
-		}
-	})
-}
-
-func (m *SplashModal) SetOnClose(fn func()) { m.onClose = fn }
-
-func (m *SplashModal) Start() {}
-func (m *SplashModal) Stop()  {}
-func (m *SplashModal) Hints() []KeyHint {
-	return []KeyHint{{Key: "any key", Description: "Close"}}
-}
-
-func (m *SplashModal) InputHandler() func(*tcell.EventKey, func(tview.Primitive)) {
-	return m.WrapInputHandler(func(event *tcell.EventKey, setFocus func(tview.Primitive)) {
-		// Any key closes the splash
-		if m.onClose != nil {
-			m.onClose()
-		}
-	})
-}
 
 // HelpModal displays help information with view-specific keybindings.
 type HelpModal struct {
@@ -210,99 +129,6 @@ func (m *HelpModal) SetOnClose(fn func()) {
 	m.closeFunc = fn
 	m.Modal.SetOnClose(fn)
 	// Don't set onCancel - jig's auto-dismiss handles Escape via DismissOnEsc behavior
-}
-
-// ThemeSelectorModal allows selecting themes.
-type ThemeSelectorModal struct {
-	*shadowedModal
-	table       *components.Table
-	themes      []string
-	currentIdx  int
-	onSelect    func(string)
-	onCancel    func()
-	onPreview   func(string)
-	originalIdx int
-}
-
-func NewThemeSelectorModal() *ThemeSelectorModal {
-	m := &ThemeSelectorModal{
-		shadowedModal: newModal(components.ModalConfig{
-			Title:    fmt.Sprintf("%s Select Theme", theme.IconInfo),
-			Width:    50,
-			Height:   20,
-			Backdrop: true,
-		}),
-	}
-	m.setup()
-	return m
-}
-
-func (m *ThemeSelectorModal) setup() {
-	m.table = components.NewTable()
-	m.table.SetHeaders("", "THEME")
-	m.table.SetBorder(false)
-
-	m.themes = config.ThemeNames()
-
-	m.table.SetSelectionChangedFunc(func(row, col int) {
-		idx := m.table.SelectedRow()
-		if idx >= 0 && idx < len(m.themes) {
-			m.currentIdx = idx
-			if m.onPreview != nil {
-				m.onPreview(m.themes[idx])
-			}
-		}
-	})
-
-	m.table.SetOnSelect(func(row int) {
-		if row >= 0 && row < len(m.themes) {
-			if m.onSelect != nil {
-				m.onSelect(m.themes[row])
-			}
-		}
-	})
-
-	m.SetContent(m.table)
-	m.SetHints([]components.KeyHint{
-		{Key: "Enter", Description: "Select"},
-		{Key: "Esc", Description: "Cancel"},
-	})
-	m.shadowedModal.SetOnCancel(func() {
-		// Restore original theme on cancel
-		if m.onPreview != nil && m.originalIdx >= 0 && m.originalIdx < len(m.themes) {
-			m.onPreview(m.themes[m.originalIdx])
-		}
-		if m.onCancel != nil {
-			m.onCancel()
-		}
-	})
-}
-
-func (m *ThemeSelectorModal) SetThemes(themes []string, currentTheme string) {
-	m.themes = themes
-	m.table.ClearRows()
-
-	for i, t := range themes {
-		marker := " "
-		if t == currentTheme {
-			marker = "●"
-			m.currentIdx = i
-			m.originalIdx = i
-		}
-		m.table.AddRow(marker, t)
-	}
-
-	if m.currentIdx < len(themes) {
-		m.table.SelectRow(m.currentIdx)
-	}
-}
-
-func (m *ThemeSelectorModal) SetOnSelect(fn func(string))  { m.onSelect = fn }
-func (m *ThemeSelectorModal) SetOnCancel(fn func())        { m.onCancel = fn }
-func (m *ThemeSelectorModal) SetOnPreview(fn func(string)) { m.onPreview = fn }
-
-func (m *ThemeSelectorModal) Focus(delegate func(p tview.Primitive)) {
-	delegate(m.table)
 }
 
 // ProfileModal manages connection profiles.
@@ -625,77 +451,6 @@ func truncateMiddle(s string, maxLen int) string {
 	return s[:half] + "..." + s[len(s)-half:]
 }
 
-// DeleteConfirmModal shows a confirmation dialog for deletion.
-type DeleteConfirmModal struct {
-	*shadowedModal
-	itemName  string
-	itemType  string
-	onConfirm func()
-	onCancel  func()
-}
-
-func NewDeleteConfirmModal(itemType, itemName string) *DeleteConfirmModal {
-	m := &DeleteConfirmModal{
-		shadowedModal: newModal(components.ModalConfig{
-			Title:    fmt.Sprintf("%s Delete %s", theme.IconError, itemType),
-			Width:    50,
-			Height:   10,
-			Backdrop: true,
-		}),
-		itemName: itemName,
-		itemType: itemType,
-	}
-	m.setup()
-	return m
-}
-
-func (m *DeleteConfirmModal) setup() {
-	content := tview.NewTextView().SetDynamicColors(true)
-	content.SetBackgroundColor(theme.Bg())
-	content.SetTextAlign(tview.AlignCenter)
-	content.SetText(fmt.Sprintf(`[%s]Are you sure you want to delete[-]
-[%s::b]%s[-:-:-]?
-
-[%s]This action cannot be undone.[-]`,
-		theme.TagFg(),
-		theme.TagAccent(), m.itemName,
-		theme.TagError()))
-
-	m.SetContent(content)
-	m.SetHints([]components.KeyHint{
-		{Key: "y", Description: "Yes, delete"},
-		{Key: "n/Esc", Description: "Cancel"},
-	})
-	m.shadowedModal.SetOnCancel(func() {
-		if m.onCancel != nil {
-			m.onCancel()
-		}
-	})
-}
-
-func (m *DeleteConfirmModal) SetOnConfirm(fn func()) { m.onConfirm = fn }
-func (m *DeleteConfirmModal) SetOnCancel(fn func())  { m.onCancel = fn }
-
-func (m *DeleteConfirmModal) InputHandler() func(*tcell.EventKey, func(tview.Primitive)) {
-	return m.WrapInputHandler(func(event *tcell.EventKey, setFocus func(tview.Primitive)) {
-		switch event.Rune() {
-		case 'y', 'Y':
-			if m.onConfirm != nil {
-				m.onConfirm()
-			}
-		case 'n', 'N':
-			if m.onCancel != nil {
-				m.onCancel()
-			}
-		}
-		if event.Key() == tcell.KeyEscape {
-			if m.onCancel != nil {
-				m.onCancel()
-			}
-		}
-	})
-}
-
 // ErrorModal displays an error message.
 type ErrorModal struct {
 	*shadowedModal
@@ -748,69 +503,9 @@ func (m *ErrorModal) InputHandler() func(*tcell.EventKey, func(tview.Primitive))
 	})
 }
 
-// InfoModal displays an informational message.
-type InfoModal struct {
-	*shadowedModal
-	onClose func()
-}
-
-func NewInfoModal(title, message string) *InfoModal {
-	m := &InfoModal{
-		shadowedModal: newModal(components.ModalConfig{
-			Title:    fmt.Sprintf("%s %s", theme.IconInfo, title),
-			Width:    55,
-			Height:   12,
-			Backdrop: true,
-		}),
-	}
-	m.setup(message)
-	return m
-}
-
-func (m *InfoModal) setup(message string) {
-	content := tview.NewTextView().SetDynamicColors(true)
-	content.SetBackgroundColor(theme.Bg())
-	content.SetTextAlign(tview.AlignCenter)
-	content.SetText(fmt.Sprintf(`[%s]%s[-]
-
-[%s]Press any key to close.[-]`,
-		theme.TagFg(), message,
-		theme.TagFgDim()))
-
-	m.SetContent(content)
-	m.SetHints([]components.KeyHint{
-		{Key: "any key", Description: "Close"},
-	})
-	m.SetOnCancel(func() {
-		if m.onClose != nil {
-			m.onClose()
-		}
-	})
-}
-
-func (m *InfoModal) SetOnClose(fn func()) { m.onClose = fn }
-
-func (m *InfoModal) InputHandler() func(*tcell.EventKey, func(tview.Primitive)) {
-	return m.WrapInputHandler(func(event *tcell.EventKey, setFocus func(tview.Primitive)) {
-		if m.onClose != nil {
-			m.onClose()
-		}
-	})
-}
-
 // ShowErrorModal displays an error modal and handles cleanup on close.
 func ShowErrorModal(app *layout.App, title, message string) {
 	modal := NewErrorModal(title, message)
-	modal.SetOnClose(func() {
-		app.Pages().DismissModal()
-	})
-	pushOverlayModal(app.Pages(), modal)
-	app.SetFocus(modal)
-}
-
-// ShowInfoModal displays an info modal and handles cleanup on close.
-func ShowInfoModal(app *layout.App, title, message string) {
-	modal := NewInfoModal(title, message)
 	modal.SetOnClose(func() {
 		app.Pages().DismissModal()
 	})

@@ -108,9 +108,6 @@ func TestDefaultWorkflowColumnsIncludeParent(t *testing.T) {
 	if !found {
 		t.Fatal("default columns should include parent_id")
 	}
-	if !knownWorkflowColumn(WorkflowColumnParentID) {
-		t.Fatal("parent_id should be a known column")
-	}
 }
 
 func TestResolveWorkflowColumnsDefaults(t *testing.T) {

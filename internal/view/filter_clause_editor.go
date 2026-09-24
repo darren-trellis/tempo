@@ -320,21 +320,6 @@ func compileFilterClauseFor(wl *WorkflowList, clause config.FilterClause) string
 	return compileFilterClauseWith(clause, resolveFilterKey(wl, clause.Key))
 }
 
-func withFilterTestKey(test func(), next func(*tcell.EventKey) *tcell.EventKey) func(*tcell.EventKey) *tcell.EventKey {
-	return func(event *tcell.EventKey) *tcell.EventKey {
-		if isFilterTestKey(event) {
-			if test != nil {
-				test()
-			}
-			return nil
-		}
-		if next != nil {
-			return next(event)
-		}
-		return event
-	}
-}
-
 func isFilterTestKey(event *tcell.EventKey) bool {
 	if event == nil {
 		return false

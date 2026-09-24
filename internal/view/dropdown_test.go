@@ -4,7 +4,6 @@ import (
 	"testing"
 
 	"github.com/atterpac/jig/components"
-	"github.com/galaxy-io/tempo/internal/temporal"
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 )
@@ -224,22 +223,6 @@ func TestTypeaheadSetOptionsKeepsFullListWhenOpen(t *testing.T) {
 	field.SetOptions([]string{"PaymentWorkflow", "ShippingWorkflow"})
 	if len(field.matches) != 2 {
 		t.Fatalf("a catalog update should keep the full list open, got %v", field.matches)
-	}
-}
-
-func TestStartWorkflowSuggestionsFromLoadedLists(t *testing.T) {
-	wl := NewWorkflowList(&App{}, "default")
-	wl.allWorkflows = []temporal.Workflow{
-		{Type: "OrderWorkflow", TaskQueue: "orders"},
-		{Type: "PaymentWorkflow", TaskQueue: "payments"},
-		{Type: "OrderWorkflow", TaskQueue: "orders"},
-	}
-	types, queues := suggestionsFromWorkflowList(wl)
-	if len(types) != 2 || types[0] != "OrderWorkflow" || types[1] != "PaymentWorkflow" {
-		t.Fatalf("types=%v", types)
-	}
-	if len(queues) != 2 || queues[0] != "orders" || queues[1] != "payments" {
-		t.Fatalf("queues=%v", queues)
 	}
 }
 

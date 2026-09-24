@@ -11,6 +11,13 @@ import (
 	"github.com/gdamore/tcell/v2"
 )
 
+func (wl *WorkflowList) workflowDepth(index int) int {
+	if index < 0 || index >= len(wl.workflowDepths) {
+		return 0
+	}
+	return wl.workflowDepths[index]
+}
+
 func TestNestWorkflowsIndentsChildren(t *testing.T) {
 	now := time.Now()
 	parent := "root-wf"

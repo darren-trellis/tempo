@@ -71,12 +71,6 @@ func TestTimelineLegendModalDrawsColumns(t *testing.T) {
 	}
 }
 
-func TestTimelineHasFocusWithoutApp(t *testing.T) {
-	if (&App{}).timelineHasFocus() {
-		t.Fatal("app without a tview runtime should not report timeline focus")
-	}
-}
-
 func TestTimelineChartDrawsNoInlineLegend(t *testing.T) {
 	// Three lanes in a ten row panel is where the inline legend used to fit.
 	tv := timelineWithLanes(3)

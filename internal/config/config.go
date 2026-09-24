@@ -12,6 +12,9 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+// DefaultTheme is the theme used when no config exists.
+const DefaultTheme = "tokyonight-night"
+
 // TLSConfig holds TLS connection settings.
 type TLSConfig struct {
 	Cert       string `yaml:"cert,omitempty"`
@@ -118,22 +121,6 @@ func (c ConnectionConfig) ToTemporalConfig() (address, namespace, tlsCert, tlsKe
 	return c.Address, c.Namespace, c.TLS.Cert, c.TLS.Key, c.TLS.CA, c.TLS.ServerName, c.TLS.SkipVerify, c.APIKey
 }
 
-// FromTemporalConfig creates a ConnectionConfig from temporal-style flat fields.
-func FromTemporalConfig(address, namespace, tlsCert, tlsKey, tlsCA, tlsServerName string, tlsSkipVerify bool, apiKey string) ConnectionConfig {
-	return ConnectionConfig{
-		Address:   address,
-		Namespace: namespace,
-		TLS: TLSConfig{
-			Cert:       tlsCert,
-			Key:        tlsKey,
-			CA:         tlsCA,
-			ServerName: tlsServerName,
-			SkipVerify: tlsSkipVerify,
-		},
-		APIKey: apiKey,
-	}
-}
-
 // FilterClause is one key/op/value row of the filter builder. It is derived
 // from a saved filter's query at runtime and is never written to the config.
 type FilterClause struct {
@@ -168,7 +155,6 @@ type Config struct {
 	CheckUpdates         *bool                       `yaml:"check_updates,omitempty"`
 	Autoreload           *bool                       `yaml:"autoreload,omitempty"`
 	Autosave             *bool                       `yaml:"autosave,omitempty"`
-	HelpStyle            string                      `yaml:"help_style,omitempty"` // "modal" (default) or "sheet"
 	Commands             map[string]CommandConfig    `yaml:"commands,omitempty"`
 	WorkflowColumns      []WorkflowColumnConfig      `yaml:"workflow_columns,omitempty"`
 	ActivityColumns      []WorkflowColumnConfig      `yaml:"activity_columns,omitempty"`
@@ -268,15 +254,6 @@ func (c *Config) IsExternalProfile(name string) bool {
 	}
 	_, ok := c.ExternalProfiles[name]
 	return ok
-}
-
-// GetHelpStyle returns the configured help display style.
-// Returns "sheet" if explicitly set, otherwise "modal" (default).
-func (c *Config) GetHelpStyle() string {
-	if c.HelpStyle == "sheet" {
-		return "sheet"
-	}
-	return "modal"
 }
 
 // ShouldCheckUpdates returns whether update checking is enabled.
@@ -778,46 +755,6 @@ func (c *Config) Save() error {
 	return nil
 }
 
-// LoadTheme loads a theme by name or path.
-// If name matches a built-in theme, returns that.
-// Otherwise, attempts to load from custom themes directory or absolute path.
-func LoadTheme(name string) (*ParsedTheme, error) {
-	// Check built-in themes first
-	if theme, ok := BuiltinThemes[name]; ok {
-		parsed, err := theme.Parse()
-		if err != nil {
-			return nil, err
-		}
-		parsed.Key = name
-		return parsed, nil
-	}
-
-	// Check custom themes directory
-	customPath := filepath.Join(ThemesDir(), name+".yaml")
-	if _, err := os.Stat(customPath); err == nil {
-		parsed, err := loadThemeFile(customPath)
-		if err != nil {
-			return nil, err
-		}
-		parsed.Key = name
-		return parsed, nil
-	}
-
-	// Try as absolute/relative path
-	if strings.HasSuffix(name, ".yaml") || strings.HasSuffix(name, ".yml") {
-		if _, err := os.Stat(name); err == nil {
-			parsed, err := loadThemeFile(name)
-			if err != nil {
-				return nil, err
-			}
-			parsed.Key = name
-			return parsed, nil
-		}
-	}
-
-	return nil, fmt.Errorf("theme not found: %s", name)
-}
-
 // Save writes the config to disk (standalone function).
 func Save(c *Config) error {
 	return c.Save()
@@ -1085,21 +1022,6 @@ func (c *Config) MoveSavedFilter(from, to int) {
 	c.SavedFilters = append(c.SavedFilters[:to], append([]SavedFilter{item}, c.SavedFilters[to:]...)...)
 }
 
-// loadThemeFile loads a theme from a YAML file.
-func loadThemeFile(path string) (*ParsedTheme, error) {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return nil, fmt.Errorf("reading theme file: %w", err)
-	}
-
-	var theme Theme
-	if err := yaml.Unmarshal(data, &theme); err != nil {
-		return nil, fmt.Errorf("parsing theme file: %w", err)
-	}
-
-	return theme.Parse()
-}
-
 // GetMergedCommands returns commands merged from global and profile-level config.
 // Profile commands override global commands with the same name.
 func (c *Config) GetMergedCommands(profileName string) map[string]CommandConfig {
@@ -1124,29 +1046,6 @@ func (c *Config) ListCommandNames(profileName string) []string {
 	}
 	sort.Strings(names)
 	return names
-}
-
-// ValidateTheme checks if a theme name is valid.
-func ValidateTheme(name string) bool {
-	// Built-in theme
-	if _, ok := BuiltinThemes[name]; ok {
-		return true
-	}
-
-	// Custom theme file
-	customPath := filepath.Join(ThemesDir(), name+".yaml")
-	if _, err := os.Stat(customPath); err == nil {
-		return true
-	}
-
-	// Absolute path
-	if strings.HasSuffix(name, ".yaml") || strings.HasSuffix(name, ".yml") {
-		if _, err := os.Stat(name); err == nil {
-			return true
-		}
-	}
-
-	return false
 }
 
 const (
@@ -1227,15 +1126,6 @@ func DefaultWorkflowColumnWidth(id string) int {
 		}
 	}
 	return 16
-}
-
-func knownWorkflowColumn(id string) bool {
-	for _, col := range defaultWorkflowColumns() {
-		if col.ID == id {
-			return true
-		}
-	}
-	return false
 }
 
 // DefaultWorkflowColumns returns the built-in workflows table layout.

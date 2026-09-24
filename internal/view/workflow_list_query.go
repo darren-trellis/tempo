@@ -35,15 +35,6 @@ func (wl *WorkflowList) addToHistory(query string) {
 	wl.historyIndex = -1
 }
 
-func (wl *WorkflowList) clearVisibilityQuery() {
-	wl.activeFilterName = ""
-	wl.filterClauses = nil
-	wl.clearAdHocFilter()
-	wl.visibilityQuery = ""
-	wl.updatePanelTitle()
-	wl.loadData()
-}
-
 func (wl *WorkflowList) updatePanelTitle() {
 	if wl.workflowTab != nil && !wl.selectionMode {
 		wl.workflowTab.Name = workflowListTabName()

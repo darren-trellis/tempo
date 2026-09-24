@@ -499,7 +499,7 @@ func TestShowFilterBuilderOpensModal(t *testing.T) {
 	wl := NewWorkflowList(a, "default")
 	wl.keepDataOnStart = true
 	a.app.Pages().Push(wl)
-	wl.showFilterBuilder()
+	wl.openFilterBuilder(&filterBuilderState{wl: wl})
 	if !a.app.Pages().CurrentIsModal() {
 		t.Fatal("new filter should open the builder")
 	}

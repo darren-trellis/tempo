@@ -220,10 +220,6 @@ func defaultFilterOpFor(wl *WorkflowList, key string) string {
 	return spec.ops[0]
 }
 
-func filterOpAllowed(key, op string) bool {
-	return filterOpAllowedFor(nil, key, op)
-}
-
 func filterOpAllowedFor(wl *WorkflowList, key, op string) bool {
 	spec := resolveFilterKey(wl, key)
 	for _, allowed := range spec.ops {
@@ -248,10 +244,6 @@ func filterOpFromLabel(label string) string {
 		}
 	}
 	return strings.TrimSpace(label)
-}
-
-func filterOpLabelsForKey(key string) []string {
-	return filterOpLabelsForKeyFor(nil, key)
 }
 
 func filterOpLabelsForKeyFor(wl *WorkflowList, key string) []string {
@@ -294,10 +286,6 @@ func filterTimePresetValue(label string) string {
 		}
 	}
 	return ""
-}
-
-func compiledFilterQuery(f config.SavedFilter) string {
-	return compiledFilterQueryFor(nil, f)
 }
 
 func compiledFilterQueryFor(wl *WorkflowList, f config.SavedFilter) string {
@@ -347,10 +335,6 @@ func compileFilterClausesFor(wl *WorkflowList, clauses []config.FilterClause) st
 		parts = append(parts, part)
 	}
 	return strings.Join(parts, " AND ")
-}
-
-func compileFilterClause(clause config.FilterClause) string {
-	return compileFilterClauseWith(clause, resolveFilterKey(nil, clause.Key))
 }
 
 func isRawFilterClause(clause config.FilterClause) bool {

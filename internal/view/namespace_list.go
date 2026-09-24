@@ -170,10 +170,6 @@ func (nl *NamespaceList) setLoading(loading bool) {
 	nl.setLoadIndicator(loading, false)
 }
 
-func (nl *NamespaceList) setRefreshing(loading bool) {
-	nl.setLoadIndicator(loading, true)
-}
-
 func (nl *NamespaceList) setLoadIndicator(loading, quiet bool) {
 	nl.loading = loading
 	if nl.app == nil {

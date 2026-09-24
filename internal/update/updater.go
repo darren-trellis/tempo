@@ -130,11 +130,6 @@ func (u *Updater) ApplyUpdate(ctx context.Context, info *UpdateInfo) error {
 	return nil
 }
 
-// GetCurrentVersion returns the current version string.
-func GetCurrentVersion() string {
-	return Version
-}
-
 // GetVersionInfo returns formatted version information.
 func GetVersionInfo() string {
 	return fmt.Sprintf("tempo %s (%s/%s)\nCommit: %s\nBuilt: %s",

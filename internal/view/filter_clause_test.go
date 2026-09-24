@@ -6,6 +6,18 @@ import (
 	"github.com/galaxy-io/tempo/internal/config"
 )
 
+func compiledFilterQuery(f config.SavedFilter) string {
+	return compiledFilterQueryFor(nil, f)
+}
+
+func compileFilterClause(clause config.FilterClause) string {
+	return compileFilterClauseWith(clause, resolveFilterKey(nil, clause.Key))
+}
+
+func filterOpLabelsForKey(key string) []string {
+	return filterOpLabelsForKeyFor(nil, key)
+}
+
 func TestCompileFilterClauses(t *testing.T) {
 	got := compileFilterClauses([]config.FilterClause{
 		{Key: "ExecutionStatus", Op: filterOpEq, Value: "Running"},

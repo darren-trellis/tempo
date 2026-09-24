@@ -389,14 +389,6 @@ type ConnectionConfig struct {
 	CodecEndpoint string            // Temporal codec server base URL (POST /decode)
 }
 
-// DefaultConnectionConfig returns default connection settings.
-func DefaultConnectionConfig() ConnectionConfig {
-	return ConnectionConfig{
-		Address:   "localhost:7233",
-		Namespace: "default",
-	}
-}
-
 // QueryResult represents the result of a workflow query.
 type QueryResult struct {
 	QueryType string

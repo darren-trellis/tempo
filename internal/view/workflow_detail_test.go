@@ -32,25 +32,6 @@ func TestFormatJSONPrettyLeavesPlainText(t *testing.T) {
 	}
 }
 
-func TestFormatWorkflowInfoIncludesParent(t *testing.T) {
-	parent := "parent-workflow"
-	got := formatWorkflowInfo(temporal.Workflow{
-		ID:        "child-workflow",
-		RunID:     "run-abcdefghijklmnopqrstuvwx",
-		Type:      "ChildType",
-		Status:    "Running",
-		TaskQueue: "default",
-		StartTime: time.Now(),
-		ParentID:  &parent,
-	})
-	if !strings.Contains(got, "Parent") || !strings.Contains(got, parent) {
-		t.Fatalf("expected parent workflow id in details, got %q", got)
-	}
-	if !strings.Contains(got, "run-abcdefghijklmnopqrstuvwx") {
-		t.Fatalf("run id should not be truncated, got %q", got)
-	}
-}
-
 func TestWorkflowInfoRowsIncludeFullValues(t *testing.T) {
 	parent := "parent-workflow"
 	runID := "run-abcdefghijklmnopqrstuvwxyz-full"
@@ -90,19 +71,5 @@ func TestWorkflowInfoRowsMarkUnhandledFailure(t *testing.T) {
 	}
 	if !strings.Contains(rows[idx].Display, "Unhandled Failure") {
 		t.Fatalf("display=%q", rows[idx].Display)
-	}
-}
-
-func TestFormatWorkflowInfoOmitsMissingParent(t *testing.T) {
-	got := formatWorkflowInfo(temporal.Workflow{
-		ID:        "solo-workflow",
-		RunID:     "run-abcdefghijklmnopqrstuvwx",
-		Type:      "SoloType",
-		Status:    "Running",
-		TaskQueue: "default",
-		StartTime: time.Now(),
-	})
-	if strings.Contains(got, "Parent") {
-		t.Fatalf("did not expect parent line, got %q", got)
 	}
 }

@@ -215,59 +215,6 @@ func startWorkflowSuggestions(app *App, namespace string) (types, queues []strin
 	return types, queues
 }
 
-func suggestionsFromWorkflowList(wl *WorkflowList) (types, queues []string) {
-	if wl == nil {
-		return nil, nil
-	}
-	typeSet := map[string]struct{}{}
-	queueSet := map[string]struct{}{}
-	for _, w := range wl.allWorkflows {
-		typeSet[w.Type] = struct{}{}
-		queueSet[w.TaskQueue] = struct{}{}
-	}
-	if wl.taskQueues != nil {
-		for _, q := range wl.taskQueues.allQueues {
-			if q.Name != "" && q.Name != "(no task queues found)" {
-				queueSet[q.Name] = struct{}{}
-			}
-		}
-	}
-	if wl.workers != nil {
-		for _, w := range wl.workers.allWorkers {
-			queueSet[w.TaskQueue] = struct{}{}
-		}
-	}
-	if wl.schedules != nil {
-		for _, s := range wl.schedules.allSchedules {
-			typeSet[s.WorkflowType] = struct{}{}
-			queueSet[s.TaskQueue] = struct{}{}
-		}
-	}
-	return uniqueSortedStrings(keysOf(typeSet)), uniqueSortedStrings(keysOf(queueSet))
-}
-
-func keysOf(set map[string]struct{}) []string {
-	out := make([]string, 0, len(set))
-	for k := range set {
-		out = append(out, k)
-	}
-	return out
-}
-
-func currentWorkflowList(app *App) *WorkflowList {
-	if app == nil || app.JigApp() == nil {
-		return nil
-	}
-	pages := app.JigApp().Pages()
-	if pages == nil {
-		return nil
-	}
-	if wl, ok := pages.Current().(*WorkflowList); ok {
-		return wl
-	}
-	return nil
-}
-
 func stringValue(values map[string]any, key string) string {
 	if values == nil {
 		return ""

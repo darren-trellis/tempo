@@ -4,6 +4,12 @@ import (
 	"testing"
 )
 
+func (s *namespaceCatalogStore) beginFetch(ns string) uint64 {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.startFetchLocked(ns)
+}
+
 func TestNamespaceCatalogStoresPerNamespace(t *testing.T) {
 	var store namespaceCatalogStore
 	store.putIfCurrent("default", store.beginFetch("default"), startCatalog{

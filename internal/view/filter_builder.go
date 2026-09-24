@@ -19,21 +19,6 @@ type filterBuilderState struct {
 	onSaved        func()
 }
 
-func (wl *WorkflowList) showFilterBuilder() {
-	if wl == nil {
-		return
-	}
-	state := &filterBuilderState{
-		wl:      wl,
-		clauses: append([]config.FilterClause(nil), wl.filterClauses...),
-		name:    wl.activeFilterName,
-	}
-	if len(state.clauses) == 0 {
-		state.clauses = filterClausesFromQuery(wl.visibilityQuery)
-	}
-	wl.openFilterBuilder(state)
-}
-
 func (wl *WorkflowList) openFilterBuilder(state *filterBuilderState) {
 	if wl == nil || state == nil {
 		return
@@ -335,15 +320,6 @@ func (wl *WorkflowList) applySavedFilter(f config.SavedFilter) {
 	wl.filterClauses = savedFilterClauses(f)
 	wl.applyVisibilityQuery(compiledFilterQueryFor(wl, f))
 	wl.revealActiveFilterChip()
-}
-
-func (wl *WorkflowList) applyFilterClauses(clauses []config.FilterClause) {
-	if wl == nil {
-		return
-	}
-	wl.activeFilterName = ""
-	wl.filterClauses = append([]config.FilterClause(nil), clauses...)
-	wl.applyVisibilityQuery(compileFilterClausesFor(wl, clauses))
 }
 
 func (wl *WorkflowList) applyAllWorkflowsFilter() {

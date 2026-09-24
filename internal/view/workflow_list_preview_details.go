@@ -29,11 +29,6 @@ func (wl *WorkflowList) selectedPreviewDetailRow() (workflowInfoRow, bool) {
 	return wl.previewDetailRows[row], true
 }
 
-func (wl *WorkflowList) selectedPreviewDetailRowIs(key string) bool {
-	row, ok := wl.selectedPreviewDetailRow()
-	return ok && row.Key == key
-}
-
 func (wl *WorkflowList) setPreviewDetailStatus(message string) {
 	wl.previewDetailRows = nil
 	if wl.workflowDetail == nil {

@@ -52,12 +52,6 @@ func (s *namespaceCatalogStore) has(ns string) bool {
 	return ok
 }
 
-func (s *namespaceCatalogStore) beginFetch(ns string) uint64 {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.startFetchLocked(ns)
-}
-
 func (s *namespaceCatalogStore) tryBeginFetch(ns string) (uint64, bool) {
 	if s == nil || ns == "" {
 		return 0, false

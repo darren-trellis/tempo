@@ -117,30 +117,6 @@ const (
 	TaskQueueTypeActivity = "Activity"
 )
 
-// MapTaskQueueType converts a Temporal SDK task queue type to a display string.
-func MapTaskQueueType(tqType enums.TaskQueueType) string {
-	switch tqType {
-	case enums.TASK_QUEUE_TYPE_WORKFLOW:
-		return TaskQueueTypeWorkflow
-	case enums.TASK_QUEUE_TYPE_ACTIVITY:
-		return TaskQueueTypeActivity
-	default:
-		return "Unknown"
-	}
-}
-
-// GetTaskQueueTypeStatus returns the typed Status for a task queue type string.
-func GetTaskQueueTypeStatus(tqType string) *theme.Status {
-	switch tqType {
-	case TaskQueueTypeWorkflow:
-		return TaskQueueTypeWorkflowStatus
-	case TaskQueueTypeActivity:
-		return TaskQueueTypeActivityStatus
-	default:
-		return TaskQueueTypeUnknownStatus
-	}
-}
-
 var (
 	WorkerStatusRunningHandle      = theme.DefineStatus("Running", theme.Success, theme.IconRunning)
 	WorkerStatusShuttingDownHandle = theme.DefineStatus("Shutting Down", theme.Warning, theme.IconWarning)
