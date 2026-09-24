@@ -2,6 +2,8 @@ package view
 
 import (
 	"fmt"
+	"os"
+	"runtime"
 	"strings"
 
 	"github.com/atterpac/jig/components"
@@ -10,6 +12,7 @@ import (
 	"github.com/atterpac/jig/theme"
 	"github.com/atterpac/jig/theme/themes"
 	"github.com/galaxy-io/tempo/internal/config"
+	"github.com/galaxy-io/tempo/internal/update"
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 )
@@ -634,4 +637,103 @@ func debugSortStrings(s []string) {
 			}
 		}
 	}
+}
+
+// showSplashTest shows the splash screen for testing gradients and themes.
+func (a *App) showSplashTest() {
+	currentTheme := "tokyonight-night"
+	if a.config != nil && a.config.Theme != "" {
+		currentTheme = a.config.Theme
+	}
+
+	splash := NewSplashTestView(currentTheme)
+	splash.SetOnClose(func() {
+		a.closeSplashTest()
+	})
+	splash.SetOnThemeChange(func(themeName string) {
+		// Update config with new theme
+		if a.config != nil {
+			a.config.Theme = themeName
+		}
+		// Refresh theme colors across the app
+		a.app.RefreshTheme()
+	})
+
+	a.app.Pages().AddPage("splash-test", splash, true, true)
+	a.app.SetFocus(splash)
+}
+
+func (a *App) closeSplashTest() {
+	a.app.Pages().RemovePage("splash-test")
+	if current := a.app.Pages().Current(); current != nil {
+		a.app.SetFocus(current)
+	}
+}
+
+func (a *App) showDebugScreen() {
+	// Build debug data from current app state
+	data := DebugData{
+		Version:     update.Version,
+		Commit:      update.Commit,
+		BuildDate:   update.BuildDate,
+		OS:          runtime.GOOS,
+		Arch:        runtime.GOARCH,
+		GoVersion:   runtime.Version(),
+		Term:        os.Getenv("TERM"),
+		ColorTerm:   os.Getenv("COLORTERM"),
+		TermProgram: os.Getenv("TERM_PROGRAM"),
+		ConfigPath:  config.ConfigPath(),
+		ThemeName:   a.config.Theme,
+		ProfileName: a.activeProfile,
+	}
+
+	// Get profile connection details
+	if profile, ok := a.config.GetProfile(a.activeProfile); ok {
+		data.ServerAddress = profile.Address
+		data.Namespace = profile.Namespace
+		data.TLSEnabled = profile.TLS.Cert != "" || profile.TLS.CA != ""
+		data.TLSCertPath = profile.TLS.Cert
+		data.TLSKeyPath = profile.TLS.Key
+		data.TLSCAPath = profile.TLS.CA
+	}
+
+	// Detect color space from environment
+	colorTerm := os.Getenv("COLORTERM")
+	term := os.Getenv("TERM")
+	switch {
+	case colorTerm == "truecolor" || colorTerm == "24bit":
+		data.ColorSpace = "truecolor (24-bit)"
+	case strings.Contains(term, "256color"):
+		data.ColorSpace = "256 colors"
+	default:
+		data.ColorSpace = "unknown"
+	}
+
+	// Create and push debug screen
+	debugScreen := NewDebugScreen(data)
+
+	// Wire up yank keybindings (in standalone mode these live on DebugApp)
+	debugScreen.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		switch event.Rune() {
+		case 'y':
+			report := debugScreen.GeneratePlainReport()
+			if err := copyToClipboard(report); err != nil {
+				a.ToastError("Failed to copy: " + err.Error())
+			} else {
+				a.ToastSuccess("Report copied to clipboard!")
+			}
+			return nil
+		case 'Y':
+			tmpl := debugScreen.GenerateIssueTemplate()
+			if err := copyToClipboard(tmpl); err != nil {
+				a.ToastError("Failed to copy: " + err.Error())
+			} else {
+				a.ToastSuccess("Issue template copied to clipboard!")
+			}
+			return nil
+		}
+		return event
+	})
+
+	a.app.Pages().Push(debugScreen)
 }
