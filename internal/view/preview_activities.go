@@ -7,6 +7,7 @@ import (
 
 	"github.com/atterpac/jig/theme"
 	"github.com/galaxy-io/tempo/internal/temporal"
+	"github.com/rivo/tview"
 )
 
 type previewKind int
@@ -431,4 +432,136 @@ func activityInfoRows(a previewActivity) []workflowInfoRow {
 		rows = append(rows, workflowInfoRow{Key: activityInfoIdentity, Label: "Identity", Value: a.Identity, Color: theme.Fg(), ColorTag: theme.TagFg()})
 	}
 	return rows
+}
+
+func (wl *WorkflowList) selectedPreviewActivity() (previewActivity, bool) {
+	activities := wl.visiblePreviewActivities()
+	if wl.eventTable == nil || len(activities) == 0 {
+		return previewActivity{}, false
+	}
+	row := wl.eventTable.SelectedRow()
+	if row < 0 && len(activities) > 0 {
+		row = 0
+	}
+	if row < 0 || row >= len(activities) {
+		return previewActivity{}, false
+	}
+	return activities[row], true
+}
+
+func (wl *WorkflowList) activityDetailTableFocused() bool {
+	if wl == nil {
+		return false
+	}
+	if wl.previewKind == previewEvents {
+		return true
+	}
+	return wl.previewKind == previewActivities && wl.activityDetailKind == activityDetailDetails
+}
+
+func (wl *WorkflowList) activityDetailFocusPrimitive() tview.Primitive {
+	if wl.activityDetailTableFocused() && wl.activityDetail != nil {
+		return wl.activityDetail
+	}
+	if wl.eventDetail != nil {
+		return wl.eventDetail
+	}
+	return nil
+}
+
+func (wl *WorkflowList) renderSelectedActivityDetail() {
+	defer wl.revealIOSearch()
+	visible := wl.visiblePreviewActivities()
+	if len(visible) == 0 {
+		if wl.eventDetailTree != nil {
+			wl.eventDetailTree.setContent("", false)
+		}
+		status := "No activities"
+		if len(wl.previewActivities) > 0 && wl.previewActivitySearch != "" {
+			status = "No matching activities"
+		}
+		wl.setActivityDetailStatus(status)
+		if wl.eventDetail != nil {
+			wl.eventDetail.SetText(fmt.Sprintf("[%s]%s[-]", theme.TagFgDim(), status))
+			wl.eventDetail.ScrollToBeginning()
+		}
+		return
+	}
+	a, ok := wl.selectedPreviewActivity()
+	if !ok {
+		a = visible[0]
+	}
+	switch wl.activityDetailKind {
+	case activityDetailInput:
+		if wl.eventDetail != nil {
+			tree := ioTreeEnabled(wl.app)
+			if wl.eventDetailTree != nil && wl.eventDetailTree.setContent(a.Input, tree) {
+				return
+			}
+			wl.eventDetail.SetText(formatActivityInput(a, tree))
+			wl.eventDetail.ScrollToBeginning()
+		}
+	case activityDetailOutput:
+		if wl.eventDetail != nil {
+			content := a.Result
+			if content == "" {
+				content = a.Failure
+			}
+			tree := ioTreeEnabled(wl.app)
+			if wl.eventDetailTree != nil && wl.eventDetailTree.setContent(content, tree) {
+				return
+			}
+			wl.eventDetail.SetText(formatActivityOutput(a, tree))
+			wl.eventDetail.ScrollToBeginning()
+		}
+	default:
+		if wl.eventDetailTree != nil {
+			wl.eventDetailTree.setContent("", false)
+		}
+		wl.renderActivityDetailRows(a)
+	}
+}
+
+func (wl *WorkflowList) renderPreviewActivities(w temporal.Workflow) {
+	wl.syncPreviewChrome()
+	activities := wl.visiblePreviewActivities()
+	wl.eventTable.ClearRows()
+	wl.applyActivityTableHeaders()
+	if len(activities) == 0 {
+		if wl.previewActivitySearch != "" {
+			wl.setActivityDetailStatus("No matching activities")
+		} else {
+			wl.setActivityDetailStatus("No activities")
+		}
+		if wl.eventDetail != nil {
+			if wl.previewActivitySearch != "" {
+				wl.eventDetail.SetText(fmt.Sprintf("[%s]No matching activities[-]", theme.TagFgDim()))
+			} else {
+				wl.eventDetail.SetText(fmt.Sprintf("[%s]No activities[-]", theme.TagFgDim()))
+			}
+		}
+		return
+	}
+	now := time.Now()
+	for _, a := range activities {
+		wl.eventTable.AddStyledRow(wl.styledActivityCells(now, a))
+	}
+	idx := 0
+	if wl.highlightedActivityID != 0 {
+		found := false
+		for i, a := range activities {
+			if a.ScheduledID == wl.highlightedActivityID {
+				idx = i
+				found = true
+				break
+			}
+		}
+		if !found {
+			wl.highlightedActivityID = activities[0].ScheduledID
+		}
+	} else {
+		wl.highlightedActivityID = activities[0].ScheduledID
+	}
+	wl.eventTable.SelectRow(idx)
+	wl.renderSelectedActivityDetail()
 }

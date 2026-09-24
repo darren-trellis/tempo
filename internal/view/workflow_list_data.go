@@ -877,3 +877,62 @@ func (wl *WorkflowList) stopAutoRefresh() {
 	default:
 	}
 }
+
+func mockPreviewEvents(w temporal.Workflow) []temporal.EnhancedHistoryEvent {
+	started := w.StartTime
+	if started.IsZero() {
+		started = time.Now().Add(-2 * time.Minute)
+	}
+	events := []temporal.EnhancedHistoryEvent{
+		{
+			ID:      1,
+			Type:    "WorkflowExecutionStarted",
+			Time:    started,
+			Details: "taskQueue: " + w.TaskQueue,
+			Input:   `{"orderId":"` + w.ID + `","items":2}`,
+		},
+		{
+			ID:           5,
+			Type:         "ActivityTaskScheduled",
+			Time:         started.Add(10 * time.Second),
+			ActivityType: "MockActivity",
+			ActivityID:   "1",
+			TaskQueue:    w.TaskQueue,
+		},
+		{
+			ID:               6,
+			Type:             "ActivityTaskStarted",
+			Time:             started.Add(15 * time.Second),
+			ActivityType:     "MockActivity",
+			ScheduledEventID: 5,
+			Attempt:          1,
+		},
+		{
+			ID:               7,
+			Type:             "ActivityTaskCompleted",
+			Time:             started.Add(30 * time.Second),
+			ActivityType:     "MockActivity",
+			ScheduledEventID: 5,
+			Result:           `{"ok":true}`,
+		},
+	}
+	if w.EndTime != nil {
+		endType := "WorkflowExecutionCompleted"
+		if w.Status == "Failed" {
+			endType = "WorkflowExecutionFailed"
+		}
+		end := temporal.EnhancedHistoryEvent{
+			ID:      8,
+			Type:    endType,
+			Time:    *w.EndTime,
+			Details: "status: " + w.Status,
+		}
+		if endType == "WorkflowExecutionFailed" {
+			end.Failure = "mock failure: activity exhausted its retries"
+		} else {
+			end.Result = `{"status":"ok","processed":2}`
+		}
+		events = append(events, end)
+	}
+	return events
+}
