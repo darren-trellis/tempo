@@ -27,7 +27,15 @@ func (wl *WorkflowList) openFilterBuilder(state *filterBuilderState) {
 	table := components.NewTable()
 	table.SetBorder(false)
 
+	rawView := tview.NewTextView().
+		SetWrap(true).
+		SetWordWrap(true).
+		SetScrollable(true)
+	rawView.SetBackgroundColor(theme.Bg())
+	rawView.SetTextColor(theme.Fg())
+
 	refresh := func() {
+		rawView.SetText(compileFilterClausesFor(wl, state.clauses))
 		row := table.SelectedRow()
 		table.ClearRows()
 		table.SetHeaders("KEY", "OPERATOR", "VALUE")
@@ -94,7 +102,25 @@ func (wl *WorkflowList) openFilterBuilder(state *filterBuilderState) {
 		})
 	}
 
-	bindings := input.NewKeyBindings().
+	editRaw := func() {
+		query := compileFilterClausesFor(wl, state.clauses)
+		edited, ok := editFilterQueryInEditor(wl.app, query)
+		if !ok {
+			return
+		}
+		edited = strings.TrimSpace(singleLine.Replace(edited))
+		if edited == query {
+			return
+		}
+		if edited == "" {
+			wl.app.ToastWarning("Filter is empty")
+			return
+		}
+		state.clauses = filterClausesFromQuery(edited)
+		refresh()
+	}
+
+	clauseBindings := input.NewKeyBindings().
 		OnRune('n', func(e *tcell.EventKey) bool {
 			addClause()
 			return true
@@ -106,24 +132,12 @@ func (wl *WorkflowList) openFilterBuilder(state *filterBuilderState) {
 		OnRune('d', func(e *tcell.EventKey) bool {
 			deleteClause()
 			return true
-		}).
+		})
+	sharedBindings := input.NewKeyBindings().
 		OnRune('s', func(e *tcell.EventKey) bool {
 			saveNamed()
 			return true
 		})
-
-	table.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
-		if event.Key() == tcell.KeyEnter {
-			apply()
-			return nil
-		}
-		if bindings.Handle(event) {
-			return nil
-		}
-		return event
-	})
-
-	refresh()
 
 	title := "New Filter"
 	if strings.TrimSpace(state.name) != "" {
@@ -134,21 +148,90 @@ func (wl *WorkflowList) openFilterBuilder(state *filterBuilderState) {
 		Width:  72,
 		Height: 20,
 	}, wl)
-	modal.SetContent(table)
-	modal.SetHints([]components.KeyHint{
-		{Key: "n", Description: "Add"},
-		{Key: "e", Description: "Edit"},
-		{Key: "d", Description: "Delete"},
-		{Key: "s", Description: "Save"},
-		{Key: "Enter", Description: "Apply"},
-		{Key: "Esc", Description: "Cancel"},
+
+	const rawTab = 1
+	activeTab := 0
+	tabs := components.NewTabs().
+		SetShowIcons(false).
+		SetShowBadges(false).
+		AddTab("Clauses", table).
+		AddTab("Raw", rawView)
+	applyHints := func() {
+		hints := []components.KeyHint{
+			{Key: "n", Description: "Add"},
+			{Key: "e", Description: "Edit"},
+			{Key: "d", Description: "Delete"},
+		}
+		if activeTab == rawTab {
+			hints = nil
+		}
+		hints = append(hints,
+			components.KeyHint{Key: "Ctrl+E", Description: "Open in Editor"},
+			components.KeyHint{Key: "Tab", Description: "Switch Tab"},
+			components.KeyHint{Key: "s", Description: "Save"},
+			components.KeyHint{Key: "Enter", Description: "Apply"},
+			components.KeyHint{Key: "Esc", Description: "Cancel"},
+		)
+		modal.SetHints(hints)
+		wl.app.syncModalHints(modal)
+	}
+	focusActive := func() {
+		if jig := wl.app.JigApp(); jig != nil {
+			if activeTab == rawTab {
+				jig.SetFocus(rawView)
+				return
+			}
+			jig.SetFocus(table)
+		}
+	}
+	tabs.SetOnChange(func(index int, _ string) {
+		activeTab = index
+		applyHints()
+		focusActive()
 	})
+	switchTab := func() {
+		tabs.SetActive(1 - activeTab)
+	}
+
+	capture := func(event *tcell.EventKey) *tcell.EventKey {
+		switch {
+		case event.Key() == tcell.KeyEnter:
+			apply()
+			return nil
+		case isFilterEditKey(event):
+			editRaw()
+			return nil
+		case event.Key() == tcell.KeyTab, event.Key() == tcell.KeyBacktab,
+			isClauseTabNext(event), isClauseTabPrev(event):
+			switchTab()
+			return nil
+		}
+		if activeTab != rawTab && clauseBindings.Handle(event) {
+			return nil
+		}
+		if sharedBindings.Handle(event) {
+			return nil
+		}
+		return event
+	}
+	table.SetInputCapture(capture)
+	rawView.SetInputCapture(capture)
+	tabs.SetInputCapture(capture)
+
+	refresh()
+
+	modal.SetContent(tabs)
+	applyHints()
 	modal.SetOnCancel(func() {
 		wl.closeModal()
 	})
 
 	wl.app.PushModal(modal)
-	wl.app.JigApp().SetFocus(table)
+	focusActive()
+}
+
+var editFilterQueryInEditor = func(app *App, query string) (string, bool) {
+	return editInEditor(app, "filter", ".sql", query+"\n")
 }
 
 func (s *filterBuilderState) persist(name string) {

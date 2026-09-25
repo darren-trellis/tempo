@@ -191,7 +191,7 @@ func TestFilterManagerShowsClauseTree(t *testing.T) {
 
 	table.SelectRow(0)
 	press('e')
-	if _, ok := a.app.Pages().Current().(*overlayModal).body.(*components.Table); !ok {
+	if _, ok := a.app.Pages().Current().(*overlayModal).body.(*components.Tabs); !ok {
 		t.Fatalf("e on a filter should open the filter editor, body=%T", a.app.Pages().Current().(*overlayModal).body)
 	}
 }

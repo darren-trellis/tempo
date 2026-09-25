@@ -36,6 +36,24 @@ func TestWriteEditorFilePrettyJSON(t *testing.T) {
 	}
 }
 
+func TestWriteTempEditorFileKeepsExtension(t *testing.T) {
+	path, err := writeTempEditorFile("filter", ".sql", "WorkflowType = 'A'\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.Remove(path)
+	if !strings.HasSuffix(path, ".sql") {
+		t.Fatalf("path=%q", path)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(data) != "WorkflowType = 'A'\n" {
+		t.Fatalf("content=%q", data)
+	}
+}
+
 func TestResolveEditorUsesVISUAL(t *testing.T) {
 	t.Setenv("VISUAL", "true")
 	t.Setenv("EDITOR", "false")

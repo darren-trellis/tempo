@@ -37,11 +37,15 @@ func editorFileExt(content string) string {
 
 func writeEditorFile(label, content string) (string, error) {
 	formatted := formatJSONPretty(content)
-	f, err := os.CreateTemp("", "tempo-"+label+"-*"+editorFileExt(formatted))
+	return writeTempEditorFile(label, editorFileExt(formatted), formatted)
+}
+
+func writeTempEditorFile(label, ext, content string) (string, error) {
+	f, err := os.CreateTemp("", "tempo-"+label+"-*"+ext)
 	if err != nil {
 		return "", err
 	}
-	if _, err := f.WriteString(formatted); err != nil {
+	if _, err := f.WriteString(content); err != nil {
 		f.Close()
 		os.Remove(f.Name())
 		return "", err
@@ -61,22 +65,48 @@ func openInEditor(app *App, label, content string) {
 		app.ToastError("No " + label + " to open")
 		return
 	}
-	bin, args, err := resolveEditor()
-	if err != nil {
-		app.ToastError("No editor: " + err.Error())
-		return
-	}
 	path, err := writeEditorFile(label, content)
 	if err != nil {
 		app.ToastError("Failed to write temp file: " + err.Error())
 		return
 	}
 	defer os.Remove(path)
+	runEditor(app, path)
+}
 
+// editInEditor opens content in the user's editor and returns the file's
+// contents once the editor exits.
+func editInEditor(app *App, label, ext, content string) (string, bool) {
+	if app == nil {
+		return "", false
+	}
+	path, err := writeTempEditorFile(label, ext, content)
+	if err != nil {
+		app.ToastError("Failed to write temp file: " + err.Error())
+		return "", false
+	}
+	defer os.Remove(path)
+	if !runEditor(app, path) {
+		return "", false
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		app.ToastError("Failed to read edited file: " + err.Error())
+		return "", false
+	}
+	return string(data), true
+}
+
+func runEditor(app *App, path string) bool {
+	bin, args, err := resolveEditor()
+	if err != nil {
+		app.ToastError("No editor: " + err.Error())
+		return false
+	}
 	jig := app.JigApp()
 	if jig == nil {
 		app.ToastError("Editor unavailable")
-		return
+		return false
 	}
 	var runErr error
 	if !jig.Suspend(func() {
@@ -87,9 +117,11 @@ func openInEditor(app *App, label, content string) {
 		runErr = cmd.Run()
 	}) {
 		app.ToastError("Failed to suspend terminal for editor")
-		return
+		return false
 	}
 	if runErr != nil {
 		app.ToastError("Editor failed: " + runErr.Error())
+		return false
 	}
+	return true
 }

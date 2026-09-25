@@ -320,6 +320,16 @@ func compileFilterClauseFor(wl *WorkflowList, clause config.FilterClause) string
 	return compileFilterClauseWith(clause, resolveFilterKey(wl, clause.Key))
 }
 
+func isFilterEditKey(event *tcell.EventKey) bool {
+	if event == nil {
+		return false
+	}
+	if event.Key() == tcell.KeyCtrlE {
+		return true
+	}
+	return event.Key() == tcell.KeyRune && (event.Rune() == 'e' || event.Rune() == 'E') && event.Modifiers()&tcell.ModCtrl != 0
+}
+
 func isFilterTestKey(event *tcell.EventKey) bool {
 	if event == nil {
 		return false

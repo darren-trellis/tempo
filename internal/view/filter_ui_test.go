@@ -493,6 +493,71 @@ func containsString(items []string, want string) bool {
 	return false
 }
 
+func TestFilterBuilderHasRawTab(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	a := NewAppWithProvider(nil, "default", config.DefaultConfig(), "local")
+	wl := NewWorkflowList(a, "default")
+	wl.keepDataOnStart = true
+	a.app.Pages().Push(wl)
+	query := `WorkflowType = 'Order' AND ExecutionStatus = 'Running'`
+	wl.openFilterBuilder(&filterBuilderState{wl: wl, name: "Orders", clauses: filterClausesFromQuery(query)})
+	om, ok := a.app.Pages().Current().(*overlayModal)
+	if !ok {
+		t.Fatalf("current=%T", a.app.Pages().Current())
+	}
+	tabs, ok := om.body.(*components.Tabs)
+	if !ok {
+		t.Fatalf("builder body=%T, want tabs", om.body)
+	}
+	screen := drawCurrentModal(t, a)
+	if !strings.Contains(screen, "Clauses") || !strings.Contains(screen, "Raw") {
+		t.Fatalf("builder should show Clauses and Raw tabs, got:\n%s", screen)
+	}
+	if hintDescription(om.Hints(), "Ctrl+E") != "Open in Editor" {
+		t.Fatalf("Ctrl+E should be advertised, got %+v", om.Hints())
+	}
+
+	tabs.SetActive(1)
+	if got := tabs.GetActiveTab().Content.(*tview.TextView).GetText(true); got != query {
+		t.Fatalf("raw tab = %q, want the full query", got)
+	}
+	if hintDescription(om.Hints(), "n") != "" || hintDescription(om.Hints(), "e") != "" {
+		t.Fatalf("clause keys should hide on the raw tab, got %+v", om.Hints())
+	}
+
+	orig := editFilterQueryInEditor
+	t.Cleanup(func() { editFilterQueryInEditor = orig })
+	editFilterQueryInEditor = func(_ *App, got string) (string, bool) {
+		if got != query {
+			t.Fatalf("editor should receive the compiled query, got %q", got)
+		}
+		return `CustomerId = 'acme' AND ExecutionStatus = 'Failed'`, true
+	}
+	if ev := tabs.GetInputCapture()(tcell.NewEventKey(tcell.KeyCtrlE, 0, tcell.ModCtrl)); ev != nil {
+		t.Fatal("Ctrl+E should open the editor")
+	}
+	want := `CustomerId = 'acme' AND ExecutionStatus = 'Failed'`
+	if got := tabs.GetActiveTab().Content.(*tview.TextView).GetText(true); got != want {
+		t.Fatalf("raw tab should refresh from the editor, got %q", got)
+	}
+	tabs.SetActive(0)
+	if overlayModalTable(t, om).GetDataRowCount() != 2 {
+		t.Fatalf("clauses should update from the editor, rows=%d", overlayModalTable(t, om).GetDataRowCount())
+	}
+}
+
+func TestFilterEditKey(t *testing.T) {
+	if !isFilterEditKey(tcell.NewEventKey(tcell.KeyCtrlE, 0, tcell.ModCtrl)) {
+		t.Fatal("Ctrl+E should open the editor")
+	}
+	if !isFilterEditKey(tcell.NewEventKey(tcell.KeyRune, 'e', tcell.ModCtrl)) {
+		t.Fatal("Ctrl+E as a rune should open the editor")
+	}
+	if isFilterEditKey(tcell.NewEventKey(tcell.KeyRune, 'e', tcell.ModNone)) {
+		t.Fatal("plain e should still edit a clause")
+	}
+}
+
 func TestShowFilterBuilderOpensModal(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	a := NewAppWithProvider(nil, "default", config.DefaultConfig(), "local")
@@ -750,10 +815,7 @@ func TestFilterManagerRefreshesAfterSave(t *testing.T) {
 	}
 	clauseForm.InputHandler()(tcell.NewEventKey(tcell.KeyEnter, 0, tcell.ModNone), func(tview.Primitive) {})
 
-	builderTable, ok := a.app.Pages().Current().(*overlayModal).body.(*components.Table)
-	if !ok {
-		t.Fatalf("builder body=%T", a.app.Pages().Current().(*overlayModal).body)
-	}
+	builderTable := overlayModalTable(t, a.app.Pages().Current().(*overlayModal))
 	builderKeys := builderTable.GetInputCapture()
 	if builderKeys == nil {
 		t.Fatal("builder table should have keys")
@@ -798,6 +860,12 @@ func overlayModalTable(t *testing.T, om *overlayModal) *components.Table {
 		table, ok := body.content.(*components.Table)
 		if !ok {
 			t.Fatalf("scroll content=%T", body.content)
+		}
+		return table
+	case *components.Tabs:
+		table, ok := body.GetActiveTab().Content.(*components.Table)
+		if !ok {
+			t.Fatalf("tab content=%T", body.GetActiveTab().Content)
 		}
 		return table
 	default:
@@ -1229,10 +1297,7 @@ func TestNewFilterOpensClauseEditorFirst(t *testing.T) {
 	if !ok {
 		t.Fatalf("builder current=%T", a.app.Pages().Current())
 	}
-	builderTable, ok := builder.body.(*components.Table)
-	if !ok {
-		t.Fatalf("builder body=%T, want the clause table", builder.body)
-	}
+	builderTable := overlayModalTable(t, builder)
 	if builderTable.GetDataRowCount() != 1 {
 		t.Fatalf("builder should show the clause just entered, got %d rows", builderTable.GetDataRowCount())
 	}
