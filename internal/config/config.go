@@ -140,6 +140,9 @@ type SavedFilter struct {
 	// queries. MigrateSavedFilters folds it into Query.
 	Clauses   []FilterClause `yaml:"clauses,omitempty"`
 	IsDefault bool           `yaml:"is_default,omitempty"`
+	// Profile is the profile that owns the filter, or empty for a global
+	// filter. It is filled in when filters are listed and never stored.
+	Profile string `yaml:"-"`
 }
 
 // ExternalProfilePrefix is the prefix used for profiles imported from the Temporal CLI.
@@ -147,27 +150,32 @@ const ExternalProfilePrefix = "import:"
 
 // Config represents the application configuration.
 type Config struct {
-	Theme                string                      `yaml:"theme"`
-	ActiveProfile        string                      `yaml:"active_profile,omitempty"`
-	Profiles             map[string]ConnectionConfig `yaml:"profiles,omitempty"`
-	ExternalProfiles     map[string]ConnectionConfig `yaml:"-"`
-	SavedFilters         []SavedFilter               `yaml:"saved_filters,omitempty"`
-	CheckUpdates         *bool                       `yaml:"check_updates,omitempty"`
-	Autoreload           *bool                       `yaml:"autoreload,omitempty"`
-	Autosave             *bool                       `yaml:"autosave,omitempty"`
-	Commands             map[string]CommandConfig    `yaml:"commands,omitempty"`
-	WorkflowColumns      []WorkflowColumnConfig      `yaml:"workflow_columns,omitempty"`
-	CustomColumns        []CustomColumnConfig        `yaml:"custom_columns,omitempty"`
-	ActivityColumns      []WorkflowColumnConfig      `yaml:"activity_columns,omitempty"`
-	WorkflowTimeFormat   string                      `yaml:"workflow_time_format,omitempty"`
-	ActivityTimeFormat   string                      `yaml:"activity_time_format,omitempty"`
-	PreviewCacheSize     *int                        `yaml:"preview_cache_size,omitempty"`
-	MouseScrollStep      *int                        `yaml:"mouse_scroll_step,omitempty"`
-	ShowScrollbars       *bool                       `yaml:"show_scrollbars,omitempty"`
-	FilterWrap           *bool                       `yaml:"filter_wrap,omitempty"`
-	SavedFiltersPosition string                      `yaml:"saved_filters_position,omitempty"`
-	ModalShadow          string                      `yaml:"modal_shadow,omitempty"`
-	WorkflowPageSize     *int                        `yaml:"workflow_page_size,omitempty"`
+	Theme            string                      `yaml:"theme"`
+	ActiveProfile    string                      `yaml:"active_profile,omitempty"`
+	Profiles         map[string]ConnectionConfig `yaml:"profiles,omitempty"`
+	ExternalProfiles map[string]ConnectionConfig `yaml:"-"`
+	// SavedFilters are shown in every profile. An empty list is written out
+	// so that deleting every global filter does not bring the defaults back.
+	SavedFilters []SavedFilter `yaml:"saved_filters"`
+	// ProfileFilters are the filters only a given profile sees, listed before
+	// the global ones. Imported profiles can own filters here too.
+	ProfileFilters       map[string][]SavedFilter `yaml:"profile_filters,omitempty"`
+	CheckUpdates         *bool                    `yaml:"check_updates,omitempty"`
+	Autoreload           *bool                    `yaml:"autoreload,omitempty"`
+	Autosave             *bool                    `yaml:"autosave,omitempty"`
+	Commands             map[string]CommandConfig `yaml:"commands,omitempty"`
+	WorkflowColumns      []WorkflowColumnConfig   `yaml:"workflow_columns,omitempty"`
+	CustomColumns        []CustomColumnConfig     `yaml:"custom_columns,omitempty"`
+	ActivityColumns      []WorkflowColumnConfig   `yaml:"activity_columns,omitempty"`
+	WorkflowTimeFormat   string                   `yaml:"workflow_time_format,omitempty"`
+	ActivityTimeFormat   string                   `yaml:"activity_time_format,omitempty"`
+	PreviewCacheSize     *int                     `yaml:"preview_cache_size,omitempty"`
+	MouseScrollStep      *int                     `yaml:"mouse_scroll_step,omitempty"`
+	ShowScrollbars       *bool                    `yaml:"show_scrollbars,omitempty"`
+	FilterWrap           *bool                    `yaml:"filter_wrap,omitempty"`
+	SavedFiltersPosition string                   `yaml:"saved_filters_position,omitempty"`
+	ModalShadow          string                   `yaml:"modal_shadow,omitempty"`
+	WorkflowPageSize     *int                     `yaml:"workflow_page_size,omitempty"`
 	// How long a worker may go unseen before the workers tab calls it stale,
 	// written as a duration such as "45s" or "2m", or as a plain number of
 	// seconds.
@@ -846,6 +854,7 @@ func (c *Config) DeleteProfile(name string) error {
 		return fmt.Errorf("cannot delete active profile %q", name)
 	}
 	delete(c.Profiles, name)
+	delete(c.ProfileFilters, name)
 	return nil
 }
 
@@ -866,161 +875,6 @@ func (c *Config) ListProfiles() []string {
 func (c *Config) ProfileExists(name string) bool {
 	_, ok := c.GetProfile(name)
 	return ok
-}
-
-func (c *Config) EnsureSavedFilters() {
-	if c == nil || c.SavedFilters != nil {
-		return
-	}
-	c.SavedFilters = DefaultSavedFilters()
-}
-
-func DefaultSavedFilters() []SavedFilter {
-	filter := func(name, query string) SavedFilter {
-		return SavedFilter{Name: name, Query: query}
-	}
-	status := func(name, value string) SavedFilter {
-		return filter(name, "ExecutionStatus = '"+value+"'")
-	}
-	started := func(name, value string) SavedFilter {
-		return filter(name, "StartTime > "+value)
-	}
-	return []SavedFilter{
-		status("Running Workflows", "Running"),
-		filter("Unhandled Failures", "`ExecutionStatus`=\"Running\" AND `TemporalReportedProblems` IN (\"category=WorkflowTaskFailed\", \"category=WorkflowTaskTimedOut\")"),
-		status("Failed Workflows", "Failed"),
-		status("Completed Workflows", "Completed"),
-		status("Cancelled Workflows", "Canceled"),
-		status("Timed Out Workflows", "TimedOut"),
-		started("Started Today", "$TODAY"),
-		filter("Started Yesterday", "StartTime > $YESTERDAY AND StartTime < $TODAY"),
-		started("Started This Week", "$THIS_WEEK"),
-		started("Started Last Hour", "$HOUR_AGO"),
-		started("Started Last 30 Min", "$MINUTES_AGO_30"),
-		started("Started Last 24 Hours", "$HOURS_AGO_24"),
-		started("Started Last 7 Days", "$DAYS_AGO_7"),
-		started("Started Last 30 Days", "$DAYS_AGO_30"),
-		filter("Long Running (>1h)", "ExecutionStatus = 'Running' AND StartTime < $HOUR_AGO"),
-		filter("Long Running (>6h)", "ExecutionStatus = 'Running' AND StartTime < $HOURS_AGO_6"),
-		filter("Failed Today", "ExecutionStatus = 'Failed' AND StartTime > $TODAY"),
-	}
-}
-
-func (c *Config) GetSavedFilters() []SavedFilter {
-	if c == nil {
-		return nil
-	}
-	return c.SavedFilters
-}
-
-// GetSavedFilter returns a saved filter by name.
-func (c *Config) GetSavedFilter(name string) (SavedFilter, bool) {
-	for _, f := range c.SavedFilters {
-		if f.Name == name {
-			return f, true
-		}
-	}
-	return SavedFilter{}, false
-}
-
-// SaveFilter adds or updates a saved filter.
-func (c *Config) SaveFilter(filter SavedFilter) {
-	// Check if filter with same name exists
-	for i, f := range c.SavedFilters {
-		if f.Name == filter.Name {
-			c.SavedFilters[i] = filter
-			return
-		}
-	}
-	// Add new filter
-	c.SavedFilters = append(c.SavedFilters, filter)
-}
-
-// RenameFilter changes a saved filter's name in place. Query, default flag,
-// and position stay put. Renaming to the current name is a no-op.
-func (c *Config) RenameFilter(oldName, newName string) error {
-	if c == nil {
-		return fmt.Errorf("filter %q not found", oldName)
-	}
-	newName = strings.TrimSpace(newName)
-	if newName == "" {
-		return fmt.Errorf("name is required")
-	}
-	idx := -1
-	for i, f := range c.SavedFilters {
-		if f.Name == oldName {
-			idx = i
-			continue
-		}
-		if f.Name == newName {
-			return fmt.Errorf("a filter named %q already exists", newName)
-		}
-	}
-	if idx < 0 {
-		return fmt.Errorf("filter %q not found", oldName)
-	}
-	c.SavedFilters[idx].Name = newName
-	return nil
-}
-
-// DeleteFilter removes a saved filter by name.
-func (c *Config) DeleteFilter(name string) error {
-	for i, f := range c.SavedFilters {
-		if f.Name == name {
-			c.SavedFilters = append(c.SavedFilters[:i], c.SavedFilters[i+1:]...)
-			return nil
-		}
-	}
-	return fmt.Errorf("filter %q not found", name)
-}
-
-// GetDefaultFilter returns the default filter if one is set.
-func (c *Config) GetDefaultFilter() (SavedFilter, bool) {
-	for _, f := range c.SavedFilters {
-		if f.IsDefault {
-			return f, true
-		}
-	}
-	return SavedFilter{}, false
-}
-
-// SetDefaultFilter sets a filter as the default, clearing any previous default.
-func (c *Config) SetDefaultFilter(name string) error {
-	found := false
-	for i := range c.SavedFilters {
-		if c.SavedFilters[i].Name == name {
-			c.SavedFilters[i].IsDefault = true
-			found = true
-		} else {
-			c.SavedFilters[i].IsDefault = false
-		}
-	}
-	if !found {
-		return fmt.Errorf("filter %q not found", name)
-	}
-	return nil
-}
-
-func (c *Config) ClearDefaultFilter() {
-	if c == nil {
-		return
-	}
-	for i := range c.SavedFilters {
-		c.SavedFilters[i].IsDefault = false
-	}
-}
-
-func (c *Config) MoveSavedFilter(from, to int) {
-	if c == nil {
-		return
-	}
-	n := len(c.SavedFilters)
-	if from < 0 || from >= n || to < 0 || to >= n || from == to {
-		return
-	}
-	item := c.SavedFilters[from]
-	c.SavedFilters = append(c.SavedFilters[:from], c.SavedFilters[from+1:]...)
-	c.SavedFilters = append(c.SavedFilters[:to], append([]SavedFilter{item}, c.SavedFilters[to:]...)...)
 }
 
 // GetMergedCommands returns commands merged from global and profile-level config.

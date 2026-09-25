@@ -392,7 +392,7 @@ func (wl *WorkflowList) persistSavedFilter(f config.SavedFilter) {
 	if wl == nil || wl.app == nil || wl.app.Config() == nil {
 		return
 	}
-	wl.app.Config().SaveFilter(f)
+	wl.app.Config().SaveFilterFor(wl.app.activeProfile, f)
 	_ = wl.app.SaveConfig()
 }
 

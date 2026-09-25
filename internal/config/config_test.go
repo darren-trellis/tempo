@@ -711,7 +711,7 @@ func TestEnsureSavedFiltersSeedsOnlyWhenUnset(t *testing.T) {
 		t.Fatal("DefaultConfig should leave saved filters unset")
 	}
 	cfg.EnsureSavedFilters()
-	if len(cfg.GetSavedFilters()) == 0 {
+	if len(cfg.SavedFiltersFor("")) == 0 {
 		t.Fatal("empty config should get the built-in filters")
 	}
 	n := len(cfg.SavedFilters)
@@ -733,7 +733,7 @@ func TestRenameFilterKeepsQueryDefaultAndOrder(t *testing.T) {
 		{Name: "recent", Query: "StartTime > '$HOURS_AGO_24'", IsDefault: true},
 		{Name: "last", Query: "ExecutionStatus = 'Failed'"},
 	}}
-	if err := cfg.RenameFilter("recent", "today"); err != nil {
+	if err := cfg.RenameFilterFor("", "recent", "today"); err != nil {
 		t.Fatal(err)
 	}
 	got := cfg.SavedFilters[1]
@@ -747,7 +747,7 @@ func TestRenameFilterKeepsQueryDefaultAndOrder(t *testing.T) {
 
 func TestRenameFilterSameNameIsNoop(t *testing.T) {
 	cfg := &Config{SavedFilters: []SavedFilter{{Name: "recent", Query: "q"}}}
-	if err := cfg.RenameFilter("recent", "recent"); err != nil {
+	if err := cfg.RenameFilterFor("", "recent", "recent"); err != nil {
 		t.Fatal(err)
 	}
 	if cfg.SavedFilters[0].Name != "recent" || cfg.SavedFilters[0].Query != "q" {
@@ -757,7 +757,7 @@ func TestRenameFilterSameNameIsNoop(t *testing.T) {
 
 func TestRenameFilterAllowsChangingCase(t *testing.T) {
 	cfg := &Config{SavedFilters: []SavedFilter{{Name: "Recent", Query: "q", IsDefault: true}}}
-	if err := cfg.RenameFilter("Recent", "recent"); err != nil {
+	if err := cfg.RenameFilterFor("", "Recent", "recent"); err != nil {
 		t.Fatal(err)
 	}
 	if cfg.SavedFilters[0].Name != "recent" || !cfg.SavedFilters[0].IsDefault {
@@ -767,27 +767,27 @@ func TestRenameFilterAllowsChangingCase(t *testing.T) {
 
 func TestRenameFilterRefusesCollisionAndMissing(t *testing.T) {
 	cfg := &Config{SavedFilters: []SavedFilter{{Name: "a"}, {Name: "b"}}}
-	if err := cfg.RenameFilter("a", "b"); err == nil {
+	if err := cfg.RenameFilterFor("", "a", "b"); err == nil {
 		t.Fatal("renaming onto an existing name should fail")
 	}
 	if cfg.SavedFilters[0].Name != "a" || cfg.SavedFilters[1].Name != "b" {
 		t.Fatalf("a refused rename should not change anything, got %+v", cfg.SavedFilters)
 	}
-	if err := cfg.RenameFilter("missing", "c"); err == nil {
+	if err := cfg.RenameFilterFor("", "missing", "c"); err == nil {
 		t.Fatal("renaming a missing filter should fail")
 	}
-	if err := cfg.RenameFilter("a", "  "); err == nil {
+	if err := cfg.RenameFilterFor("", "a", "  "); err == nil {
 		t.Fatal("an empty name should fail")
 	}
 }
 
 func TestMoveSavedFilterReorders(t *testing.T) {
 	cfg := &Config{SavedFilters: []SavedFilter{{Name: "a"}, {Name: "b"}, {Name: "c"}}}
-	cfg.MoveSavedFilter(2, 0)
+	cfg.MoveSavedFilterFor("", 2, 0)
 	if cfg.SavedFilters[0].Name != "c" || cfg.SavedFilters[1].Name != "a" || cfg.SavedFilters[2].Name != "b" {
 		t.Fatalf("got %+v", cfg.SavedFilters)
 	}
-	cfg.MoveSavedFilter(0, 2)
+	cfg.MoveSavedFilterFor("", 0, 2)
 	if cfg.SavedFilters[0].Name != "a" || cfg.SavedFilters[2].Name != "c" {
 		t.Fatalf("move down %+v", cfg.SavedFilters)
 	}
@@ -798,7 +798,7 @@ func TestParseConfigSeedsSavedFiltersWhenOmitted(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(cfg.GetSavedFilters()) == 0 {
+	if len(cfg.SavedFiltersFor("")) == 0 {
 		t.Fatal("omitted saved_filters should seed defaults")
 	}
 }

@@ -33,7 +33,7 @@ func TestAdHocClauseAppendsToTheActiveFilterWithoutSaving(t *testing.T) {
 	if wl.activeFilterName != "Running" {
 		t.Fatalf("the filter should stay active, got %q", wl.activeFilterName)
 	}
-	if got := cfg.GetSavedFilters()[0].Query; got != "ExecutionStatus = 'Running'" {
+	if got := cfg.SavedFiltersFor("local")[0].Query; got != "ExecutionStatus = 'Running'" {
 		t.Fatalf("ad-hoc clauses should not be saved, stored %q", got)
 	}
 

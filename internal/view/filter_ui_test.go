@@ -673,9 +673,9 @@ func TestFilterManagerOpensOnTheActiveFilter(t *testing.T) {
 	wl.keepDataOnStart = true
 	a.app.Pages().Push(wl)
 	for _, name := range []string{"Running", "Failed", "Orders"} {
-		a.Config().SaveFilter(config.SavedFilter{Name: name, Query: "WorkflowType = '" + name + "'"})
+		a.Config().SaveFilterFor("local", config.SavedFilter{Name: name, Query: "WorkflowType = '" + name + "'"})
 	}
-	filters := a.Config().GetSavedFilters()
+	filters := a.Config().SavedFiltersFor("local")
 	wl.applySavedFilter(filters[2])
 
 	wl.showFilterManager()
@@ -702,7 +702,7 @@ func TestFilterManagerShowsBracketsInNamesAndQueries(t *testing.T) {
 	wl := NewWorkflowList(a, "default")
 	wl.keepDataOnStart = true
 	a.app.Pages().Push(wl)
-	a.Config().SaveFilter(config.SavedFilter{Name: "Prod [EU]", Query: "WorkflowId = '[red]x'"})
+	a.Config().SaveFilterFor("local", config.SavedFilter{Name: "Prod [EU]", Query: "WorkflowId = '[red]x'"})
 
 	wl.showFilterManager()
 	for _, want := range []string{"Prod [EU]", "[red]x"} {
@@ -712,7 +712,7 @@ func TestFilterManagerShowsBracketsInNamesAndQueries(t *testing.T) {
 	}
 	wl.closeModal()
 
-	wl.openFilterBuilder(&filterBuilderState{wl: wl, clauses: savedFilterClauses(a.Config().GetSavedFilters()[0])})
+	wl.openFilterBuilder(&filterBuilderState{wl: wl, clauses: savedFilterClauses(a.Config().SavedFiltersFor("local")[0])})
 	if got := drawCurrentModal(t, a); !strings.Contains(got, "[red]x") {
 		t.Fatalf("filter builder should show the bracketed value, got:\n%s", got)
 	}
@@ -839,8 +839,8 @@ func TestFilterManagerRefreshesAfterSave(t *testing.T) {
 	nameField.SetValue("added")
 	form.InputHandler()(tcell.NewEventKey(tcell.KeyEnter, 0, tcell.ModNone), func(tview.Primitive) {})
 
-	if len(cfg.GetSavedFilters()) != 2 {
-		t.Fatalf("filter was not saved: %+v", cfg.GetSavedFilters())
+	if len(cfg.SavedFiltersFor("local")) != 2 {
+		t.Fatalf("filter was not saved: %+v", cfg.SavedFiltersFor("local"))
 	}
 
 	wl.closeModal()
@@ -933,7 +933,7 @@ func TestCloneFilterCopiesQueryBelowTheOriginal(t *testing.T) {
 	}
 	submitNamePrompt(t, a, "recent (copy)")
 
-	filters := cfg.GetSavedFilters()
+	filters := cfg.SavedFiltersFor("local")
 	if len(filters) != 4 {
 		t.Fatalf("clone should add one filter, got %+v", filters)
 	}
@@ -957,10 +957,10 @@ func TestCloneFilterSuggestsAFreeName(t *testing.T) {
 	cfg := config.DefaultConfig()
 	cfg.SavedFilters = []config.SavedFilter{{Name: "recent"}, {Name: "recent (copy)"}}
 
-	if got := copyFilterName(cfg, "recent"); got != "recent (copy 2)" {
+	if got := copyFilterName(cfg, "local", "recent"); got != "recent (copy 2)" {
 		t.Fatalf("a taken name should count up, got %q", got)
 	}
-	if got := copyFilterName(cfg, "other"); got != "other (copy)" {
+	if got := copyFilterName(cfg, "local", "other"); got != "other (copy)" {
 		t.Fatalf("a free name should be used as is, got %q", got)
 	}
 
@@ -1004,7 +1004,7 @@ func TestCloneFilterRefusesToOverwriteAnExistingName(t *testing.T) {
 	}
 	submitNamePrompt(t, a, "failures")
 
-	filters := cfg.GetSavedFilters()
+	filters := cfg.SavedFiltersFor("local")
 	if len(filters) != 2 {
 		t.Fatalf("clone should not have been saved, got %+v", filters)
 	}
@@ -1029,8 +1029,8 @@ func TestCloneFilterWithNothingSelectedDoesNothing(t *testing.T) {
 	if _, isPrompt := a.app.Pages().Current().(*overlayModal).body.(*components.Form); isPrompt {
 		t.Fatal("an empty list has nothing to clone, so no prompt should open")
 	}
-	if len(cfg.GetSavedFilters()) != 0 {
-		t.Fatalf("nothing should have been saved, got %+v", cfg.GetSavedFilters())
+	if len(cfg.SavedFiltersFor("local")) != 0 {
+		t.Fatalf("nothing should have been saved, got %+v", cfg.SavedFiltersFor("local"))
 	}
 }
 
@@ -1064,7 +1064,7 @@ func TestRenameFilterKeepsQueryDefaultAndActiveChip(t *testing.T) {
 	}
 	submitNamePrompt(t, a, "today")
 
-	filters := cfg.GetSavedFilters()
+	filters := cfg.SavedFiltersFor("local")
 	if len(filters) != 3 {
 		t.Fatalf("rename should not add a filter, got %+v", filters)
 	}
@@ -1096,7 +1096,7 @@ func TestRenameFilterRefusesToOverwriteAnExistingName(t *testing.T) {
 	}
 	submitNamePrompt(t, a, "failures")
 
-	filters := cfg.GetSavedFilters()
+	filters := cfg.SavedFiltersFor("local")
 	if filters[0].Name != "recent" || !filters[0].IsDefault || filters[1].Query != "ExecutionStatus = 'Failed'" {
 		t.Fatalf("a refused rename should not change anything, got %+v", filters)
 	}
@@ -1330,5 +1330,47 @@ func TestNewFilterCancelledClauseReturnsToManager(t *testing.T) {
 	}
 	if _, isScroll := back.body.(*charScrollView); !isScroll {
 		t.Fatalf("cancelling the clause should land back on the Filters modal, got %T", back.body)
+	}
+}
+
+func TestFilterManagerIsScopedToTheActiveProfile(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	cfg := config.DefaultConfig()
+	cfg.SavedFilters = []config.SavedFilter{{Name: "Shared", Query: "ExecutionStatus = 'Running'"}}
+	cfg.ProfileFilters = map[string][]config.SavedFilter{
+		"local": {{Name: "Mine", Query: "WorkflowType = 'A'"}},
+		"prod":  {{Name: "Theirs", Query: "WorkflowType = 'B'"}},
+	}
+	a := NewAppWithProvider(nil, "default", cfg, "local")
+	wl := NewWorkflowList(a, "default")
+	wl.keepDataOnStart = true
+	a.app.Pages().Push(wl)
+
+	var chips []string
+	for _, c := range filterBarItems(wl) {
+		chips = append(chips, c.label)
+	}
+	if got := strings.Join(chips, ","); strings.Contains(got, "Theirs") || !strings.Contains(got, "Mine") || !strings.Contains(got, "Shared") {
+		t.Fatalf("chips should be the profile's own plus global filters, got %s", got)
+	}
+
+	table := filterManagerTable(t, a, wl)
+	got := drawCurrentModal(t, a)
+	if strings.Contains(got, "Theirs") || !strings.Contains(got, "Mine") {
+		t.Fatalf("manager should only list local's filters:\n%s", got)
+	}
+	if !strings.Contains(got, "Shared · global") || strings.Contains(got, "Mine · global") {
+		t.Fatalf("only global filters should be marked:\n%s", got)
+	}
+
+	table.SelectRow(0)
+	if ev := table.GetInputCapture()(tcell.NewEventKey(tcell.KeyRune, 'g', tcell.ModNone)); ev != nil {
+		t.Fatal("g should toggle the filter's scope")
+	}
+	if names := cfg.SavedFiltersFor("prod"); len(names) != 3 {
+		t.Fatalf("a filter made global should reach prod, got %+v", names)
+	}
+	if _, ok := cfg.ProfileFilters["local"]; ok {
+		t.Fatalf("local should have no filters of its own left, got %+v", cfg.ProfileFilters)
 	}
 }

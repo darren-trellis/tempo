@@ -145,7 +145,7 @@ func filterBarItems(wl *WorkflowList) []filterBarChip {
 	if wl == nil || wl.app == nil || wl.app.Config() == nil {
 		return items
 	}
-	for _, f := range wl.app.Config().GetSavedFilters() {
+	for _, f := range wl.app.Config().SavedFiltersFor(wl.app.activeProfile) {
 		name := strings.TrimSpace(f.Name)
 		if name == "" {
 			continue

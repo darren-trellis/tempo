@@ -610,7 +610,7 @@ func (a *App) loadSavedFilter(wl *WorkflowList, name string) {
 		a.ToastWarning("No saved filters")
 		return
 	}
-	for _, f := range a.config.GetSavedFilters() {
+	for _, f := range a.config.SavedFiltersFor(a.activeProfile) {
 		if strings.EqualFold(strings.TrimSpace(f.Name), name) {
 			wl.applySavedFilter(f)
 			return

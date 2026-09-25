@@ -173,7 +173,7 @@ func (a *App) commandExtras() commandExtras {
 		return extras
 	}
 	extras.profiles = a.config.ListProfiles()
-	for _, f := range a.config.GetSavedFilters() {
+	for _, f := range a.config.SavedFiltersFor(a.activeProfile) {
 		if name := strings.TrimSpace(f.Name); name != "" {
 			extras.filters = append(extras.filters, name)
 		}

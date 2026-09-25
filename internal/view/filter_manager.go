@@ -19,10 +19,10 @@ const (
 
 // copyFilterName suggests a free name for a copy of base, counting up until
 // it finds one no filter has taken.
-func copyFilterName(cfg *config.Config, base string) string {
+func copyFilterName(cfg *config.Config, profile, base string) string {
 	name := base + " (copy)"
 	for i := 2; ; i++ {
-		if _, taken := cfg.GetSavedFilter(name); !taken {
+		if _, taken := cfg.SavedFilterFor(profile, name); !taken {
 			return name
 		}
 		name = fmt.Sprintf("%s (copy %d)", base, i)
@@ -42,10 +42,16 @@ func (r filterTreeRow) isFilter() bool {
 	return r.node == nil
 }
 
-func filterTreeRows(wl *WorkflowList, filters []config.SavedFilter) []filterTreeRow {
+// filterTreeRows lays out the filters profile sees. Global filters are only
+// marked as such when there is a profile for them to stand apart from.
+func filterTreeRows(wl *WorkflowList, profile string, filters []config.SavedFilter) []filterTreeRow {
 	var rows []filterTreeRow
 	for i, f := range filters {
-		rows = append(rows, filterTreeRow{filter: i, text: "[::b]" + tview.Escape(f.Name) + "[::-]"})
+		text := "[::b]" + tview.Escape(f.Name) + "[::-]"
+		if profile != "" && f.Profile == "" {
+			text += " [" + theme.TagFgDim() + "]· global[-]"
+		}
+		rows = append(rows, filterTreeRow{filter: i, text: text})
 		root := parseFilterTree(compiledFilterQueryFor(wl, f))
 		if root == nil {
 			continue
@@ -113,6 +119,11 @@ func (wl *WorkflowList) showFilterManager() {
 		return
 	}
 
+	profile := wl.app.activeProfile
+	filters := func() []config.SavedFilter {
+		return cfg.SavedFiltersFor(profile)
+	}
+
 	table := components.NewTable()
 	table.SetBorder(false)
 
@@ -131,7 +142,7 @@ func (wl *WorkflowList) showFilterManager() {
 		row := table.SelectedRow()
 		table.ClearRows()
 		table.SetHeaders("FILTER")
-		rows = filterTreeRows(wl, cfg.GetSavedFilters())
+		rows = filterTreeRows(wl, profile, filters())
 		if len(rows) == 0 {
 			table.AddRow("Press n to create a filter")
 		}
@@ -152,6 +163,15 @@ func (wl *WorkflowList) showFilterManager() {
 	selectFilter := func(idx int) {
 		if row := filterRow(idx); row >= 0 {
 			table.SelectRow(row)
+		}
+	}
+
+	selectFilterNamed := func(name string) {
+		for i, f := range filters() {
+			if f.Name == name {
+				selectFilter(i)
+				return
+			}
 		}
 	}
 
@@ -177,7 +197,7 @@ func (wl *WorkflowList) showFilterManager() {
 			return
 		}
 		wl.closeModal()
-		wl.applySavedFilter(cfg.GetSavedFilters()[idx])
+		wl.applySavedFilter(filters()[idx])
 	}
 
 	// A new filter always needs at least one clause, so go straight to the
@@ -194,7 +214,7 @@ func (wl *WorkflowList) showFilterManager() {
 	}
 
 	editFilter := func(idx int) {
-		f := cfg.GetSavedFilters()[idx]
+		f := filters()[idx]
 		wl.openFilterBuilder(&filterBuilderState{
 			wl:             wl,
 			clauses:        savedFilterClauses(f),
@@ -207,7 +227,7 @@ func (wl *WorkflowList) showFilterManager() {
 	// rewriteFilter swaps the node at path for with, or drops it when with is
 	// nil, and saves the recompiled query in place.
 	rewriteFilter := func(idx int, path []int, with *filterNode) {
-		f := cfg.GetSavedFilters()[idx]
+		f := filters()[idx]
 		root := parseFilterTree(compiledFilterQueryFor(wl, f)).replaced(path, with)
 		if root == nil {
 			wl.app.ToastWarning("A filter needs at least one clause")
@@ -247,9 +267,9 @@ func (wl *WorkflowList) showFilterManager() {
 		if !ok {
 			return
 		}
-		f := cfg.GetSavedFilters()[idx]
+		f := filters()[idx]
 		wl.showFilterNamePrompt("Rename Filter", f.Name, func(name string) {
-			if err := cfg.RenameFilter(f.Name, name); err != nil {
+			if err := cfg.RenameFilterFor(profile, f.Name, name); err != nil {
 				wl.app.ToastWarning(err.Error())
 				return
 			}
@@ -265,22 +285,28 @@ func (wl *WorkflowList) showFilterManager() {
 		})
 	}
 
-	// A clone lands right below its original under a name of its own. It
-	// carries the query over verbatim, placeholders and all, but never
-	// IsDefault: only one filter can be the default and the copy is not it.
+	// A clone lands right below its original, in the same scope, under a
+	// name of its own. It carries the query over verbatim, placeholders and
+	// all.
 	cloneFilter := func() {
 		idx, ok := selectedFilter()
 		if !ok {
 			return
 		}
-		f := cfg.GetSavedFilters()[idx]
-		wl.showFilterNamePrompt("Clone Filter", copyFilterName(cfg, f.Name), func(name string) {
-			if _, taken := cfg.GetSavedFilter(name); taken {
+		visible := filters()
+		f := visible[idx]
+		wl.showFilterNamePrompt("Clone Filter", copyFilterName(cfg, profile, f.Name), func(name string) {
+			if _, taken := cfg.SavedFilterFor(profile, name); taken {
 				wl.app.ToastWarning("A filter named " + name + " already exists")
 				return
 			}
-			cfg.SaveFilter(config.SavedFilter{Name: name, Query: compiledFilterQueryFor(wl, f)})
-			cfg.MoveSavedFilter(len(cfg.GetSavedFilters())-1, idx+1)
+			pos := 0
+			for _, other := range visible[:idx] {
+				if other.Profile == f.Profile {
+					pos++
+				}
+			}
+			cfg.InsertFilter(f.Profile, pos+1, config.SavedFilter{Name: name, Query: compiledFilterQueryFor(wl, f)})
 			_ = wl.app.SaveConfig()
 			refresh()
 			selectFilter(idx + 1)
@@ -289,8 +315,8 @@ func (wl *WorkflowList) showFilterManager() {
 	}
 
 	deleteFilter := func(idx int) {
-		name := cfg.GetSavedFilters()[idx].Name
-		if err := cfg.DeleteFilter(name); err != nil {
+		name := filters()[idx].Name
+		if err := cfg.DeleteFilterFor(profile, name); err != nil {
 			wl.app.ToastWarning(err.Error())
 			return
 		}
@@ -299,7 +325,7 @@ func (wl *WorkflowList) showFilterManager() {
 			wl.applyAllWorkflowsFilter()
 		}
 		refresh()
-		if n := len(cfg.GetSavedFilters()); n > 0 {
+		if n := len(filters()); n > 0 {
 			selectFilter(min(idx, n-1))
 		}
 	}
@@ -321,12 +347,36 @@ func (wl *WorkflowList) showFilterManager() {
 		if !ok {
 			return
 		}
-		next := idx + delta
-		cfg.MoveSavedFilter(idx, next)
+		name := filters()[idx].Name
+		cfg.MoveSavedFilterFor(profile, idx, idx+delta)
 		_ = wl.app.SaveConfig()
 		refresh()
-		next = max(0, min(next, len(cfg.GetSavedFilters())-1))
-		selectFilter(next)
+		selectFilterNamed(name)
+	}
+
+	toggleScope := func() {
+		idx, ok := selectedFilter()
+		if !ok {
+			return
+		}
+		if profile == "" {
+			wl.app.ToastWarning("No active profile to scope filters to")
+			return
+		}
+		f := filters()[idx]
+		global := f.Profile != ""
+		if err := cfg.SetFilterScope(profile, f.Name, global); err != nil {
+			wl.app.ToastWarning(err.Error())
+			return
+		}
+		_ = wl.app.SaveConfig()
+		refresh()
+		selectFilterNamed(f.Name)
+		if global {
+			wl.app.ToastSuccess("Filter " + f.Name + " is now shared by every profile")
+		} else {
+			wl.app.ToastSuccess("Filter " + f.Name + " now belongs to " + profile)
+		}
 	}
 
 	bindings := input.NewKeyBindings().
@@ -350,6 +400,10 @@ func (wl *WorkflowList) showFilterManager() {
 			deleteSelected()
 			return true
 		}).
+		OnRune('g', func(e *tcell.EventKey) bool {
+			toggleScope()
+			return true
+		}).
 		OnRune('J', func(e *tcell.EventKey) bool {
 			move(1)
 			return true
@@ -360,11 +414,8 @@ func (wl *WorkflowList) showFilterManager() {
 		})
 
 	refresh()
-	for i, f := range cfg.GetSavedFilters() {
-		if wl.activeFilterName != "" && f.Name == wl.activeFilterName {
-			selectFilter(i)
-			break
-		}
+	if wl.activeFilterName != "" {
+		selectFilterNamed(wl.activeFilterName)
 	}
 
 	scroll := attachTableCharScroll(table, wl.app)
@@ -390,22 +441,32 @@ func (wl *WorkflowList) showFilterManager() {
 		return event
 	})
 
+	title := fmt.Sprintf("%s Filters", theme.IconFilter)
+	if profile != "" {
+		title += " · " + profile
+	}
 	modal := newOverlayModal(components.ModalConfig{
-		Title:  fmt.Sprintf("%s Filters", theme.IconFilter),
+		Title:  title,
 		Width:  76,
 		Height: 22,
 	}, wl)
 	modal.SetContent(scroll)
-	modal.SetHints([]components.KeyHint{
+	hints := []components.KeyHint{
 		{Key: "Enter", Description: "Apply"},
 		{Key: "n", Description: "New Filter"},
 		{Key: "e", Description: "Edit"},
 		{Key: "r", Description: "Rename"},
 		{Key: "c", Description: "Clone"},
 		{Key: "d", Description: "Delete"},
-		{Key: "J/K", Description: "Reorder"},
-		{Key: "Esc", Description: "Close"},
-	})
+	}
+	if profile != "" {
+		hints = append(hints, components.KeyHint{Key: "g", Description: "Global/Profile"})
+	}
+	hints = append(hints,
+		components.KeyHint{Key: "J/K", Description: "Reorder"},
+		components.KeyHint{Key: "Esc", Description: "Close"},
+	)
+	modal.SetHints(hints)
 	modal.SetOnCancel(func() {
 		wl.closeModal()
 	})

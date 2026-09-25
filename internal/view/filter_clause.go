@@ -307,15 +307,23 @@ func savedFilterClauses(f config.SavedFilter) []config.FilterClause {
 // migrateSavedFilters folds the key/op/value clauses of older configs into the
 // query that filters are stored as now. It reports whether anything changed.
 func migrateSavedFilters(cfg *config.Config) bool {
+	changed := migrateFilterList(cfg.SavedFilters)
+	for _, list := range cfg.ProfileFilters {
+		changed = migrateFilterList(list) || changed
+	}
+	return changed
+}
+
+func migrateFilterList(filters []config.SavedFilter) bool {
 	changed := false
-	for i, f := range cfg.GetSavedFilters() {
+	for i, f := range filters {
 		if len(f.Clauses) == 0 {
 			continue
 		}
 		if strings.TrimSpace(f.Query) == "" {
-			cfg.SavedFilters[i].Query = compileFilterClauses(f.Clauses)
+			filters[i].Query = compileFilterClauses(f.Clauses)
 		}
-		cfg.SavedFilters[i].Clauses = nil
+		filters[i].Clauses = nil
 		changed = true
 	}
 	return changed
