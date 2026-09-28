@@ -27,15 +27,22 @@ func (wl *WorkflowList) openFilterBuilder(state *filterBuilderState) {
 	table := components.NewTable()
 	table.SetBorder(false)
 
-	rawView := tview.NewTextView().
+	rawEditor := tview.NewTextArea().
 		SetWrap(true).
 		SetWordWrap(true).
-		SetScrollable(true)
-	rawView.SetBackgroundColor(theme.Bg())
-	rawView.SetTextColor(theme.Fg())
+		SetPlaceholder("ExecutionStatus = 'Running'")
+	rawEditor.SetBackgroundColor(theme.Bg())
+	rawEditor.SetBorderPadding(0, 0, 1, 1)
+	rawEditor.SetTextStyle(tcell.StyleDefault.Background(theme.Bg()).Foreground(theme.Fg()))
+	rawEditor.SetPlaceholderStyle(tcell.StyleDefault.Background(theme.Bg()).Foreground(theme.FgDim()))
+	rawEditor.SetSelectedStyle(tcell.StyleDefault.Background(theme.Accent()).Foreground(theme.Bg()))
+	// rawQuery is the query the editor was last filled with, so edits can be
+	// told apart from an untouched editor whose clauses must stay as they are.
+	rawQuery := ""
 
 	refresh := func() {
-		rawView.SetText(compileFilterClausesFor(wl, state.clauses))
+		rawQuery = compileFilterClausesFor(wl, state.clauses)
+		rawEditor.SetText(rawQuery, true)
 		row := table.SelectedRow()
 		table.ClearRows()
 		table.SetHeaders("KEY", "OPERATOR", "VALUE")
@@ -57,7 +64,32 @@ func (wl *WorkflowList) openFilterBuilder(state *filterBuilderState) {
 		}
 	}
 
+	// commitRaw folds the editor's text back into clauses. It reports false,
+	// leaving the reader on the raw tab, when there is nothing to keep.
+	commitRaw := func() bool {
+		edited := strings.TrimSpace(singleLine.Replace(rawEditor.GetText()))
+		if edited == rawQuery {
+			return true
+		}
+		if edited == "" {
+			wl.app.ToastWarning("Filter is empty")
+			return false
+		}
+		state.clauses = filterClausesFromQuery(edited)
+		refresh()
+		return true
+	}
+
+	const rawTab = 1
+	activeTab := 0
+	onRawTab := func() bool {
+		return activeTab == rawTab
+	}
+
 	apply := func() {
+		if onRawTab() && !commitRaw() {
+			return
+		}
 		state.apply()
 	}
 
@@ -95,6 +127,9 @@ func (wl *WorkflowList) openFilterBuilder(state *filterBuilderState) {
 	}
 
 	saveNamed := func() {
+		if onRawTab() && !commitRaw() {
+			return
+		}
 		wl.showFilterNamePrompt("Save Filter", state.name, func(name string) {
 			state.name = name
 			state.persist(name)
@@ -103,6 +138,9 @@ func (wl *WorkflowList) openFilterBuilder(state *filterBuilderState) {
 	}
 
 	editRaw := func() {
+		if onRawTab() && !commitRaw() {
+			return
+		}
 		query := compileFilterClausesFor(wl, state.clauses)
 		edited, ok := editFilterQueryInEditor(wl.app, query)
 		if !ok {
@@ -149,26 +187,30 @@ func (wl *WorkflowList) openFilterBuilder(state *filterBuilderState) {
 		Height: 20,
 	}, wl)
 
-	const rawTab = 1
-	activeTab := 0
 	tabs := components.NewTabs().
 		SetShowIcons(false).
 		SetShowBadges(false).
 		AddTab("Clauses", table).
-		AddTab("Raw", rawView)
+		AddTab("Raw", rawEditor)
 	applyHints := func() {
-		hints := []components.KeyHint{
-			{Key: "n", Description: "Add"},
-			{Key: "e", Description: "Edit"},
-			{Key: "d", Description: "Delete"},
-		}
-		if activeTab == rawTab {
-			hints = nil
+		var hints []components.KeyHint
+		if onRawTab() {
+			hints = []components.KeyHint{
+				{Key: "Ctrl+E", Description: "Open in Editor"},
+				{Key: "Tab", Description: "Switch Tab"},
+				{Key: "Ctrl+S", Description: "Save"},
+			}
+		} else {
+			hints = []components.KeyHint{
+				{Key: "n", Description: "Add"},
+				{Key: "e", Description: "Edit"},
+				{Key: "d", Description: "Delete"},
+				{Key: "Ctrl+E", Description: "Open in Editor"},
+				{Key: "[/]", Description: "Switch Tab"},
+				{Key: "s", Description: "Save"},
+			}
 		}
 		hints = append(hints,
-			components.KeyHint{Key: "Ctrl+E", Description: "Open in Editor"},
-			components.KeyHint{Key: "Tab", Description: "Switch Tab"},
-			components.KeyHint{Key: "s", Description: "Save"},
 			components.KeyHint{Key: "Enter", Description: "Apply"},
 			components.KeyHint{Key: "Esc", Description: "Cancel"},
 		)
@@ -177,22 +219,30 @@ func (wl *WorkflowList) openFilterBuilder(state *filterBuilderState) {
 	}
 	focusActive := func() {
 		if jig := wl.app.JigApp(); jig != nil {
-			if activeTab == rawTab {
-				jig.SetFocus(rawView)
+			if onRawTab() {
+				jig.SetFocus(rawEditor)
 				return
 			}
 			jig.SetFocus(table)
 		}
 	}
 	tabs.SetOnChange(func(index int, _ string) {
+		if onRawTab() && index != rawTab && !commitRaw() {
+			refresh()
+		}
 		activeTab = index
 		applyHints()
 		focusActive()
 	})
 	switchTab := func() {
+		if onRawTab() && !commitRaw() {
+			return
+		}
 		tabs.SetActive(1 - activeTab)
 	}
 
+	// On the raw tab every printable key is text, so [ and ] only switch tabs
+	// from the clause list, and saving moves to Ctrl+S.
 	capture := func(event *tcell.EventKey) *tcell.EventKey {
 		switch {
 		case event.Key() == tcell.KeyEnter:
@@ -206,17 +256,41 @@ func (wl *WorkflowList) openFilterBuilder(state *filterBuilderState) {
 			switchTab()
 			return nil
 		}
-		if activeTab != rawTab && clauseBindings.Handle(event) {
-			return nil
+		if onRawTab() {
+			if event.Key() == tcell.KeyCtrlS {
+				saveNamed()
+				return nil
+			}
+			return event
 		}
-		if sharedBindings.Handle(event) {
+		if event.Key() == tcell.KeyRune && event.Modifiers()&tcell.ModCtrl == 0 {
+			switch event.Rune() {
+			case '[', ']':
+				switchTab()
+				return nil
+			}
+		}
+		if clauseBindings.Handle(event) || sharedBindings.Handle(event) {
 			return nil
 		}
 		return event
 	}
 	table.SetInputCapture(capture)
-	rawView.SetInputCapture(capture)
-	tabs.SetInputCapture(capture)
+	rawEditor.SetInputCapture(capture)
+	// Tabs claims digits and H/L for itself before its content sees them;
+	// hand those straight to the editor so they can be typed.
+	tabs.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		if capture(event) == nil {
+			return nil
+		}
+		if onRawTab() && isJigTabsNavKey(event) {
+			if handler := rawEditor.InputHandler(); handler != nil {
+				handler(event, func(tview.Primitive) {})
+			}
+			return nil
+		}
+		return event
+	})
 
 	refresh()
 

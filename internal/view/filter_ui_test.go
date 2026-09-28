@@ -518,7 +518,7 @@ func TestFilterBuilderHasRawTab(t *testing.T) {
 	}
 
 	tabs.SetActive(1)
-	if got := tabs.GetActiveTab().Content.(*tview.TextView).GetText(true); got != query {
+	if got := tabs.GetActiveTab().Content.(*tview.TextArea).GetText(); got != query {
 		t.Fatalf("raw tab = %q, want the full query", got)
 	}
 	if hintDescription(om.Hints(), "n") != "" || hintDescription(om.Hints(), "e") != "" {
@@ -537,7 +537,7 @@ func TestFilterBuilderHasRawTab(t *testing.T) {
 		t.Fatal("Ctrl+E should open the editor")
 	}
 	want := `CustomerId = 'acme' AND ExecutionStatus = 'Failed'`
-	if got := tabs.GetActiveTab().Content.(*tview.TextView).GetText(true); got != want {
+	if got := tabs.GetActiveTab().Content.(*tview.TextArea).GetText(); got != want {
 		t.Fatalf("raw tab should refresh from the editor, got %q", got)
 	}
 	tabs.SetActive(0)
@@ -1372,5 +1372,109 @@ func TestFilterManagerIsScopedToTheActiveProfile(t *testing.T) {
 	}
 	if _, ok := cfg.ProfileFilters["local"]; ok {
 		t.Fatalf("local should have no filters of its own left, got %+v", cfg.ProfileFilters)
+	}
+}
+
+func openRawFilterBuilder(t *testing.T, query string) (*App, *WorkflowList, *filterBuilderState, *components.Tabs) {
+	t.Helper()
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	a := NewAppWithProvider(nil, "default", config.DefaultConfig(), "local")
+	wl := NewWorkflowList(a, "default")
+	wl.keepDataOnStart = true
+	a.app.Pages().Push(wl)
+	state := &filterBuilderState{wl: wl, name: "Orders", clauses: filterClausesFromQuery(query)}
+	wl.openFilterBuilder(state)
+	om := a.app.Pages().Current().(*overlayModal)
+	tabs := om.body.(*components.Tabs)
+	return a, wl, state, tabs
+}
+
+func typeIntoModal(a *App, text string) {
+	for _, r := range text {
+		pressModal(a, tcell.NewEventKey(tcell.KeyRune, r, tcell.ModNone))
+	}
+}
+
+func TestFilterBuilderBracketsSwitchTabs(t *testing.T) {
+	a, _, _, tabs := openRawFilterBuilder(t, "WorkflowType = 'Order'")
+	pressModal(a, tcell.NewEventKey(tcell.KeyRune, ']', tcell.ModNone))
+	if tabs.GetActive() != 1 {
+		t.Fatalf("] should move to the raw tab, active=%d", tabs.GetActive())
+	}
+	pressModal(a, tcell.NewEventKey(tcell.KeyTab, 0, tcell.ModNone))
+	if tabs.GetActive() != 0 {
+		t.Fatalf("Tab should leave the raw tab, active=%d", tabs.GetActive())
+	}
+	pressModal(a, tcell.NewEventKey(tcell.KeyRune, '[', tcell.ModNone))
+	if tabs.GetActive() != 1 {
+		t.Fatalf("[ should wrap around to the raw tab, active=%d", tabs.GetActive())
+	}
+}
+
+func TestFilterBuilderRawTabEditsTheQuery(t *testing.T) {
+	a, _, state, tabs := openRawFilterBuilder(t, "WorkflowType = 'Order'")
+	tabs.SetActive(1)
+	editor := tabs.GetActiveTab().Content.(*tview.TextArea)
+
+	typeIntoModal(a, " AND CustomerId = '[1]H'")
+	want := "WorkflowType = 'Order' AND CustomerId = '[1]H'"
+	if got := editor.GetText(); got != want {
+		t.Fatalf("keys should be typed into the editor, got %q", got)
+	}
+	if tabs.GetActive() != 1 {
+		t.Fatal("brackets, digits, and H are text on the raw tab, not tab switches")
+	}
+
+	pressModal(a, tcell.NewEventKey(tcell.KeyTab, 0, tcell.ModNone))
+	if tabs.GetActive() != 0 {
+		t.Fatal("Tab should switch back to the clauses")
+	}
+	if len(state.clauses) != 2 || state.clauses[1].Key != "CustomerId" || state.clauses[1].Value != "[1]H" {
+		t.Fatalf("leaving the raw tab should parse the edit into clauses, got %+v", state.clauses)
+	}
+}
+
+func TestFilterBuilderRawTabRefusesAnEmptyQuery(t *testing.T) {
+	a, _, state, tabs := openRawFilterBuilder(t, "WorkflowType = 'Order'")
+	tabs.SetActive(1)
+	editor := tabs.GetActiveTab().Content.(*tview.TextArea)
+	editor.SetText("   ", true)
+
+	pressModal(a, tcell.NewEventKey(tcell.KeyTab, 0, tcell.ModNone))
+	if tabs.GetActive() != 1 {
+		t.Fatal("an empty query should keep the reader on the raw tab")
+	}
+	pressModal(a, tcell.NewEventKey(tcell.KeyEnter, 0, tcell.ModNone))
+	if !a.app.Pages().CurrentIsModal() {
+		t.Fatal("an empty query should not be applied")
+	}
+	if len(state.clauses) != 1 || state.clauses[0].Value != "Order" {
+		t.Fatalf("clauses should be untouched, got %+v", state.clauses)
+	}
+}
+
+func TestFilterBuilderRawTabAppliesAndSavesEdits(t *testing.T) {
+	a, wl, _, tabs := openRawFilterBuilder(t, "WorkflowType = 'Order'")
+	tabs.SetActive(1)
+	tabs.GetActiveTab().Content.(*tview.TextArea).SetText("ExecutionStatus = 'Failed'", true)
+
+	pressModal(a, tcell.NewEventKey(tcell.KeyCtrlS, 0, tcell.ModCtrl))
+	prompt, ok := a.app.Pages().Current().(*overlayModal)
+	if !ok {
+		t.Fatalf("Ctrl+S should open the name prompt, current=%T", a.app.Pages().Current())
+	}
+	if _, isForm := prompt.body.(*components.Form); !isForm {
+		t.Fatalf("Ctrl+S should open the name prompt, body=%T", prompt.body)
+	}
+	submitNamePrompt(t, a, "Orders")
+	f, found := a.Config().SavedFilterFor("local", "Orders")
+	if !found || f.Query != "ExecutionStatus = 'Failed'" {
+		t.Fatalf("saving from the raw tab should store the edited query, got %+v", f)
+	}
+
+	tabs.GetActiveTab().Content.(*tview.TextArea).SetText("ExecutionStatus = 'Running'", true)
+	pressModal(a, tcell.NewEventKey(tcell.KeyEnter, 0, tcell.ModNone))
+	if wl.visibilityQuery != "ExecutionStatus = 'Running'" {
+		t.Fatalf("Enter should apply the edited query, got %q", wl.visibilityQuery)
 	}
 }
