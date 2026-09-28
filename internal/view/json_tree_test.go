@@ -1,8 +1,10 @@
 package view
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/atterpac/jig/theme"
 	"github.com/gdamore/tcell/v2"
@@ -143,10 +145,11 @@ func TestJSONTreeHighlightCoversTheWholeRow(t *testing.T) {
 		t.Fatalf("lines=%q", lines)
 	}
 	selected, other := lines[0], lines[1]
-	if !strings.HasPrefix(selected, "["+theme.ColorToHex(accentTextColor())+":"+theme.TagAccent()+":b]") {
+	open := "[" + theme.ColorToHex(accentTextColor()) + ":" + theme.TagAccent() + ":b]"
+	if !strings.HasPrefix(selected, open) {
 		t.Fatalf("selected row should carry the selection style, got %q", selected)
 	}
-	if strings.Contains(selected, theme.TagFgDim()) || strings.Count(selected, "[") != 2 {
+	if rest := strings.ReplaceAll(strings.ReplaceAll(selected, open, ""), "[-:-:-]", ""); strings.Contains(rest, "[") {
 		t.Fatalf("selected row should be one uniform style, got %q", selected)
 	}
 	if width := tview.TaggedStringWidth(selected); width != 40 {
@@ -363,5 +366,32 @@ func TestJSONTreeSelectionIsInactiveForPlainText(t *testing.T) {
 	}
 	if selection.handleKey(tcell.NewEventKey(tcell.KeyDown, 0, tcell.ModNone)) {
 		t.Fatal("inactive tree should leave navigation to the text view")
+	}
+}
+
+func TestSelectingASentenceBesideAWideRowDrawsQuickly(t *testing.T) {
+	payload, _ := json.Marshal(map[string]any{
+		"blob":    strings.Repeat("x", 40000),
+		"message": "Done.",
+		"success": true,
+	})
+	view := tview.NewTextView().SetDynamicColors(true).SetScrollable(true)
+	view.SetWrap(false)
+	view.SetRect(0, 0, 80, 20)
+	tree := newJSONTreeSelection(view)
+	if !tree.setContent(string(payload), true) {
+		t.Fatal("payload should render as a tree")
+	}
+	screen := tcell.NewSimulationScreen("UTF-8")
+	if err := screen.Init(); err != nil {
+		t.Fatal(err)
+	}
+	screen.SetSize(80, 20)
+
+	tree.selectRow(1)
+	start := time.Now()
+	view.Draw(screen)
+	if elapsed := time.Since(start); elapsed > time.Second {
+		t.Fatalf("padding a row that ends a sentence out to a 40k-wide row took %v", elapsed)
 	}
 }

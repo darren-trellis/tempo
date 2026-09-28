@@ -1,7 +1,6 @@
 package view
 
 import (
-	"fmt"
 	"strings"
 	"unicode/utf8"
 
@@ -359,11 +358,7 @@ func (s *jsonTreeSelection) layout(toTop bool, width int) {
 // tables use, padded so the bar runs the full width rather than stopping at the
 // end of the text.
 func jsonTreeHighlightedRow(text string, width int) string {
-	plain := stripStyleTags(text)
-	if pad := width - tview.TaggedStringWidth(plain); pad > 0 {
-		plain += strings.Repeat(" ", pad)
-	}
-	return fmt.Sprintf("[%s:%s:b]%s[-:-:-]", theme.ColorToHex(accentTextColor()), theme.TagAccent(), plain)
+	return jsonTreeBar(stripStyleTags(text), width)
 }
 
 // jsonTreeHighlightedWrapped breaks a row at the pane width and paints every
@@ -371,14 +366,25 @@ func jsonTreeHighlightedRow(text string, width int) string {
 func jsonTreeHighlightedWrapped(text string, width int) []string {
 	parts := wrapTaggedLines(stripStyleTags(text), width)
 	lines := make([]string, len(parts))
-	open := "[" + theme.ColorToHex(accentTextColor()) + ":" + theme.TagAccent() + ":b]"
 	for i, part := range parts {
-		if pad := width - tview.TaggedStringWidth(part); pad > 0 {
-			part += strings.Repeat(" ", pad)
-		}
-		lines[i] = open + part + "[-:-:-]"
+		lines[i] = jsonTreeBar(part, width)
 	}
 	return lines
+}
+
+// jsonTreeBar paints plain in the selection colors, padded out to width.
+// The opening tag is repeated before the padding because tview runs every
+// line through Unicode sentence segmentation, which rescans to the end of the
+// line for each space that follows a full stop. A value ending in "." padded
+// out to a very wide row took minutes to draw; the letter in the repeated tag
+// ends the sentence so the padding costs nothing extra.
+func jsonTreeBar(plain string, width int) string {
+	open := "[" + theme.ColorToHex(accentTextColor()) + ":" + theme.TagAccent() + ":b]"
+	pad := ""
+	if n := width - tview.TaggedStringWidth(plain); n > 0 {
+		pad = strings.Repeat(" ", n)
+	}
+	return open + plain + open + pad + "[-:-:-]"
 }
 
 type wrapCell struct {
