@@ -368,7 +368,7 @@ func catalogOptionsForFilterKey(wl *WorkflowList, key string) []string {
 	return types
 }
 
-func readFilterClauseForm(kind filterKeyKind, keyField, opField, valueField, presetField *dropdownField, values map[string]any) (config.FilterClause, error) {
+func readFilterClauseForm(kind filterKeyKind, spec filterKeySpec, keyField, opField, valueField, presetField *dropdownField, values map[string]any) (config.FilterClause, error) {
 	clause := config.FilterClause{
 		Key: strings.TrimSpace(keyField.GetValue()),
 		Op:  filterOpFromLabel(opField.GetValue()),
@@ -388,6 +388,30 @@ func readFilterClauseForm(kind filterKeyKind, keyField, opField, valueField, pre
 		if valueField != nil {
 			clause.Value = strings.TrimSpace(valueField.GetValue())
 		}
+	case filterKeyList:
+		items := splitFilterListInput(stringValue(values, "values"))
+		if len(items) == 0 {
+			return clause, fmt.Errorf("at least one value is required")
+		}
+		clause.Value = joinFilterValues(items)
+		return clause, nil
+	case filterKeyRange:
+		from := strings.TrimSpace(stringValue(values, "from"))
+		to := strings.TrimSpace(stringValue(values, "to"))
+		if from == "" || to == "" {
+			return clause, fmt.Errorf("both bounds are required")
+		}
+		if spec.kind == filterKeyTime {
+			var err error
+			if from, err = parseFilterDateTime(from); err != nil {
+				return clause, err
+			}
+			if to, err = parseFilterDateTime(to); err != nil {
+				return clause, err
+			}
+		}
+		clause.Value = joinFilterValues([]string{from, to})
+		return clause, nil
 	case filterKeyTime:
 		preset := filterTimeCustom
 		if presetField != nil {

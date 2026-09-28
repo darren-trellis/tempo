@@ -15,10 +15,19 @@ const (
 	filterOpStartsWith    = "starts_with"
 	filterOpNotStartsWith = "not_starts_with"
 	filterOpAfter         = "after"
+	filterOpOnOrAfter     = "on_or_after"
 	filterOpBefore        = "before"
+	filterOpOnOrBefore    = "on_or_before"
+	filterOpIn            = "in"
+	filterOpNotIn         = "not_in"
+	filterOpBetween       = "between"
 	filterOpIsNull        = "is_null"
 	filterOpIsNotNull     = "is_not_null"
 	filterOpRaw           = "raw"
+
+	// filterValueSep splits the values of an IN or BETWEEN clause inside the
+	// single Value string. A visibility value cannot contain it.
+	filterValueSep = "\x1f"
 
 	filterTimeCustom = "Custom"
 )
@@ -35,6 +44,10 @@ const (
 	// filterKeyNone is used by operators that take no value, so the editor
 	// renders no value widget at all.
 	filterKeyNone
+	// filterKeyList is a comma-separated set of values, for IN and NOT IN.
+	filterKeyList
+	// filterKeyRange is a pair of bounds, for BETWEEN.
+	filterKeyRange
 )
 
 type filterKeySpec struct {
@@ -45,13 +58,30 @@ type filterKeySpec struct {
 }
 
 var filterKeySpecs = []filterKeySpec{
-	{key: "WorkflowId", label: "Workflow ID", kind: filterKeyText, ops: []string{filterOpEq, filterOpNeq, filterOpStartsWith, filterOpNotStartsWith}},
-	{key: "RunId", label: "Run ID", kind: filterKeyText, ops: []string{filterOpEq, filterOpNeq, filterOpStartsWith, filterOpNotStartsWith}},
-	{key: "WorkflowType", label: "Workflow Type", kind: filterKeyCatalog, ops: []string{filterOpEq, filterOpNeq, filterOpStartsWith, filterOpNotStartsWith}},
-	{key: "TaskQueue", label: "Task Queue", kind: filterKeyCatalog, ops: []string{filterOpEq, filterOpNeq, filterOpStartsWith, filterOpNotStartsWith}},
-	{key: "ExecutionStatus", label: "Execution Status", kind: filterKeyStatus, ops: []string{filterOpEq, filterOpNeq}},
-	{key: "StartTime", label: "Start Time", kind: filterKeyTime, ops: []string{filterOpAfter, filterOpBefore}},
-	{key: "CloseTime", label: "Close Time", kind: filterKeyTime, ops: []string{filterOpAfter, filterOpBefore}},
+	{key: "WorkflowId", label: "Workflow ID", kind: filterKeyText, ops: filterKeywordOps()},
+	{key: "RunId", label: "Run ID", kind: filterKeyText, ops: filterKeywordOps()},
+	{key: "WorkflowType", label: "Workflow Type", kind: filterKeyCatalog, ops: filterKeywordOps()},
+	{key: "TaskQueue", label: "Task Queue", kind: filterKeyCatalog, ops: filterKeywordOps()},
+	{key: "ExecutionStatus", label: "Execution Status", kind: filterKeyStatus, ops: filterSetOps()},
+	{key: "StartTime", label: "Start Time", kind: filterKeyTime, ops: filterRangeOps()},
+	{key: "CloseTime", label: "Close Time", kind: filterKeyTime, ops: filterRangeOps()},
+}
+
+// filterKeywordOps are the operators a Keyword attribute accepts: exact and
+// prefix matching, set membership, and a range, which is how a suffix match
+// is written.
+func filterKeywordOps() []string {
+	return []string{filterOpEq, filterOpNeq, filterOpStartsWith, filterOpNotStartsWith, filterOpIn, filterOpNotIn, filterOpBetween}
+}
+
+// filterSetOps are the operators an enum such as ExecutionStatus accepts.
+func filterSetOps() []string {
+	return []string{filterOpEq, filterOpNeq, filterOpIn, filterOpNotIn}
+}
+
+// filterRangeOps are the operators a time accepts, strict and inclusive.
+func filterRangeOps() []string {
+	return []string{filterOpAfter, filterOpOnOrAfter, filterOpBefore, filterOpOnOrBefore, filterOpEq, filterOpNeq, filterOpBetween}
 }
 
 var filterOpLabels = map[string]string{
@@ -60,7 +90,12 @@ var filterOpLabels = map[string]string{
 	filterOpStartsWith:    "Starts With",
 	filterOpNotStartsWith: "Not Starts With",
 	filterOpAfter:         "After",
+	filterOpOnOrAfter:     "On or After",
 	filterOpBefore:        "Before",
+	filterOpOnOrBefore:    "On or Before",
+	filterOpIn:            "In",
+	filterOpNotIn:         "Not In",
+	filterOpBetween:       "Between",
 	filterOpIsNull:        "Is Null",
 	filterOpIsNotNull:     "Is Not Null",
 }
@@ -156,16 +191,19 @@ func specFromSearchAttribute(attr temporal.SearchAttribute) filterKeySpec {
 	switch attr.Type {
 	case temporal.SearchAttributeDatetime:
 		spec.kind = filterKeyTime
-		spec.ops = []string{filterOpAfter, filterOpBefore, filterOpEq, filterOpNeq}
+		spec.ops = filterRangeOps()
 	case temporal.SearchAttributeInt, temporal.SearchAttributeDouble:
 		spec.kind = filterKeyNumber
-		spec.ops = []string{filterOpEq, filterOpNeq, filterOpAfter, filterOpBefore}
+		spec.ops = []string{filterOpEq, filterOpNeq, filterOpAfter, filterOpOnOrAfter, filterOpBefore, filterOpOnOrBefore, filterOpIn, filterOpNotIn, filterOpBetween}
 	case temporal.SearchAttributeBool:
 		spec.kind = filterKeyBool
-		spec.ops = []string{filterOpEq, filterOpNeq}
+		spec.ops = filterSetOps()
+	case temporal.SearchAttributeKeywordList:
+		spec.kind = filterKeyText
+		spec.ops = filterSetOps()
 	default:
 		spec.kind = filterKeyText
-		spec.ops = []string{filterOpEq, filterOpNeq, filterOpStartsWith, filterOpNotStartsWith}
+		spec.ops = filterKeywordOps()
 	}
 	return spec
 }
@@ -389,11 +427,109 @@ func compileFilterClauseWith(clause config.FilterClause, spec filterKeySpec) str
 		return key + " NOT STARTS_WITH " + quoteVisibilityValue(value)
 	case filterOpAfter:
 		return key + " > " + formatFilterCompare(spec, value)
+	case filterOpOnOrAfter:
+		return key + " >= " + formatFilterCompare(spec, value)
 	case filterOpBefore:
 		return key + " < " + formatFilterCompare(spec, value)
+	case filterOpOnOrBefore:
+		return key + " <= " + formatFilterCompare(spec, value)
+	case filterOpIn, filterOpNotIn:
+		items := filterListValues(value)
+		if len(items) == 0 {
+			return ""
+		}
+		quoted := make([]string, len(items))
+		for i, item := range items {
+			quoted[i] = formatFilterValue(spec, item)
+		}
+		word := "IN"
+		if op == filterOpNotIn {
+			word = "NOT IN"
+		}
+		return key + " " + word + " (" + strings.Join(quoted, ", ") + ")"
+	case filterOpBetween:
+		bounds := filterListValues(value)
+		if len(bounds) != 2 {
+			return ""
+		}
+		return key + " BETWEEN " + formatFilterCompare(spec, bounds[0]) + " AND " + formatFilterCompare(spec, bounds[1])
 	default:
 		return ""
 	}
+}
+
+// filterOpValueShape reports how many values an operator takes, so the form
+// can show one field, a comma-separated list, or a From and a To.
+func filterOpValueShape(op string) int {
+	switch strings.TrimSpace(op) {
+	case filterOpIsNull, filterOpIsNotNull:
+		return 0
+	case filterOpIn, filterOpNotIn:
+		return -1
+	case filterOpBetween:
+		return 2
+	default:
+		return 1
+	}
+}
+
+func filterListValues(value string) []string {
+	var out []string
+	for _, part := range strings.Split(value, filterValueSep) {
+		if part = strings.TrimSpace(part); part != "" {
+			out = append(out, part)
+		}
+	}
+	return out
+}
+
+func joinFilterValues(values []string) string {
+	return strings.Join(values, filterValueSep)
+}
+
+// splitFilterListInput reads what was typed into the Values field. A comma
+// splits items, and quotes keep a comma that belongs to a value.
+func splitFilterListInput(raw string) []string {
+	var items []string
+	var current []rune
+	inQuote := rune(0)
+	flush := func() {
+		item := strings.TrimSpace(string(current))
+		current = nil
+		if item != "" {
+			if q := rune(item[0]); (q == '\'' || q == '"') && strings.HasSuffix(item, string(q)) && len([]rune(item)) >= 2 {
+				item = strings.TrimSpace(string([]rune(item)[1 : len([]rune(item))-1]))
+			}
+		}
+		if item != "" {
+			items = append(items, item)
+		}
+	}
+	for _, r := range raw {
+		switch {
+		case inQuote != 0:
+			current = append(current, r)
+			if r == inQuote {
+				inQuote = 0
+			}
+		case r == '\'' || r == '"':
+			inQuote = r
+			current = append(current, r)
+		case r == ',':
+			flush()
+		default:
+			current = append(current, r)
+		}
+	}
+	flush()
+	return items
+}
+
+func rangeBoundPlaceholder(kind filterKeyKind) string {
+	if kind == filterKeyTime {
+		return "2024-01-02 15:04"
+	}
+	return "Value"
 }
 
 func formatFilterValue(spec filterKeySpec, value string) string {
@@ -431,10 +567,26 @@ func filterClauseSummary(clause config.FilterClause) string {
 		return clause.Key + " " + filterOpLabel(clause.Op)
 	}
 	value := strings.TrimSpace(clause.Value)
-	if label := filterTimePresetLabel(value); label != filterTimeCustom {
-		value = label
+	switch filterOpValueShape(clause.Op) {
+	case -1:
+		value = strings.Join(filterListValues(value), ", ")
+	case 2:
+		if bounds := filterListValues(value); len(bounds) == 2 {
+			value = displayFilterBound(bounds[0]) + " and " + displayFilterBound(bounds[1])
+		}
+	default:
+		if label := filterTimePresetLabel(value); label != filterTimeCustom {
+			value = label
+		}
 	}
 	return fmt.Sprintf("%s %s %s", clause.Key, filterOpLabel(clause.Op), value)
+}
+
+func displayFilterBound(value string) string {
+	if label := filterTimePresetLabel(value); label != filterTimeCustom {
+		return label
+	}
+	return value
 }
 
 func parseFilterDateTime(value string) (string, error) {
@@ -450,12 +602,16 @@ func parseFilterDateTime(value string) (string, error) {
 		"2006-01-02 15:04",
 		"2006-01-02T15:04",
 		"2006-01-02 15:04:05",
-		"2006-01-02",
 	}
 	for _, layout := range layouts {
 		if t, err := time.ParseInLocation(layout, value, time.Local); err == nil {
 			return t.UTC().Format(time.RFC3339), nil
 		}
+	}
+	// A bare date is parsed in UTC so it means the same wherever the config is
+	// read, while a clock time is the reader's local time.
+	if t, err := time.Parse("2006-01-02", value); err == nil {
+		return t.UTC().Format(time.RFC3339), nil
 	}
 	return "", fmt.Errorf("use YYYY-MM-DD HH:MM")
 }

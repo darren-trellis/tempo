@@ -1220,6 +1220,32 @@ func screenContains(screen tcell.SimulationScreen, want string) bool {
 	return false
 }
 
+func TestClauseEditorShowsFieldsForSetAndRangeOperators(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	a := NewAppWithProvider(nil, "default", config.DefaultConfig(), "local")
+	wl := NewWorkflowList(a, "default")
+	wl.keepDataOnStart = true
+	a.app.Pages().Push(wl)
+
+	in := clauseEditorScreen(t, a, wl, config.FilterClause{Key: "ExecutionStatus", Op: filterOpIn, Value: joinFilterValues([]string{"Running", "Failed"})})
+	if !screenContains(in, "Values") || !screenContains(in, "Running, Failed") {
+		t.Fatal("IN should show a Values field filled with the list")
+	}
+	wl.closeModal()
+
+	between := clauseEditorScreen(t, a, wl, config.FilterClause{Key: "StartTime", Op: filterOpBetween, Value: joinFilterValues([]string{"2024-01-01T00:00:00Z", "2024-02-01T00:00:00Z"})})
+	if !screenContains(between, "From") || !screenContains(between, "To") {
+		t.Fatal("BETWEEN should show From and To fields")
+	}
+	wl.closeModal()
+
+	inclusive := clauseEditorScreen(t, a, wl, config.FilterClause{Key: "CloseTime", Op: filterOpOnOrAfter})
+	if !screenContains(inclusive, "On or After") || !screenContains(inclusive, "Value") {
+		t.Fatal("On or After should show the operator and a Value field")
+	}
+	wl.closeModal()
+}
+
 func TestClauseEditorHidesValueForNullOperators(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	a := NewAppWithProvider(nil, "default", config.DefaultConfig(), "local")

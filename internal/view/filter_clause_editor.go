@@ -77,8 +77,9 @@ func (wl *WorkflowList) showClauseEditor(initial config.FilterClause, onSave fun
 		})
 		opField.SetChangedFunc(func(v string) {
 			op := filterOpFromLabel(v)
-			if filterOpNeedsValue(op) != filterOpNeedsValue(current.Op) {
+			if filterOpValueShape(op) != filterOpValueShape(current.Op) {
 				current.Op = op
+				current.Value = ""
 				rebuild(current)
 				return
 			}
@@ -90,11 +91,17 @@ func (wl *WorkflowList) showClauseEditor(initial config.FilterClause, onSave fun
 		var valueField *dropdownField
 		var presetField *dropdownField
 
-		// IS NULL and IS NOT NULL stand alone, so the form stops at the
-		// operator.
+		// The operator decides how many values the form asks for: none for the
+		// null checks, a comma-separated list for IN, and a From and To for
+		// BETWEEN. Anything else keeps the single value field.
 		kind := spec.kind
-		if !filterOpNeedsValue(current.Op) {
+		switch filterOpValueShape(current.Op) {
+		case 0:
 			kind = filterKeyNone
+		case -1:
+			kind = filterKeyList
+		case 2:
+			kind = filterKeyRange
 		}
 
 		switch kind {
@@ -145,6 +152,31 @@ func (wl *WorkflowList) showClauseEditor(initial config.FilterClause, onSave fun
 					Value(displayFilterDateTime(current.Value)).
 					Done()
 			}
+		case filterKeyList:
+			builder.Text("values", "Values").
+				Placeholder("a, b, c").
+				Value(strings.Join(filterListValues(current.Value), ", ")).
+				Done()
+		case filterKeyRange:
+			bounds := filterListValues(current.Value)
+			from, to := "", ""
+			if len(bounds) > 0 {
+				from = bounds[0]
+			}
+			if len(bounds) > 1 {
+				to = bounds[1]
+			}
+			if spec.kind == filterKeyTime {
+				from, to = displayFilterDateTime(from), displayFilterDateTime(to)
+			}
+			builder.Text("from", "From").
+				Placeholder(rangeBoundPlaceholder(spec.kind)).
+				Value(from).
+				Done()
+			builder.Text("to", "To").
+				Placeholder(rangeBoundPlaceholder(spec.kind)).
+				Value(to).
+				Done()
 		case filterKeyNone:
 		default:
 			builder.Text("value", "Value").
@@ -155,7 +187,7 @@ func (wl *WorkflowList) showClauseEditor(initial config.FilterClause, onSave fun
 
 		form := builder.
 			OnSubmit(func(values map[string]any) {
-				clause, err := readFilterClauseForm(spec.kind, keyField, opField, valueField, presetField, values)
+				clause, err := readFilterClauseForm(kind, spec, keyField, opField, valueField, presetField, values)
 				if err != nil {
 					wl.app.ToastWarning(err.Error())
 					return

@@ -44,6 +44,27 @@ func TestParseVisibilityQueryProducesClauses(t *testing.T) {
 			},
 		},
 		{
+			name:  "inclusive bounds",
+			query: `CloseTime >= '2024-01-02T03:04:05Z' AND Amount <= 10`,
+			want: []config.FilterClause{
+				{Key: "CloseTime", Op: filterOpOnOrAfter, Value: "2024-01-02T03:04:05Z"},
+				{Key: "Amount", Op: filterOpOnOrBefore, Value: "10"},
+			},
+		},
+		{
+			name:  "set membership",
+			query: `ExecutionStatus IN ('Running', 'Failed') AND Amount NOT IN (1, 2)`,
+			want: []config.FilterClause{
+				{Key: "ExecutionStatus", Op: filterOpIn, Value: joinFilterValues([]string{"Running", "Failed"})},
+				{Key: "Amount", Op: filterOpNotIn, Value: joinFilterValues([]string{"1", "2"})},
+			},
+		},
+		{
+			name:  "between with a quoted and",
+			query: `WorkflowId BETWEEN 'a' AND 'a AND b'`,
+			want:  []config.FilterClause{{Key: "WorkflowId", Op: filterOpBetween, Value: joinFilterValues([]string{"a", "a AND b"})}},
+		},
+		{
 			name:  "negative prefix",
 			query: `WorkflowId NOT STARTS_WITH 'tmp-'`,
 			want:  []config.FilterClause{{Key: "WorkflowId", Op: filterOpNotStartsWith, Value: "tmp-"}},
@@ -103,9 +124,6 @@ func TestParseVisibilityQueryKeepsComplexQueriesRaw(t *testing.T) {
 	for _, query := range []string{
 		`WorkflowType = 'A' OR WorkflowType = 'B'`,
 		`(WorkflowType = 'A' OR CustomerId = 'x')`,
-		`ExecutionStatus IN ('Running', 'Failed')`,
-		`StartTime BETWEEN '2026-01-01' AND '2026-02-01'`,
-		`CloseTime >= '2026-01-01T00:00:00Z'`,
 		`CustomerId = 'unterminated`,
 	} {
 		if _, ok := parseVisibilityQuery(query); ok {
@@ -297,6 +315,35 @@ func TestClauseModalOffersNotStartsWith(t *testing.T) {
 	}
 	if !strings.Contains(drawn.String(), "Not Starts With") {
 		t.Fatalf("operator dropdown should show Not Starts With:\n%s", drawn.String())
+	}
+}
+
+func TestReadFilterClauseFormListAndRange(t *testing.T) {
+	dropdown := func(value string) *dropdownField {
+		return newOrderedDropdownField("f", "f", []string{value}).SetValue(value)
+	}
+	list, err := readFilterClauseForm(filterKeyList, filterKeySpec{}, dropdown("ExecutionStatus"), dropdown("In"), nil, nil,
+		map[string]any{"values": "Running, 'Failed, retry', Completed"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := filterListValues(list.Value); len(got) != 3 || got[1] != "Failed, retry" {
+		t.Fatalf("list values = %q", got)
+	}
+
+	between, err := readFilterClauseForm(filterKeyRange, filterKeySpec{kind: filterKeyTime}, dropdown("StartTime"), dropdown("Between"), nil, nil,
+		map[string]any{"from": "2024-01-02 15:04", "to": "2024-02-01"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	bounds := filterListValues(between.Value)
+	if len(bounds) != 2 || bounds[1] != "2024-02-01T00:00:00Z" {
+		t.Fatalf("bounds = %q", bounds)
+	}
+
+	if _, err := readFilterClauseForm(filterKeyRange, filterKeySpec{}, dropdown("Amount"), dropdown("Between"), nil, nil,
+		map[string]any{"from": "1", "to": ""}); err == nil {
+		t.Fatal("a range with one bound should be refused")
 	}
 }
 

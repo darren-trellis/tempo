@@ -43,6 +43,29 @@ func TestCompileFilterClauses(t *testing.T) {
 	}
 
 	got = compileFilterClauses([]config.FilterClause{
+		{Key: "CloseTime", Op: filterOpOnOrAfter, Value: "2024-01-02T03:04:05Z"},
+		{Key: "Amount", Op: filterOpOnOrBefore, Value: "10"},
+	})
+	if got != "CloseTime >= '2024-01-02T03:04:05Z' AND Amount <= '10'" {
+		t.Fatalf("inclusive bounds: %q", got)
+	}
+
+	got = compileFilterClauses([]config.FilterClause{
+		{Key: "ExecutionStatus", Op: filterOpIn, Value: joinFilterValues([]string{"Running", "Failed"})},
+		{Key: "Amount", Op: filterOpNotIn, Value: joinFilterValues([]string{"1", "2"})},
+	})
+	if got != "ExecutionStatus IN ('Running', 'Failed') AND Amount NOT IN ('1', '2')" {
+		t.Fatalf("set membership: %q", got)
+	}
+
+	got = compileFilterClauses([]config.FilterClause{
+		{Key: "StartTime", Op: filterOpBetween, Value: joinFilterValues([]string{"2024-01-01T00:00:00Z", "2024-02-01T00:00:00Z"})},
+	})
+	if got != "StartTime BETWEEN '2024-01-01T00:00:00Z' AND '2024-02-01T00:00:00Z'" {
+		t.Fatalf("between: %q", got)
+	}
+
+	got = compileFilterClauses([]config.FilterClause{
 		{Key: "StartTime", Op: filterOpBefore, Value: "2024-01-02T03:04:05Z"},
 	})
 	if got != "StartTime < '2024-01-02T03:04:05Z'" {

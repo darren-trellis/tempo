@@ -72,10 +72,14 @@ func parseQueryConjunct(part string) (config.FilterClause, bool) {
 
 	var op string
 	switch {
-	case strings.HasPrefix(rest, ">="), strings.HasPrefix(rest, "<="), strings.HasPrefix(rest, "=="):
+	case strings.HasPrefix(rest, "=="):
 		return config.FilterClause{}, false
 	case strings.HasPrefix(rest, "!="):
 		op, rest = filterOpNeq, rest[2:]
+	case strings.HasPrefix(rest, ">="):
+		op, rest = filterOpOnOrAfter, rest[2:]
+	case strings.HasPrefix(rest, "<="):
+		op, rest = filterOpOnOrBefore, rest[2:]
 	case strings.HasPrefix(rest, "="):
 		op, rest = filterOpEq, rest[1:]
 	case strings.HasPrefix(rest, ">"):
@@ -83,6 +87,9 @@ func parseQueryConjunct(part string) (config.FilterClause, bool) {
 	case strings.HasPrefix(rest, "<"):
 		op, rest = filterOpBefore, rest[1:]
 	default:
+		if matched, value, ok := parseSetOrRangeOp(rest); ok {
+			return config.FilterClause{Key: key, Op: matched, Value: value}, true
+		}
 		// NOT STARTS_WITH has to win over STARTS_WITH, or the shorter match
 		// would leave "NOT" behind as part of the value.
 		for _, candidate := range []struct {
@@ -131,6 +138,121 @@ func nullaryQueryOp(rest string) (string, bool) {
 		}
 	}
 	return "", false
+}
+
+// parseSetOrRangeOp matches IN, NOT IN, and BETWEEN, whose values are a list
+// or a pair rather than the single value parseQueryValue reads.
+func parseSetOrRangeOp(rest string) (op, value string, ok bool) {
+	for _, candidate := range []struct {
+		text string
+		op   string
+	}{
+		{"NOT IN", filterOpNotIn},
+		{"IN", filterOpIn},
+		{"BETWEEN", filterOpBetween},
+	} {
+		if len(rest) <= len(candidate.text) || !strings.EqualFold(rest[:len(candidate.text)], candidate.text) {
+			continue
+		}
+		if isQueryIdentRune(rune(rest[len(candidate.text)])) {
+			continue
+		}
+		body := strings.TrimSpace(rest[len(candidate.text):])
+		switch candidate.op {
+		case filterOpBetween:
+			low, high, found := splitBetweenBounds(body)
+			if !found {
+				return "", "", false
+			}
+			return candidate.op, joinFilterValues([]string{low, high}), true
+		default:
+			items, found := parseQueryList(body)
+			if !found {
+				return "", "", false
+			}
+			return candidate.op, joinFilterValues(items), true
+		}
+	}
+	return "", "", false
+}
+
+// splitBetweenBounds divides "x AND y" on the AND that joins the bounds, not
+// on one that happens to sit inside a quoted value.
+func splitBetweenBounds(body string) (low, high string, ok bool) {
+	runes := []rune(body)
+	inQuote := rune(0)
+	for i := 0; i < len(runes); i++ {
+		r := runes[i]
+		if inQuote != 0 {
+			if r == inQuote {
+				inQuote = 0
+			}
+			continue
+		}
+		if r == '\'' || r == '"' {
+			inQuote = r
+			continue
+		}
+		word, width, found := queryKeywordAt(runes, i)
+		if !found || word != "and" {
+			continue
+		}
+		left, leftOK := parseQueryValue(strings.TrimSpace(string(runes[:i])))
+		right, rightOK := parseQueryValue(strings.TrimSpace(string(runes[i+width:])))
+		if leftOK && rightOK {
+			return left, right, true
+		}
+	}
+	return "", "", false
+}
+
+// parseQueryList reads the parenthesised values of an IN clause.
+func parseQueryList(body string) ([]string, bool) {
+	runes := []rune(strings.TrimSpace(body))
+	if len(runes) < 2 || runes[0] != '(' || runes[len(runes)-1] != ')' {
+		return nil, false
+	}
+	inner := strings.TrimSpace(string(runes[1 : len(runes)-1]))
+	if inner == "" {
+		return nil, false
+	}
+	var items []string
+	var current []rune
+	inQuote := rune(0)
+	flush := func() bool {
+		value, ok := parseQueryValue(strings.TrimSpace(string(current)))
+		current = nil
+		if !ok {
+			return false
+		}
+		items = append(items, value)
+		return true
+	}
+	for _, r := range []rune(inner) {
+		if inQuote != 0 {
+			current = append(current, r)
+			if r == inQuote {
+				inQuote = 0
+			}
+			continue
+		}
+		if r == '\'' || r == '"' {
+			inQuote = r
+			current = append(current, r)
+			continue
+		}
+		if r == ',' {
+			if !flush() {
+				return nil, false
+			}
+			continue
+		}
+		current = append(current, r)
+	}
+	if inQuote != 0 || !flush() || len(items) == 0 {
+		return nil, false
+	}
+	return items, true
 }
 
 func parseQueryValue(raw string) (string, bool) {
