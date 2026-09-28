@@ -2,6 +2,7 @@ package view
 
 import (
 	"fmt"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -278,6 +279,15 @@ func TestPopulateTablePreservesHighlightedWorkflow(t *testing.T) {
 	row := wl.table.SelectedRow()
 	if row < 0 || row >= len(wl.workflows) || wl.workflows[row].ID != "wf-3" {
 		t.Fatalf("refresh should keep wf-3 highlighted, row=%d", row)
+	}
+}
+
+func TestRefreshInvalidatesThePreviewAlreadyLoading(t *testing.T) {
+	wl := NewWorkflowList(&App{}, "default")
+	before := atomic.LoadUint64(&wl.previewGen)
+	wl.invalidateCaches()
+	if atomic.LoadUint64(&wl.previewGen) == before {
+		t.Fatal("a refresh should drop a preview load that is already in flight")
 	}
 }
 

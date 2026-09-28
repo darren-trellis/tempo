@@ -124,6 +124,7 @@ type WorkflowList struct {
 	pager                  workflowPager
 	pageBusy               bool
 	pageGen                uint64
+	fetchCancel            func() // cancels the list fetch currently in flight
 	listAnchorIndex        int
 	hasListAnchor          bool
 	listEdgePin            listEdgePin

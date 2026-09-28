@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/atterpac/jig/theme"
@@ -61,9 +62,28 @@ func (wl *WorkflowList) invalidateCaches() {
 	wl.previewPending = false
 	wl.previewWorkflowID = ""
 	wl.previewRunID = ""
+	if wl.previewTimer != nil {
+		wl.previewTimer.Stop()
+		wl.previewTimer = nil
+	}
+	// A preview load started by the refresh already running would otherwise
+	// land after this one and draw the preview twice.
+	atomic.AddUint64(&wl.previewGen, 1)
 	if wl.hierarchyView != nil {
 		wl.hierarchyView.Invalidate()
 	}
+}
+
+// beginFetch starts a list fetch and stops the one already running, so an
+// explicit refresh during auto-refresh does not let both of them finish.
+func (wl *WorkflowList) beginFetch() (context.Context, func(), uint64) {
+	if wl.fetchCancel != nil {
+		wl.fetchCancel()
+	}
+	wl.pageGen++
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	wl.fetchCancel = cancel
+	return ctx, cancel, wl.pageGen
 }
 
 func (wl *WorkflowList) loadData() {
@@ -141,14 +161,12 @@ func (wl *WorkflowList) startWindow(live bool) {
 		return
 	}
 
-	wl.pageGen++
-	gen := wl.pageGen
+	ctx, cancel, gen := wl.beginFetch()
 	wl.pager.reset(resolvedQuery)
 	wl.pageBusy = true
 	wl.setLoadIndicator(true, live)
 
 	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 
 		var wg sync.WaitGroup
@@ -223,7 +241,6 @@ func (wl *WorkflowList) reloadLoadedPages() {
 		wl.loadData()
 		return
 	}
-	wl.pageGen++
 	wl.refreshLoadedPages()
 }
 
@@ -236,12 +253,11 @@ func (wl *WorkflowList) refreshLoadedPages() {
 	pages := append([]workflowPage(nil), wl.pager.pages...)
 	first := wl.pager.firstPage
 	query := wl.pager.query
-	gen := wl.pageGen
+	ctx, cancel, gen := wl.beginFetch()
 	wl.pageBusy = true
 	wl.setRefreshing(true)
 
 	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 
 		type pageResult struct {
@@ -325,6 +341,9 @@ func (wl *WorkflowList) refreshCounts() {
 				return
 			}
 			wl.liveBusy = false
+			if wl.pageBusy {
+				return
+			}
 			wl.setLoading(false)
 			if err == nil {
 				wl.applyServerCounts(counts)
@@ -466,11 +485,10 @@ func (wl *WorkflowList) fetchAdjacentPage(prev bool) {
 		return
 	}
 	query := wl.pager.query
-	gen := wl.pageGen
+	ctx, cancel, gen := wl.beginFetch()
 	wl.pageBusy = true
 	wl.setLoading(true)
 	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 		workflows, next, err := provider.ListWorkflows(ctx, wl.namespace, temporal.ListOptions{
 			PageSize:  wl.pageSize(),

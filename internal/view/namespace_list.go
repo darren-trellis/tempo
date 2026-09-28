@@ -29,6 +29,8 @@ type NamespaceList struct {
 	namespaces    []temporal.Namespace // Filtered list for display
 	loading       bool
 	autoRefresh   bool
+	fetchGen      uint64
+	fetch         *async.Loader[[]temporal.Namespace]
 	refreshTicker *time.Ticker
 	stopRefresh   chan struct{}
 }
@@ -193,10 +195,18 @@ func (nl *NamespaceList) fetchNamespaces(live bool) {
 		return
 	}
 
+	nl.fetchGen++
+	gen := nl.fetchGen
+	if nl.fetch != nil {
+		nl.fetch.Cancel()
+	}
 	nl.setLoadIndicator(true, live)
-	async.NewLoader[[]temporal.Namespace]().
+	nl.fetch = async.NewLoader[[]temporal.Namespace]().
 		WithTimeout(10 * time.Second).
 		OnSuccess(func(namespaces []temporal.Namespace) {
+			if gen != nl.fetchGen {
+				return
+			}
 			nl.allNamespaces = namespaces
 			if nl.GetSearchText() != "" {
 				nl.applyFilter(nl.GetSearchText())
@@ -206,11 +216,15 @@ func (nl *NamespaceList) fetchNamespaces(live bool) {
 			}
 		}).
 		OnError(func(err error) {
-			if !live {
-				nl.showError(err)
+			if gen != nl.fetchGen || live {
+				return
 			}
+			nl.showError(err)
 		}).
 		OnFinally(func() {
+			if gen != nl.fetchGen {
+				return
+			}
 			nl.setLoading(false)
 		}).
 		Run(func(ctx context.Context) ([]temporal.Namespace, error) {

@@ -231,6 +231,64 @@ func TestWorkflowActionReloadsTheLoadedPages(t *testing.T) {
 	}
 }
 
+func TestManualRefreshCancelsTheAutoRefreshInFlight(t *testing.T) {
+	var mu sync.Mutex
+	var calls int
+	var first context.Context
+	provider := &countingPageProvider{pageListProvider: pageListProvider{
+		list: func(ctx context.Context, _ string, _ temporal.ListOptions) ([]temporal.Workflow, string, error) {
+			mu.Lock()
+			calls++
+			n := calls
+			if n == 1 {
+				first = ctx
+			}
+			mu.Unlock()
+			if n == 1 {
+				<-ctx.Done()
+				return nil, "", ctx.Err()
+			}
+			return []temporal.Workflow{{ID: "fresh", RunID: "r"}}, "", nil
+		},
+	}}
+	a := &App{provider: provider, app: layout.NewApp(layout.AppConfig{})}
+	wl := NewWorkflowList(a, "default")
+	wl.pager.reset("")
+	wl.pager.accept(0, "", "", []temporal.Workflow{{ID: "old", RunID: "r"}})
+
+	wl.liveRefresh()
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		mu.Lock()
+		n := calls
+		mu.Unlock()
+		if n >= 1 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("auto-refresh did not start a fetch")
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+
+	wl.refresh()
+
+	deadline = time.Now().Add(2 * time.Second)
+	for {
+		mu.Lock()
+		n := calls
+		canceled := first != nil && first.Err() != nil
+		mu.Unlock()
+		if n >= 2 && canceled {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("manual refresh should replace the one in flight, calls=%d canceled=%v", n, canceled)
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+}
+
 func TestDisplayedStatsUsesServerCounts(t *testing.T) {
 	wl := NewWorkflowList(&App{}, "default")
 	wl.workflows = []temporal.Workflow{{Status: "Running"}, {Status: "Running"}, {Status: "TimedOut"}, {Status: "ContinuedAsNew"}}

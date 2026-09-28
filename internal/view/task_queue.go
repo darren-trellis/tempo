@@ -48,6 +48,8 @@ type TaskQueueView struct {
 	pollerTimer    *time.Timer
 	autoRefresh    bool
 	liveBusy       bool
+	fetchGen       uint64
+	fetchCancel    func()
 	refreshTicker  *time.Ticker
 	stopRefresh    chan struct{}
 }
@@ -195,14 +197,17 @@ func (tq *TaskQueueView) loadQueueList(force bool) {
 		return
 	}
 
+	ctx, cancel, gen := tq.beginFetch(20 * time.Second)
+	tq.liveBusy = true
 	tq.setLoading(true)
 	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 		defer cancel()
-
 		names, err := provider.ListTaskQueueNames(ctx, tq.app.CurrentNamespace())
-
-		tq.app.JigApp().QueueUpdateDraw(func() {
+		tq.onUI(func() {
+			if gen != tq.fetchGen {
+				return
+			}
+			tq.liveBusy = false
 			tq.setLoading(false)
 			if err != nil {
 				tq.showQueueError(err)
@@ -212,6 +217,18 @@ func (tq *TaskQueueView) loadQueueList(force bool) {
 			tq.prefetchQueueStats()
 		})
 	}()
+}
+
+// beginFetch starts a queue-list fetch and stops the one already running, so a
+// manual refresh during auto-refresh does not apply both results.
+func (tq *TaskQueueView) beginFetch(timeout time.Duration) (context.Context, func(), uint64) {
+	if tq.fetchCancel != nil {
+		tq.fetchCancel()
+	}
+	tq.fetchGen++
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	tq.fetchCancel = cancel
+	return ctx, cancel, tq.fetchGen
 }
 
 func (tq *TaskQueueView) applyCachedCatalogQueues() bool {
@@ -775,14 +792,17 @@ func (tq *TaskQueueView) liveRefresh() {
 	if provider == nil {
 		return
 	}
+	ctx, cancel, gen := tq.beginFetch(10 * time.Second)
 	tq.liveBusy = true
 	tq.setRefreshing(true)
 	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 		names, err := provider.ListTaskQueueNames(ctx, tq.namespace())
 		tq.onUI(func() {
-			defer func() { tq.liveBusy = false }()
+			if gen != tq.fetchGen {
+				return
+			}
+			tq.liveBusy = false
 			tq.setLoading(false)
 			if err != nil {
 				return
