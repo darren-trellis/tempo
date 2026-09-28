@@ -289,6 +289,54 @@ func TestManualRefreshCancelsTheAutoRefreshInFlight(t *testing.T) {
 	}
 }
 
+func TestAutoRefreshWaitsForTheManualRefresh(t *testing.T) {
+	var mu sync.Mutex
+	var calls int
+	var first context.Context
+	provider := &countingPageProvider{pageListProvider: pageListProvider{
+		list: func(ctx context.Context, _ string, _ temporal.ListOptions) ([]temporal.Workflow, string, error) {
+			mu.Lock()
+			calls++
+			n := calls
+			if n == 1 {
+				first = ctx
+			}
+			mu.Unlock()
+			if n == 1 {
+				<-ctx.Done()
+				return nil, "", ctx.Err()
+			}
+			return []temporal.Workflow{{ID: "fresh", RunID: "r"}}, "", nil
+		},
+	}}
+	a := &App{provider: provider, app: layout.NewApp(layout.AppConfig{})}
+	wl := NewWorkflowList(a, "default")
+
+	wl.refresh()
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		mu.Lock()
+		n := calls
+		mu.Unlock()
+		if n >= 1 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("manual refresh did not start a fetch")
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+
+	wl.liveRefresh()
+	time.Sleep(50 * time.Millisecond)
+
+	mu.Lock()
+	defer mu.Unlock()
+	if calls != 1 || first.Err() != nil {
+		t.Fatalf("auto-refresh should leave the manual refresh running, calls=%d canceled=%v", calls, first.Err() != nil)
+	}
+}
+
 func TestDisplayedStatsUsesServerCounts(t *testing.T) {
 	wl := NewWorkflowList(&App{}, "default")
 	wl.workflows = []temporal.Workflow{{Status: "Running"}, {Status: "Running"}, {Status: "TimedOut"}, {Status: "ContinuedAsNew"}}

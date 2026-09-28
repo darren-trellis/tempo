@@ -194,6 +194,10 @@ func (nl *NamespaceList) fetchNamespaces(live bool) {
 		nl.loadMockData()
 		return
 	}
+	// A tick must not cancel a refresh that is already running.
+	if live && nl.loading {
+		return
+	}
 
 	nl.fetchGen++
 	gen := nl.fetchGen

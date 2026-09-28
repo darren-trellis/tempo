@@ -1,7 +1,9 @@
 package view
 
 import (
+	"context"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -130,6 +132,57 @@ func TestMergeQueueNamesKeepsPollerCounts(t *testing.T) {
 	}
 	if tq.selectedQueue != "orders" || tq.queueTable.SelectedRow() != 1 {
 		t.Fatalf("selection should follow orders, row=%d name=%s", tq.queueTable.SelectedRow(), tq.selectedQueue)
+	}
+}
+
+type countingQueueProvider struct {
+	fakeWorkerProvider
+	mu    sync.Mutex
+	calls int
+	first context.Context
+}
+
+func (p *countingQueueProvider) ListTaskQueueNames(ctx context.Context, namespace string) ([]string, error) {
+	p.mu.Lock()
+	p.calls++
+	if p.calls == 1 {
+		p.first = ctx
+	}
+	p.mu.Unlock()
+	return p.fakeWorkerProvider.ListTaskQueueNames(ctx, namespace)
+}
+
+func TestAutoRefreshSkipsWhileTaskQueuesAreRefreshing(t *testing.T) {
+	hold := make(chan struct{})
+	provider := &countingQueueProvider{fakeWorkerProvider: fakeWorkerProvider{
+		queues:         []string{"orders"},
+		listQueuesHold: hold,
+	}}
+	tq := NewTaskQueueView(&App{provider: provider})
+	tq.loadQueueList(true)
+
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		provider.mu.Lock()
+		n := provider.calls
+		provider.mu.Unlock()
+		if n >= 1 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("manual refresh did not start a fetch")
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+
+	tq.liveRefresh()
+	time.Sleep(50 * time.Millisecond)
+	close(hold)
+
+	provider.mu.Lock()
+	defer provider.mu.Unlock()
+	if provider.calls != 1 || provider.first.Err() != nil {
+		t.Fatalf("auto-refresh should leave the manual refresh running, calls=%d canceled=%v", provider.calls, provider.first.Err() != nil)
 	}
 }
 

@@ -91,7 +91,9 @@ func (wl *WorkflowList) loadData() {
 }
 
 func (wl *WorkflowList) liveRefresh() {
-	if wl.selectionMode || wl.liveBusy {
+	// pageBusy covers a manual refresh already in flight. A tick must not
+	// cancel that fetch and start another one.
+	if wl.selectionMode || wl.liveBusy || wl.pageBusy {
 		return
 	}
 	wl.liveBusy = true

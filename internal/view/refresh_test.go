@@ -1,7 +1,9 @@
 package view
 
 import (
+	"context"
 	"fmt"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -389,6 +391,62 @@ func TestNamespaceToggleAutoRefreshShowsStatus(t *testing.T) {
 	}
 	if a.hintBarMessage() != "Auto-refresh on" {
 		t.Fatalf("on: %q", a.hintBarMessage())
+	}
+}
+
+type holdNamespaceProvider struct {
+	temporal.Provider
+	mu    sync.Mutex
+	calls int
+	first context.Context
+}
+
+func (p *holdNamespaceProvider) ListNamespaces(ctx context.Context) ([]temporal.Namespace, error) {
+	p.mu.Lock()
+	p.calls++
+	n := p.calls
+	if n == 1 {
+		p.first = ctx
+	}
+	p.mu.Unlock()
+	if n == 1 {
+		<-ctx.Done()
+		return nil, ctx.Err()
+	}
+	return []temporal.Namespace{{Name: "default"}}, nil
+}
+
+func TestAutoRefreshWaitsForTheManualNamespaceRefresh(t *testing.T) {
+	provider := &holdNamespaceProvider{}
+	nl := NewNamespaceList(&App{provider: provider})
+	t.Cleanup(func() {
+		if nl.fetch != nil {
+			nl.fetch.Cancel()
+		}
+	})
+
+	nl.fetchNamespaces(false)
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		provider.mu.Lock()
+		n := provider.calls
+		provider.mu.Unlock()
+		if n >= 1 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("manual refresh did not start a fetch")
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+
+	nl.fetchNamespaces(true)
+	time.Sleep(50 * time.Millisecond)
+
+	provider.mu.Lock()
+	defer provider.mu.Unlock()
+	if provider.calls != 1 || provider.first.Err() != nil {
+		t.Fatalf("auto-refresh should leave the manual refresh running, calls=%d canceled=%v", provider.calls, provider.first.Err() != nil)
 	}
 }
 
