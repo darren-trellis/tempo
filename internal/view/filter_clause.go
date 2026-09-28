@@ -10,14 +10,15 @@ import (
 )
 
 const (
-	filterOpEq         = "eq"
-	filterOpNeq        = "neq"
-	filterOpStartsWith = "starts_with"
-	filterOpAfter      = "after"
-	filterOpBefore     = "before"
-	filterOpIsNull     = "is_null"
-	filterOpIsNotNull  = "is_not_null"
-	filterOpRaw        = "raw"
+	filterOpEq            = "eq"
+	filterOpNeq           = "neq"
+	filterOpStartsWith    = "starts_with"
+	filterOpNotStartsWith = "not_starts_with"
+	filterOpAfter         = "after"
+	filterOpBefore        = "before"
+	filterOpIsNull        = "is_null"
+	filterOpIsNotNull     = "is_not_null"
+	filterOpRaw           = "raw"
 
 	filterTimeCustom = "Custom"
 )
@@ -44,23 +45,24 @@ type filterKeySpec struct {
 }
 
 var filterKeySpecs = []filterKeySpec{
-	{key: "WorkflowId", label: "Workflow ID", kind: filterKeyText, ops: []string{filterOpEq, filterOpNeq, filterOpStartsWith}},
-	{key: "RunId", label: "Run ID", kind: filterKeyText, ops: []string{filterOpEq, filterOpNeq, filterOpStartsWith}},
-	{key: "WorkflowType", label: "Workflow Type", kind: filterKeyCatalog, ops: []string{filterOpEq, filterOpNeq, filterOpStartsWith}},
-	{key: "TaskQueue", label: "Task Queue", kind: filterKeyCatalog, ops: []string{filterOpEq, filterOpNeq, filterOpStartsWith}},
+	{key: "WorkflowId", label: "Workflow ID", kind: filterKeyText, ops: []string{filterOpEq, filterOpNeq, filterOpStartsWith, filterOpNotStartsWith}},
+	{key: "RunId", label: "Run ID", kind: filterKeyText, ops: []string{filterOpEq, filterOpNeq, filterOpStartsWith, filterOpNotStartsWith}},
+	{key: "WorkflowType", label: "Workflow Type", kind: filterKeyCatalog, ops: []string{filterOpEq, filterOpNeq, filterOpStartsWith, filterOpNotStartsWith}},
+	{key: "TaskQueue", label: "Task Queue", kind: filterKeyCatalog, ops: []string{filterOpEq, filterOpNeq, filterOpStartsWith, filterOpNotStartsWith}},
 	{key: "ExecutionStatus", label: "Execution Status", kind: filterKeyStatus, ops: []string{filterOpEq, filterOpNeq}},
 	{key: "StartTime", label: "Start Time", kind: filterKeyTime, ops: []string{filterOpAfter, filterOpBefore}},
 	{key: "CloseTime", label: "Close Time", kind: filterKeyTime, ops: []string{filterOpAfter, filterOpBefore}},
 }
 
 var filterOpLabels = map[string]string{
-	filterOpEq:         "Equals",
-	filterOpNeq:        "Not Equals",
-	filterOpStartsWith: "Starts With",
-	filterOpAfter:      "After",
-	filterOpBefore:     "Before",
-	filterOpIsNull:     "Is Null",
-	filterOpIsNotNull:  "Is Not Null",
+	filterOpEq:            "Equals",
+	filterOpNeq:           "Not Equals",
+	filterOpStartsWith:    "Starts With",
+	filterOpNotStartsWith: "Not Starts With",
+	filterOpAfter:         "After",
+	filterOpBefore:        "Before",
+	filterOpIsNull:        "Is Null",
+	filterOpIsNotNull:     "Is Not Null",
 }
 
 // filterOpNeedsValue reports whether an operator takes a value. IS NULL and
@@ -163,7 +165,7 @@ func specFromSearchAttribute(attr temporal.SearchAttribute) filterKeySpec {
 		spec.ops = []string{filterOpEq, filterOpNeq}
 	default:
 		spec.kind = filterKeyText
-		spec.ops = []string{filterOpEq, filterOpNeq, filterOpStartsWith}
+		spec.ops = []string{filterOpEq, filterOpNeq, filterOpStartsWith, filterOpNotStartsWith}
 	}
 	return spec
 }
@@ -184,7 +186,7 @@ func resolveFilterKey(wl *WorkflowList, key string) filterKeySpec {
 	return withNullOps(filterKeySpec{
 		key:  key,
 		kind: filterKeyText,
-		ops:  []string{filterOpEq, filterOpNeq, filterOpStartsWith},
+		ops:  []string{filterOpEq, filterOpNeq, filterOpStartsWith, filterOpNotStartsWith},
 	})
 }
 
@@ -383,6 +385,8 @@ func compileFilterClauseWith(clause config.FilterClause, spec filterKeySpec) str
 		return key + " != " + formatFilterValue(spec, value)
 	case filterOpStartsWith:
 		return key + " STARTS_WITH " + quoteVisibilityValue(value)
+	case filterOpNotStartsWith:
+		return key + " NOT STARTS_WITH " + quoteVisibilityValue(value)
 	case filterOpAfter:
 		return key + " > " + formatFilterCompare(spec, value)
 	case filterOpBefore:

@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/galaxy-io/tempo/internal/config"
+	"github.com/gdamore/tcell/v2"
 )
 
 // parseVisibilityQuery reports the query as form clauses when it is nothing
@@ -41,6 +42,11 @@ func TestParseVisibilityQueryProducesClauses(t *testing.T) {
 				{Key: "WorkflowType", Op: filterOpEq, Value: "Sync"},
 				{Key: "ExecutionStatus", Op: filterOpNeq, Value: "Running"},
 			},
+		},
+		{
+			name:  "negative prefix",
+			query: `WorkflowId NOT STARTS_WITH 'tmp-'`,
+			want:  []config.FilterClause{{Key: "WorkflowId", Op: filterOpNotStartsWith, Value: "tmp-"}},
 		},
 		{
 			name:  "starts with and time bounds",
@@ -268,6 +274,32 @@ func TestIsNullNotMatchedInValues(t *testing.T) {
 	}
 }
 
+func TestClauseModalOffersNotStartsWith(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	a := NewAppWithProvider(nil, "default", config.DefaultConfig(), "local")
+	wl := NewWorkflowList(a, "default")
+	wl.keepDataOnStart = true
+	a.app.Pages().Push(wl)
+	wl.showClauseEditor(config.FilterClause{Key: "WorkflowId", Op: filterOpNotStartsWith, Value: "tmp-"}, nil)
+
+	om := a.app.Pages().Current().(*overlayModal)
+	om.SetRect(0, 0, 90, 28)
+	screen := tcell.NewSimulationScreen("UTF-8")
+	if err := screen.Init(); err != nil {
+		t.Fatal(err)
+	}
+	screen.SetSize(90, 28)
+	om.Draw(screen)
+	var drawn strings.Builder
+	for y := 0; y < 28; y++ {
+		drawn.WriteString(rowText(screen, y, 90))
+		drawn.WriteByte('\n')
+	}
+	if !strings.Contains(drawn.String(), "Not Starts With") {
+		t.Fatalf("operator dropdown should show Not Starts With:\n%s", drawn.String())
+	}
+}
+
 func TestNullOperatorsOfferedOnEveryKey(t *testing.T) {
 	has := func(labels []string, want string) bool {
 		for _, l := range labels {
@@ -283,6 +315,10 @@ func TestNullOperatorsOfferedOnEveryKey(t *testing.T) {
 		labels := filterOpLabelsForKey(key)
 		if !has(labels, "Is Null") || !has(labels, "Is Not Null") {
 			t.Errorf("operators for %q = %v, want the null checks", key, labels)
+		}
+		keyword := key == "" || key == "WorkflowId" || key == "RunId" || key == "WorkflowType" || key == "TaskQueue" || key == "MyCustomAttr"
+		if has(labels, "Not Starts With") != keyword {
+			t.Errorf("operators for %q = %v, Not Starts With offered=%v", key, labels, !keyword)
 		}
 		if got := len(labels); got != len(uniqueStrings(labels)) {
 			t.Errorf("operators for %q contain duplicates: %v", key, labels)

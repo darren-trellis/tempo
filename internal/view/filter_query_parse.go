@@ -83,13 +83,27 @@ func parseQueryConjunct(part string) (config.FilterClause, bool) {
 	case strings.HasPrefix(rest, "<"):
 		op, rest = filterOpBefore, rest[1:]
 	default:
-		const startsWith = "STARTS_WITH"
-		if len(rest) > len(startsWith) && strings.EqualFold(rest[:len(startsWith)], startsWith) &&
-			!isQueryIdentRune(rune(rest[len(startsWith)])) {
-			op, rest = filterOpStartsWith, rest[len(startsWith):]
+		// NOT STARTS_WITH has to win over STARTS_WITH, or the shorter match
+		// would leave "NOT" behind as part of the value.
+		for _, candidate := range []struct {
+			text string
+			op   string
+		}{
+			{"NOT STARTS_WITH", filterOpNotStartsWith},
+			{"STARTS_WITH", filterOpStartsWith},
+		} {
+			if len(rest) <= len(candidate.text) || !strings.EqualFold(rest[:len(candidate.text)], candidate.text) {
+				continue
+			}
+			if isQueryIdentRune(rune(rest[len(candidate.text)])) {
+				continue
+			}
+			op, rest = candidate.op, rest[len(candidate.text):]
 			break
 		}
-		return config.FilterClause{}, false
+		if op == "" {
+			return config.FilterClause{}, false
+		}
 	}
 
 	value, ok := parseQueryValue(strings.TrimSpace(rest))

@@ -36,6 +36,13 @@ func TestCompileFilterClauses(t *testing.T) {
 	}
 
 	got = compileFilterClauses([]config.FilterClause{
+		{Key: "WorkflowId", Op: filterOpNotStartsWith, Value: "tmp-"},
+	})
+	if got != "WorkflowId NOT STARTS_WITH 'tmp-'" {
+		t.Fatalf("not starts with: %q", got)
+	}
+
+	got = compileFilterClauses([]config.FilterClause{
 		{Key: "StartTime", Op: filterOpBefore, Value: "2024-01-02T03:04:05Z"},
 	})
 	if got != "StartTime < '2024-01-02T03:04:05Z'" {
