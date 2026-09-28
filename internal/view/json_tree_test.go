@@ -91,11 +91,11 @@ func TestFormatIOContentUsesTreeWhenAsked(t *testing.T) {
 }
 
 func TestJSONTreeRowsCarryTheirJSONValues(t *testing.T) {
-	rows, ok := buildJSONTreeRows(`{"object":{"name":"tempo"},"scalar":7}`, nil)
+	rows, ok := buildJSONTreeRows(`{"object":{"name":"tempo"},"scalar":7,"label":"say \"hi\""}`, nil)
 	if !ok {
 		t.Fatal("expected valid tree")
 	}
-	var object, scalar string
+	var object, scalar, label string
 	for _, row := range rows {
 		plain := stripTreeTags(row.text)
 		switch {
@@ -103,6 +103,8 @@ func TestJSONTreeRowsCarryTheirJSONValues(t *testing.T) {
 			object = row.value
 		case strings.Contains(plain, "scalar"):
 			scalar = row.value
+		case strings.Contains(plain, "label"):
+			label = row.value
 		}
 	}
 	if object != "{\n  \"name\": \"tempo\"\n}" {
@@ -110,6 +112,9 @@ func TestJSONTreeRowsCarryTheirJSONValues(t *testing.T) {
 	}
 	if scalar != "7" {
 		t.Fatalf("scalar row value=%q", scalar)
+	}
+	if label != `say "hi"` {
+		t.Fatalf("string row value=%q", label)
 	}
 }
 

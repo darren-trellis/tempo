@@ -126,16 +126,25 @@ func (b *jsonTreeBuilder) isFolded(path []string) bool {
 }
 
 func (b *jsonTreeBuilder) add(text string, value any, path []string, foldable bool) {
-	encoded, err := json.MarshalIndent(value, "", "  ")
-	if err != nil {
-		encoded = []byte(fmt.Sprint(value))
-	}
 	b.rows = append(b.rows, jsonTreeRow{
 		text:     text,
-		value:    string(encoded),
+		value:    jsonTreeCopyValue(value),
 		path:     jsonTreePathKey(path),
 		foldable: foldable,
 	})
+}
+
+// jsonTreeCopyValue is what y copies. A string is its text; the tree still
+// draws that text in quotes.
+func jsonTreeCopyValue(value any) string {
+	if s, ok := value.(string); ok {
+		return s
+	}
+	encoded, err := json.MarshalIndent(value, "", "  ")
+	if err != nil {
+		return fmt.Sprint(value)
+	}
+	return string(encoded)
 }
 
 // jsonTreePathKey names a node by its ancestry so folds and the highlight
