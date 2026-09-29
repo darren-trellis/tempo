@@ -3,6 +3,7 @@ package view
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/atterpac/jig/components"
@@ -26,20 +27,28 @@ func (a *App) executeUserCommand(name string, cfg config.CommandConfig, args []s
 	// Inject connection flags for temporal CLI commands
 	expandedCmd = command.InjectConnectionFlags(expandedCmd, cmdCtx)
 
+	env := command.Env(cmdCtx)
 	if cfg.Confirm {
-		a.showCommandConfirm(name, cfg, expandedCmd)
+		a.showCommandConfirm(name, cfg, expandedCmd, env)
 		return
 	}
 
-	a.runCommand(name, expandedCmd, cfg)
+	a.runCommand(name, expandedCmd, cfg, env)
 }
 
 // showCommandConfirm shows a confirmation modal before executing a command.
-func (a *App) showCommandConfirm(name string, cfg config.CommandConfig, expandedCmd string) {
+func (a *App) showCommandConfirm(name string, cfg config.CommandConfig, expandedCmd string, env []string) {
+	a.showRunConfirm(name, cfg.Description, "Command", expandedCmd, func() {
+		a.runCommand(name, expandedCmd, cfg, env)
+	})
+}
+
+// showRunConfirm asks before run is called, showing what it will do.
+func (a *App) showRunConfirm(name, description, label, detail string, run func()) {
 	form := components.NewFormBuilder().
 		OnSubmit(func(values map[string]any) {
 			a.app.Pages().DismissModal()
-			a.runCommand(name, expandedCmd, cfg)
+			run()
 		}).
 		OnCancel(func() {
 			a.app.Pages().DismissModal()
@@ -56,16 +65,16 @@ func (a *App) showCommandConfirm(name string, cfg config.CommandConfig, expanded
 		SetDynamicColors(true).
 		SetTextAlign(tview.AlignLeft)
 	infoText.SetBackgroundColor(theme.Bg())
-	infoText.SetText(fmt.Sprintf("[%s]Command:[-] [%s]%s[-]\n\n[%s]%s[-]",
-		theme.TagFgDim(), theme.TagAccent(), name,
-		theme.TagFg(), expandedCmd))
+	infoText.SetText(fmt.Sprintf("[%s]%s:[-] [%s]%s[-]\n\n[%s]%s[-]",
+		theme.TagFgDim(), label, theme.TagAccent(), escapeForTView(name),
+		theme.TagFg(), escapeForTView(detail)))
 
 	contentFlex.AddItem(infoText, 4, 0, false)
 	contentFlex.AddItem(form, 0, 1, true)
 
 	title := fmt.Sprintf("Confirm: %s", name)
-	if cfg.Description != "" {
-		title = fmt.Sprintf("Confirm: %s", cfg.Description)
+	if description != "" {
+		title = fmt.Sprintf("Confirm: %s", description)
 	}
 
 	modal := newModal(components.ModalConfig{
@@ -85,7 +94,8 @@ func (a *App) showCommandConfirm(name string, cfg config.CommandConfig, expanded
 }
 
 // runCommand dispatches to the appropriate output handler based on config.
-func (a *App) runCommand(name, expandedCmd string, cfg config.CommandConfig) {
+// env is added to the command's environment.
+func (a *App) runCommand(name, expandedCmd string, cfg config.CommandConfig, env []string) {
 	outputType := cfg.Output
 	if outputType == "" {
 		outputType = config.OutputLog
@@ -93,20 +103,48 @@ func (a *App) runCommand(name, expandedCmd string, cfg config.CommandConfig) {
 
 	switch outputType {
 	case config.OutputLog:
-		a.runCommandLog(name, expandedCmd, cfg)
+		a.runCommandLog(name, expandedCmd, cfg, env)
 	case config.OutputJSON:
-		a.runCommandJSON(name, expandedCmd, cfg)
+		a.runCommandJSON(name, expandedCmd, cfg, env)
 	case config.OutputWorkflows:
-		a.runCommandWorkflows(name, expandedCmd, cfg)
+		a.runCommandWorkflows(name, expandedCmd, env)
 	case config.OutputWorkflow:
-		a.runCommandWorkflow(name, expandedCmd, cfg)
+		a.runCommandWorkflow(name, expandedCmd, env)
+	case config.OutputNone:
+		a.runCommandNone(name, expandedCmd, env)
 	default:
-		a.runCommandLog(name, expandedCmd, cfg)
+		a.runCommandLog(name, expandedCmd, cfg, env)
 	}
 }
 
+// runCommandNone runs a command in the background, reporting only whether it
+// worked. It has no timeout, so a script may hand off to a long-lived program.
+func (a *App) runCommandNone(name, expandedCmd string, env []string) {
+	go func() {
+		output, err := command.Run(context.Background(), expandedCmd, env...)
+		a.app.QueueUpdateDraw(func() {
+			if err != nil {
+				msg := fmt.Sprintf("%s: %s", name, err)
+				if last := lastOutputLine(output); last != "" {
+					msg = fmt.Sprintf("%s: %s", name, last)
+				}
+				a.ToastError(msg)
+				return
+			}
+			a.ToastSuccess("Ran " + name)
+		})
+	}()
+}
+
+// lastOutputLine is the last non-blank line of output, which is usually where
+// a failing script says why.
+func lastOutputLine(output string) string {
+	lines := strings.Split(strings.TrimSpace(output), "\n")
+	return strings.TrimSpace(lines[len(lines)-1])
+}
+
 // runCommandLog creates a CommandOutputView with LogViewer, pushes it, and streams output.
-func (a *App) runCommandLog(name, expandedCmd string, cfg config.CommandConfig) {
+func (a *App) runCommandLog(name, expandedCmd string, cfg config.CommandConfig, env []string) {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	lv := components.NewLogViewer()
@@ -132,7 +170,7 @@ func (a *App) runCommandLog(name, expandedCmd string, cfg config.CommandConfig) 
 					Message: line,
 				})
 			})
-		})
+		}, env...)
 
 		a.app.QueueUpdateDraw(func() {
 			if err != nil && ctx.Err() == nil {
@@ -151,7 +189,7 @@ func (a *App) runCommandLog(name, expandedCmd string, cfg config.CommandConfig) 
 }
 
 // runCommandJSON runs a command and displays the result in a CodeView with JSON highlighting.
-func (a *App) runCommandJSON(name, expandedCmd string, cfg config.CommandConfig) {
+func (a *App) runCommandJSON(name, expandedCmd string, cfg config.CommandConfig, env []string) {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	cv := components.NewCodeView().SetLanguage(components.LangJSON)
@@ -167,7 +205,7 @@ func (a *App) runCommandJSON(name, expandedCmd string, cfg config.CommandConfig)
 	a.app.SetFocus(cv)
 
 	go func() {
-		output, err := command.Run(ctx, expandedCmd)
+		output, err := command.Run(ctx, expandedCmd, env...)
 		a.app.QueueUpdateDraw(func() {
 			if err != nil && ctx.Err() == nil {
 				cv.SetCode(fmt.Sprintf("Error: %s\n\n%s", err, output))
@@ -181,12 +219,12 @@ func (a *App) runCommandJSON(name, expandedCmd string, cfg config.CommandConfig)
 }
 
 // runCommandWorkflows runs a command, parses JSONL output, and pushes a WorkflowList.
-func (a *App) runCommandWorkflows(name, expandedCmd string, _ config.CommandConfig) {
+func (a *App) runCommandWorkflows(name, expandedCmd string, env []string) {
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
 
-		output, runErr := command.Run(ctx, expandedCmd)
+		output, runErr := command.Run(ctx, expandedCmd, env...)
 
 		// Try to parse output even on non-zero exit (CLI may still produce valid JSONL)
 		workflows, parseErr := command.ParseWorkflowsOutput(output)
@@ -212,12 +250,12 @@ func (a *App) runCommandWorkflows(name, expandedCmd string, _ config.CommandConf
 }
 
 // runCommandWorkflow runs a command, parses workflow ID/run ID, and opens Preview.
-func (a *App) runCommandWorkflow(name, expandedCmd string, _ config.CommandConfig) {
+func (a *App) runCommandWorkflow(name, expandedCmd string, env []string) {
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
 
-		output, runErr := command.Run(ctx, expandedCmd)
+		output, runErr := command.Run(ctx, expandedCmd, env...)
 
 		workflowID, runID, parseErr := command.ParseWorkflowOutput(output)
 		if parseErr != nil {
