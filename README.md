@@ -179,6 +179,62 @@ Values are Go durations, clamped between 5s and 1h.
 
 `codec_endpoint` is the Temporal codec server base URL (the same value as `temporal --codec-endpoint`). Tempo POSTs to `/encode` and `/decode`, sends `X-Namespace`, and substitutes `{namespace}` in the URL when present. Environment variables are expanded (`${TEMPORAL_CODEC_URL}`).
 
+### Triggers
+
+Triggers run a script or open a link when something happens in tempo. Today the
+one event is `io_enter`: pressing `Enter` on a value in the input/output tree
+(`io_tree: true`), in the Input/Output window (`i`) or the preview panes.
+
+```yaml
+io_tree: true
+
+triggers:
+  # Open any link inside the highlighted value.
+  - name: open-link
+    match: 'https?://\S+'
+    url: '{match}'
+
+  # Jump from an order ID to the admin page, only under an orderId key.
+  - name: order-admin
+    path: 'orderId$'
+    match: '^ord_(\w+)$'
+    url: 'https://admin.example.com/orders/{1}'
+
+  # Hand the value to your own script.
+  - name: inspect
+    path: '^result\.debug$'
+    cmd: ~/bin/tempo-inspect {value}
+    output: log
+    confirm: true
+```
+
+The first trigger whose conditions hold wins, so list the specific ones first.
+Profile triggers (`profiles.<name>.triggers`) are tried before global ones.
+`Enter` on an object or array, or on a value no trigger matches, still folds.
+
+| Field | Meaning |
+|-------|---------|
+| `on` | Event to react to. Defaults to `io_enter`. |
+| `match` | Regular expression the value must contain. Without it the whole value matches. |
+| `path` | Regular expression for the value's dotted path, such as `items.0.url`. |
+| `url` | Open this in the browser. It must expand to an `http` or `https` URL. |
+| `cmd` | Run this through `sh`. |
+| `output` | For `cmd`: `none` (default, runs in the background and reports failure), `log`, or `json`. |
+| `confirm` | Ask before opening or running. |
+
+Placeholders: `{value}` is the highlighted value, `{match}` what `match`
+matched, `{1}`, `{2}`, … its capture groups, `{path}` and `{key}` where the
+value sits, plus `{workflow_id}`, `{run_id}`, `{workflow_type}`,
+`{namespace}`, and `{profile}`. A placeholder with nothing to fill it stops the
+trigger with an error.
+
+In `cmd`, every placeholder is substituted already shell-quoted, because
+payloads can hold anything. Write `open {match}`, not `open "{match}"`. Scripts
+can also read `TEMPO_VALUE`, `TEMPO_MATCH`, `TEMPO_PATH`, `TEMPO_KEY`,
+`TEMPO_WORKFLOW_ID`, `TEMPO_RUN_ID`, `TEMPO_WORKFLOW_TYPE`, `TEMPO_NAMESPACE`,
+`TEMPO_ADDRESS`, and `TEMPO_PROFILE` from the environment, which is easier for
+multi-line JSON values.
+
 ## Themes
 
 <p align="center">
