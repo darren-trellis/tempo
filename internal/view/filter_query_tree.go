@@ -118,6 +118,32 @@ func (n *filterNode) replaced(path []int, with *filterNode) *filterNode {
 	return newFilterGroup(n.op, children)
 }
 
+// at returns the node at path, or nil when path leads nowhere.
+func (n *filterNode) at(path []int) *filterNode {
+	for _, i := range path {
+		if n == nil || n.isLeaf() || i < 0 || i >= len(n.children) {
+			return nil
+		}
+		n = n.children[i]
+	}
+	return n
+}
+
+// added returns a copy of the tree with add joined to the node at path: a
+// group takes it as one more child under its own op, and a lone clause is
+// ANDed with it.
+func (n *filterNode) added(path []int, add *filterNode) *filterNode {
+	target := n.at(path)
+	if target == nil || add == nil {
+		return n
+	}
+	if target.isLeaf() {
+		return n.replaced(path, newFilterGroup(filterGroupAnd, []*filterNode{target, add}))
+	}
+	children := append(append([]*filterNode(nil), target.children...), add)
+	return n.replaced(path, newFilterGroup(target.op, children))
+}
+
 type filterQueryParser struct {
 	runes []rune
 	pos   int

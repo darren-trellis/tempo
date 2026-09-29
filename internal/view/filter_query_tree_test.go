@@ -195,3 +195,67 @@ func TestFilterManagerShowsClauseTree(t *testing.T) {
 		t.Fatalf("e on a filter should open the filter editor, body=%T", a.app.Pages().Current().(*overlayModal).body)
 	}
 }
+
+func TestFilterManagerAddsClauseWhereHighlighted(t *testing.T) {
+	const orders = `(WorkflowType = 'Order' AND CustomerId = 'q') OR ExecutionStatus = 'Failed'`
+	cases := []struct {
+		name   string
+		row    int
+		filter int
+		want   string
+	}{
+		{"filter row ANDs onto the whole filter", 0, 0, `(` + orders + `) AND WorkflowId = 'new'`},
+		{"group row joins that group", 1, 0, `(WorkflowType = 'Order' AND CustomerId = 'q' AND WorkflowId = 'new') OR ExecutionStatus = 'Failed'`},
+		{"clause row joins its own group", 4, 0, orders + ` OR WorkflowId = 'new'`},
+		{"nested clause row joins its group", 2, 0, `(WorkflowType = 'Order' AND CustomerId = 'q' AND WorkflowId = 'new') OR ExecutionStatus = 'Failed'`},
+		{"lone clause is ANDed", 6, 1, `WorkflowType = 'Sync' AND WorkflowId = 'new'`},
+		{"filter row with one clause", 5, 1, `WorkflowType = 'Sync' AND WorkflowId = 'new'`},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+			cfg := config.DefaultConfig()
+			cfg.SavedFilters = []config.SavedFilter{
+				{Name: "Orders", Query: orders},
+				{Name: "Single", Query: `WorkflowType = 'Sync'`},
+			}
+			a := NewAppWithProvider(nil, "default", cfg, "local")
+			wl := NewWorkflowList(a, "default")
+			wl.keepDataOnStart = true
+			a.app.Pages().Push(wl)
+			table := filterManagerTable(t, a, wl)
+
+			table.SelectRow(tc.row)
+			if ev := table.GetInputCapture()(tcell.NewEventKey(tcell.KeyRune, 'a', tcell.ModNone)); ev != nil {
+				t.Fatal("a should be handled")
+			}
+			editor := a.app.Pages().Current().(*overlayModal)
+			form, ok := editor.body.(*components.Tabs).GetActiveTab().Content.(*components.Form)
+			if !ok {
+				t.Fatalf("a should open the clause editor, body=%T", editor.body)
+			}
+			field, ok := form.GetTextField("value")
+			if !ok {
+				t.Fatal("clause editor should have a value field")
+			}
+			if field.GetValue() != "" {
+				t.Fatalf("a new clause should start empty, value=%q", field.GetValue())
+			}
+			field.SetValue("new")
+			form.InputHandler()(tcell.NewEventKey(tcell.KeyEnter, 0, tcell.ModNone), func(tview.Primitive) {})
+
+			if got := cfg.SavedFilters[tc.filter].Query; got != tc.want {
+				t.Fatalf("query=%s\nwant  %s", got, tc.want)
+			}
+			if other := cfg.SavedFilters[1-tc.filter].Query; other != orders && other != `WorkflowType = 'Sync'` {
+				t.Fatalf("the other filter should be untouched, got %s", other)
+			}
+			if _, ok := a.app.Pages().Current().(*overlayModal).body.(*charScrollView); !ok {
+				t.Fatal("saving the clause should return to the Filters dialog")
+			}
+			if screen := drawCurrentModal(t, a); !strings.Contains(screen, "WorkflowId Equals new") {
+				t.Fatalf("the Filters tree should show the new clause, got:\n%s", screen)
+			}
+		})
+	}
+}

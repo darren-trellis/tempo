@@ -224,15 +224,13 @@ func (wl *WorkflowList) showFilterManager() {
 		})
 	}
 
-	// rewriteFilter swaps the node at path for with, or drops it when with is
-	// nil, and saves the recompiled query in place.
-	rewriteFilter := func(idx int, path []int, with *filterNode) {
+	filterTree := func(idx int) *filterNode {
+		return parseFilterTree(compiledFilterQueryFor(wl, filters()[idx]))
+	}
+
+	// saveFilterTree stores root as the filter's query in place.
+	saveFilterTree := func(idx int, root *filterNode) {
 		f := filters()[idx]
-		root := parseFilterTree(compiledFilterQueryFor(wl, f)).replaced(path, with)
-		if root == nil {
-			wl.app.ToastWarning("A filter needs at least one clause")
-			return
-		}
 		f.Query = root.query(wl)
 		f.Clauses = nil
 		wl.persistSavedFilter(f)
@@ -245,6 +243,46 @@ func (wl *WorkflowList) showFilterManager() {
 			row = len(rows) - 1
 		}
 		table.SelectRow(row)
+	}
+
+	// rewriteFilter swaps the node at path for with, or drops it when with is
+	// nil, and saves the recompiled query in place.
+	rewriteFilter := func(idx int, path []int, with *filterNode) {
+		root := filterTree(idx).replaced(path, with)
+		if root == nil {
+			wl.app.ToastWarning("A filter needs at least one clause")
+			return
+		}
+		saveFilterTree(idx, root)
+	}
+
+	// addClause asks for a clause and adds it where the highlight is: ANDed
+	// onto a whole filter, into a group, or beside a clause in its group.
+	addClause := func() {
+		row, ok := selectedRow()
+		if !ok {
+			createFilter()
+			return
+		}
+		wl.showClauseEditor(newFilterClause(), func(clauses []config.FilterClause) {
+			add := parseFilterTree(compileFilterClausesFor(wl, clauses))
+			if add == nil {
+				return
+			}
+			root := filterTree(row.filter)
+			switch {
+			case root == nil:
+				root = add
+			case row.isFilter():
+				root = newFilterGroup(filterGroupAnd, []*filterNode{root, add})
+			case row.node.isLeaf() && len(row.path) > 0:
+				root = root.added(row.path[:len(row.path)-1], add)
+			default:
+				root = root.added(row.path, add)
+			}
+			saveFilterTree(row.filter, root)
+			wl.app.ToastSuccess("Added a clause to " + filters()[row.filter].Name)
+		})
 	}
 
 	editSelected := func() {
@@ -384,6 +422,10 @@ func (wl *WorkflowList) showFilterManager() {
 			createFilter()
 			return true
 		}).
+		OnRune('a', func(e *tcell.EventKey) bool {
+			addClause()
+			return true
+		}).
 		OnRune('e', func(e *tcell.EventKey) bool {
 			editSelected()
 			return true
@@ -454,6 +496,7 @@ func (wl *WorkflowList) showFilterManager() {
 	hints := []components.KeyHint{
 		{Key: "Enter", Description: "Apply"},
 		{Key: "n", Description: "New Filter"},
+		{Key: "a", Description: "Add Clause"},
 		{Key: "e", Description: "Edit"},
 		{Key: "r", Description: "Rename"},
 		{Key: "c", Description: "Clone"},
