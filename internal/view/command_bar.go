@@ -100,6 +100,10 @@ func (a *App) buildCommandContext(args []string) command.Context {
 		}
 	}
 
+	if a.app == nil {
+		return ctx
+	}
+
 	// Get workflow info from current view if it implements CommandContextProvider.
 	// Walk the stack from top to bottom to find the first provider with data.
 	stack := a.app.Pages().GetStack()

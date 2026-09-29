@@ -81,7 +81,7 @@ func formatIOContent(label, content string, tree bool) string {
 	return highlightFormattedJSONWorkflow(formatJSONPretty(content))
 }
 
-func workflowIOHints(maximized, tree bool) []components.KeyHint {
+func workflowIOHints(maximized, tree, triggers bool) []components.KeyHint {
 	maxHint := "Maximize"
 	if maximized {
 		maxHint = "Minimize"
@@ -93,8 +93,11 @@ func workflowIOHints(maximized, tree bool) []components.KeyHint {
 		{Key: "e", Description: "Editor"},
 	}
 	if tree {
+		hints = append(hints, components.KeyHint{Key: "space", Description: "Fold"})
+		if triggers {
+			hints = append(hints, components.KeyHint{Key: "enter", Description: "Trigger"})
+		}
 		hints = append(hints,
-			components.KeyHint{Key: "space", Description: "Fold"},
 			components.KeyHint{Key: "y", Description: "Yank Row"},
 			components.KeyHint{Key: "Y", Description: "Yank All"},
 		)
@@ -144,6 +147,8 @@ func showWorkflowIO(app *App, background tview.Primitive, workflowType, input, o
 	treeEnabled := ioTreeEnabled(app)
 	inputTree := newJSONTreeSelection(inputView)
 	outputTree := newJSONTreeSelection(outputView)
+	inputTree.onEnter = app.runIOTrigger
+	outputTree.onEnter = app.runIOTrigger
 	if !inputTree.setContent(input, treeEnabled) {
 		inputView.SetText(formatIOContent("Input", input, treeEnabled))
 	}
@@ -163,7 +168,7 @@ func showWorkflowIO(app *App, background tview.Primitive, workflowType, input, o
 
 	modal.SetContent(flex)
 	applyIOHints := func() {
-		hints := workflowIOHints(modal.maximized, treeEnabled)
+		hints := workflowIOHints(modal.maximized, treeEnabled, app.hasIOEnterTriggers())
 		modal.SetHints(hints)
 		app.syncModalHints(modal)
 	}

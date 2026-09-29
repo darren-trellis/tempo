@@ -25,6 +25,9 @@ type jsonTreeSelection struct {
 	rowsWidth  int
 	wrapped    [][]string
 	wrapWidth  int
+	// onEnter gets first say over Enter on a row and reports whether it
+	// handled it. Otherwise Enter folds.
+	onEnter func(jsonTreeRow) bool
 }
 
 func newJSONTreeSelection(view *tview.TextView) *jsonTreeSelection {
@@ -113,6 +116,9 @@ func (s *jsonTreeSelection) handleKey(event *tcell.EventKey) bool {
 		s.selectRow(s.selected + 1)
 		return true
 	case tcell.KeyEnter:
+		if row, ok := s.selectedRow(); ok && s.onEnter != nil && s.onEnter(row) {
+			return true
+		}
 		s.toggleFold()
 		return true
 	case tcell.KeyRune:
