@@ -10,6 +10,7 @@ import (
 	"github.com/atterpac/jig/theme"
 	"github.com/galaxy-io/tempo/internal/command"
 	"github.com/galaxy-io/tempo/internal/config"
+	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 )
 
@@ -43,34 +44,46 @@ func (a *App) showCommandConfirm(name string, cfg config.CommandConfig, expanded
 	})
 }
 
-// showRunConfirm asks before run is called, showing what it will do.
+// showRunConfirm asks before run is called, showing what it will do. Either
+// answer returns focus to wherever it was, such as the tree row a trigger
+// fired from. The dialog has no fields, and a jig form without fields ignores
+// every key, so the text view takes Enter itself.
 func (a *App) showRunConfirm(name, description, label, detail string, run func()) {
-	form := components.NewFormBuilder().
-		OnSubmit(func(values map[string]any) {
-			a.app.Pages().DismissModal()
-			run()
-		}).
-		OnCancel(func() {
-			a.app.Pages().DismissModal()
-			if current := a.app.Pages().Current(); current != nil {
+	prevFocus := a.app.GetApplication().GetFocus()
+	below := a.app.Pages().Current()
+	// jig dismisses on Esc by itself and then focuses the page below, which
+	// in the input/output window is always the input pane. Put focus back
+	// once it is done, unless run opened a page of its own.
+	refocus := func() bool {
+		go a.app.QueueUpdateDraw(func() {
+			if a.app.Pages().Current() != below {
+				return
+			}
+			if prevFocus != nil {
+				a.app.SetFocus(prevFocus)
+			} else if current := a.app.Pages().Current(); current != nil {
 				a.app.SetFocus(current)
 			}
-		}).
-		Build()
-
-	contentFlex := tview.NewFlex().SetDirection(tview.FlexRow)
-	contentFlex.SetBackgroundColor(theme.Bg())
+		})
+		return true
+	}
 
 	infoText := tview.NewTextView().
 		SetDynamicColors(true).
+		SetWrap(true).
 		SetTextAlign(tview.AlignLeft)
 	infoText.SetBackgroundColor(theme.Bg())
 	infoText.SetText(fmt.Sprintf("[%s]%s:[-] [%s]%s[-]\n\n[%s]%s[-]",
 		theme.TagFgDim(), label, theme.TagAccent(), escapeForTView(name),
 		theme.TagFg(), escapeForTView(detail)))
-
-	contentFlex.AddItem(infoText, 4, 0, false)
-	contentFlex.AddItem(form, 0, 1, true)
+	infoText.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		if event.Key() == tcell.KeyEnter {
+			a.app.Pages().DismissModal()
+			run()
+			return nil
+		}
+		return event
+	})
 
 	title := fmt.Sprintf("Confirm: %s", name)
 	if description != "" {
@@ -83,14 +96,15 @@ func (a *App) showRunConfirm(name, description, label, detail string, run func()
 		Height:   12,
 		Backdrop: true,
 	})
-	modal.SetContent(contentFlex)
+	modal.SetContent(infoText)
+	modal.SetOnDismiss(refocus)
 	modal.SetHints([]components.KeyHint{
 		{Key: "Enter", Description: "Confirm"},
 		{Key: "Esc", Description: "Cancel"},
 	})
 
 	a.PushModal(modal)
-	a.app.SetFocus(form)
+	a.app.SetFocus(infoText)
 }
 
 // runCommand dispatches to the appropriate output handler based on config.
