@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"os/exec"
 	"regexp"
 	"strconv"
@@ -31,6 +32,13 @@ type Context struct {
 	TLSSkipVerify bool
 	APIKey        string
 	CodecEndpoint string
+
+	// Set when a trigger fires on a highlighted value: the value itself, the
+	// part its match pattern matched, and where it sits in the payload.
+	Value string
+	Match string
+	Path  string
+	Key   string
 }
 
 var placeholderRe = regexp.MustCompile(`\{([^}]+)\}`)
@@ -38,6 +46,22 @@ var placeholderRe = regexp.MustCompile(`\{([^}]+)\}`)
 // ExpandCmd replaces {var} placeholders in a command template.
 // Returns an error if a required variable is empty.
 func ExpandCmd(template string, ctx Context) (string, error) {
+	return expand(template, ctx, nil)
+}
+
+// ExpandShellCmd is ExpandCmd with every substituted value single-quoted for
+// sh, so text taken from a workflow payload is passed as one argument and
+// never run as shell.
+func ExpandShellCmd(template string, ctx Context) (string, error) {
+	return expand(template, ctx, ShellQuote)
+}
+
+// ShellQuote wraps s in single quotes for sh.
+func ShellQuote(s string) string {
+	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
+}
+
+func expand(template string, ctx Context, quote func(string) string) (string, error) {
 	var expandErr error
 	result := placeholderRe.ReplaceAllStringFunc(template, func(match string) string {
 		key := match[1 : len(match)-1] // strip { }
@@ -57,6 +81,14 @@ func ExpandCmd(template string, ctx Context) (string, error) {
 			val = ctx.Profile
 		case "codec_endpoint":
 			val = ctx.CodecEndpoint
+		case "value":
+			val = ctx.Value
+		case "match":
+			val = ctx.Match
+		case "path":
+			val = ctx.Path
+		case "key":
+			val = ctx.Key
 		default:
 			// Check positional args: {1}, {2}, etc.
 			if n, err := strconv.Atoi(key); err == nil && n >= 1 {
@@ -75,6 +107,9 @@ func ExpandCmd(template string, ctx Context) (string, error) {
 		if val == "" {
 			expandErr = fmt.Errorf("variable {%s} is empty", key)
 			return match
+		}
+		if quote != nil {
+			return quote(val)
 		}
 		return val
 	})
@@ -136,17 +171,51 @@ func InjectConnectionFlags(cmdStr string, ctx Context) string {
 	return cmdStr + " " + strings.Join(flags, " ")
 }
 
-// Run executes a command string via sh -c and returns combined output.
-func Run(ctx context.Context, cmdStr string) (string, error) {
+// Env exports the context to a command as TEMPO_* variables, so a script can
+// read a value that would be awkward to pass as an argument, such as a
+// multi-line JSON object.
+func Env(ctx Context) []string {
+	vars := []struct{ name, value string }{
+		{"TEMPO_WORKFLOW_ID", ctx.WorkflowID},
+		{"TEMPO_RUN_ID", ctx.RunID},
+		{"TEMPO_WORKFLOW_TYPE", ctx.WorkflowType},
+		{"TEMPO_NAMESPACE", ctx.Namespace},
+		{"TEMPO_ADDRESS", ctx.Address},
+		{"TEMPO_PROFILE", ctx.Profile},
+		{"TEMPO_VALUE", ctx.Value},
+		{"TEMPO_MATCH", ctx.Match},
+		{"TEMPO_PATH", ctx.Path},
+		{"TEMPO_KEY", ctx.Key},
+	}
+	env := make([]string, 0, len(vars))
+	for _, v := range vars {
+		if v.value != "" {
+			env = append(env, v.name+"="+v.value)
+		}
+	}
+	return env
+}
+
+func shellCommand(ctx context.Context, cmdStr string, env []string) *exec.Cmd {
 	cmd := exec.CommandContext(ctx, "sh", "-c", cmdStr)
+	if len(env) > 0 {
+		cmd.Env = append(os.Environ(), env...)
+	}
+	return cmd
+}
+
+// Run executes a command string via sh -c and returns combined output. env is
+// added to the inherited environment.
+func Run(ctx context.Context, cmdStr string, env ...string) (string, error) {
+	cmd := shellCommand(ctx, cmdStr, env)
 	out, err := cmd.CombinedOutput()
 	return string(out), err
 }
 
 // RunStreaming executes a command with line-by-line streaming via scanner on stdout pipe.
-// Stderr is merged into stdout.
-func RunStreaming(ctx context.Context, cmdStr string, onLine func(string)) error {
-	cmd := exec.CommandContext(ctx, "sh", "-c", cmdStr)
+// Stderr is merged into stdout. env is added to the inherited environment.
+func RunStreaming(ctx context.Context, cmdStr string, onLine func(string), env ...string) error {
+	cmd := shellCommand(ctx, cmdStr, env)
 	cmd.Stderr = nil // will be merged via 2>&1 in the shell command or we merge pipes
 
 	stdout, err := cmd.StdoutPipe()
