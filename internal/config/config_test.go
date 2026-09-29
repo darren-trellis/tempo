@@ -802,3 +802,35 @@ func TestParseConfigSeedsSavedFiltersWhenOmitted(t *testing.T) {
 		t.Fatal("omitted saved_filters should seed defaults")
 	}
 }
+
+func TestGetMergedTriggersProfileFirst(t *testing.T) {
+	var cfg Config
+	err := yaml.Unmarshal([]byte(`
+triggers:
+  - name: link
+    match: 'https?://\S+'
+    url: '{match}'
+profiles:
+  prod:
+    address: localhost:7233
+    triggers:
+      - name: order
+        on: io_enter
+        path: 'orderId$'
+        cmd: open https://admin.example.com/orders/{value}
+        output: none
+`), &cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := cfg.GetMergedTriggers("prod")
+	if len(got) != 2 || got[0].Name != "order" || got[1].Name != "link" {
+		t.Fatalf("got %+v", got)
+	}
+	if got[0].Output != OutputNone || got[1].Event() != TriggerIOEnter {
+		t.Fatalf("got %+v", got)
+	}
+	if only := cfg.GetMergedTriggers("missing"); len(only) != 1 || only[0].Name != "link" {
+		t.Fatalf("got %+v", only)
+	}
+}

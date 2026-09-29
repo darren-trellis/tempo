@@ -397,6 +397,7 @@ func (f *ProfileForm) buildForm(name string, cfg config.ConnectionConfig, isEdit
 			CodecEndpoint: values["codecEndpoint"].(string),
 			UIURL:         values["uiURL"].(string),
 			Commands:      cfg.Commands,
+			Triggers:      cfg.Triggers,
 		}
 
 		if f.onSave != nil {

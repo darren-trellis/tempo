@@ -32,6 +32,8 @@ const (
 	OutputJSON      CommandOutputType = "json"
 	OutputWorkflows CommandOutputType = "workflows"
 	OutputWorkflow  CommandOutputType = "workflow"
+	// OutputNone runs the command in the background and only reports failure.
+	OutputNone CommandOutputType = "none"
 )
 
 // CommandConfig defines a user-configured command.
@@ -40,6 +42,41 @@ type CommandConfig struct {
 	Cmd         string            `yaml:"cmd"`
 	Output      CommandOutputType `yaml:"output,omitempty"`
 	Confirm     bool              `yaml:"confirm,omitempty"`
+}
+
+// TriggerIOEnter fires when Enter is pressed on a value in the input/output
+// tree.
+const TriggerIOEnter = "io_enter"
+
+// TriggerConfig runs a script or opens a URL when an event matches it. The
+// first trigger that matches wins, so order them from most to least specific.
+type TriggerConfig struct {
+	Name        string `yaml:"name"`
+	Description string `yaml:"description,omitempty"`
+	// On is the event to react to. Only io_enter exists today, and it is the
+	// default.
+	On string `yaml:"on,omitempty"`
+	// Match is a regular expression the highlighted value must contain. Its
+	// match is {match} and its capture groups are {1}, {2}, and so on.
+	Match string `yaml:"match,omitempty"`
+	// Path is a regular expression the value's dotted path, such as
+	// items.0.url, must contain.
+	Path string `yaml:"path,omitempty"`
+	// URL is opened in the browser. It must expand to an http or https URL.
+	URL string `yaml:"url,omitempty"`
+	// Cmd runs through sh. Placeholders are substituted already quoted, so
+	// they must not be wrapped in quotes again.
+	Cmd     string            `yaml:"cmd,omitempty"`
+	Output  CommandOutputType `yaml:"output,omitempty"`
+	Confirm bool              `yaml:"confirm,omitempty"`
+}
+
+// Event reports which event the trigger reacts to.
+func (t TriggerConfig) Event() string {
+	if t.On == "" {
+		return TriggerIOEnter
+	}
+	return t.On
 }
 
 // ConnectionConfig holds Temporal connection settings.
@@ -52,6 +89,7 @@ type ConnectionConfig struct {
 	CodecEndpoint string                   `yaml:"codec_endpoint,omitempty"` // Temporal codec server base URL
 	UIURL         string                   `yaml:"ui_url,omitempty"`         // Temporal Web UI base URL
 	Commands      map[string]CommandConfig `yaml:"commands,omitempty"`
+	Triggers      []TriggerConfig          `yaml:"triggers,omitempty"`
 }
 
 // ExpandEnv expands environment variables in sensitive fields.
@@ -65,6 +103,7 @@ func (c ConnectionConfig) ExpandEnv() ConnectionConfig {
 		CodecEndpoint: expandEnvVar(c.CodecEndpoint),
 		UIURL:         expandEnvVar(c.UIURL),
 		Commands:      c.Commands,
+		Triggers:      c.Triggers,
 	}
 	if len(c.GRPCMeta) > 0 {
 		expanded.GRPCMeta = make(map[string]string, len(c.GRPCMeta))
@@ -164,6 +203,7 @@ type Config struct {
 	Autoreload           *bool                    `yaml:"autoreload,omitempty"`
 	Autosave             *bool                    `yaml:"autosave,omitempty"`
 	Commands             map[string]CommandConfig `yaml:"commands,omitempty"`
+	Triggers             []TriggerConfig          `yaml:"triggers,omitempty"`
 	WorkflowColumns      []WorkflowColumnConfig   `yaml:"workflow_columns,omitempty"`
 	CustomColumns        []CustomColumnConfig     `yaml:"custom_columns,omitempty"`
 	ActivityColumns      []WorkflowColumnConfig   `yaml:"activity_columns,omitempty"`
@@ -890,6 +930,16 @@ func (c *Config) GetMergedCommands(profileName string) map[string]CommandConfig 
 		}
 	}
 	return merged
+}
+
+// GetMergedTriggers returns the profile's triggers followed by the global
+// ones, so a profile trigger is tried first.
+func (c *Config) GetMergedTriggers(profileName string) []TriggerConfig {
+	var merged []TriggerConfig
+	if profile, ok := c.Profiles[profileName]; ok {
+		merged = append(merged, profile.Triggers...)
+	}
+	return append(merged, c.Triggers...)
 }
 
 // ListCommandNames returns a sorted list of available command names for a profile.
