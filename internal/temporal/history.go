@@ -197,6 +197,12 @@ func extractEnhancedEvent(event *historypb.HistoryEvent) EnhancedHistoryEvent {
 		he.ChildWorkflowType = a.GetWorkflowType().GetName()
 		he.TaskQueue = a.GetTaskQueue().GetName()
 
+	case enums.EVENT_TYPE_START_CHILD_WORKFLOW_EXECUTION_FAILED:
+		a := event.GetStartChildWorkflowExecutionFailedEventAttributes()
+		he.InitiatedEventID = a.GetInitiatedEventId()
+		he.ChildWorkflowID = a.GetWorkflowId()
+		he.ChildWorkflowType = a.GetWorkflowType().GetName()
+
 	case enums.EVENT_TYPE_CHILD_WORKFLOW_EXECUTION_STARTED:
 		a := event.GetChildWorkflowExecutionStartedEventAttributes()
 		he.setChild(a.GetInitiatedEventId(), a.GetWorkflowExecution())

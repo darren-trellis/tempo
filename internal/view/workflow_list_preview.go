@@ -701,7 +701,7 @@ func (wl *WorkflowList) renderPreviewDetails(w temporal.Workflow) {
 	if row, ok := wl.selectedPreviewDetailRow(); ok {
 		selectedKey = row.Key
 	}
-	wl.previewDetailRows = workflowInfoRows(time.Now(), w)
+	wl.previewDetailRows = withChildrenRow(workflowInfoRows(time.Now(), w), wl.previewEvents)
 	wl.workflowDetail.ClearRows()
 	for _, row := range wl.previewDetailRows {
 		wl.workflowDetail.AddStyledRow([]components.TableCell{

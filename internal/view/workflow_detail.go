@@ -14,6 +14,7 @@ import (
 const (
 	workflowInfoID        = "ID"
 	workflowInfoParent    = "Parent"
+	workflowInfoChildren  = "Children"
 	workflowInfoType      = "Type"
 	workflowInfoStatus    = "Status"
 	workflowInfoStarted   = "Started"
@@ -69,6 +70,99 @@ func workflowInfoRows(now time.Time, w temporal.Workflow) []workflowInfoRow {
 		workflowInfoRow{Key: workflowInfoRunID, Label: "Run ID", Value: w.RunID, Color: theme.FgDim(), ColorTag: theme.TagFgDim()},
 	)
 	return rows
+}
+
+// workflowChildStatuses reads the latest status of each child workflow off
+// the parent's history, in the order they were started. A child that was
+// asked for but has not started yet is Scheduled.
+func workflowChildStatuses(events []temporal.EnhancedHistoryEvent) []string {
+	var order []int64
+	status := make(map[int64]string)
+	for _, ev := range events {
+		if ev.Type == "StartChildWorkflowExecutionInitiated" {
+			order = append(order, ev.ID)
+			status[ev.ID] = temporal.StatusScheduled.Name()
+			continue
+		}
+		if _, known := status[ev.InitiatedEventID]; !known {
+			continue
+		}
+		switch ev.Type {
+		case "ChildWorkflowExecutionStarted":
+			status[ev.InitiatedEventID] = temporal.StatusRunning.Name()
+		case "ChildWorkflowExecutionCompleted":
+			status[ev.InitiatedEventID] = temporal.StatusCompleted.Name()
+		case "ChildWorkflowExecutionFailed", "StartChildWorkflowExecutionFailed":
+			status[ev.InitiatedEventID] = temporal.StatusFailed.Name()
+		case "ChildWorkflowExecutionCanceled":
+			status[ev.InitiatedEventID] = temporal.StatusCanceled.Name()
+		case "ChildWorkflowExecutionTimedOut":
+			status[ev.InitiatedEventID] = temporal.StatusTimedOut.Name()
+		case "ChildWorkflowExecutionTerminated":
+			status[ev.InitiatedEventID] = temporal.StatusTerminated.Name()
+		}
+	}
+	statuses := make([]string, len(order))
+	for i, id := range order {
+		statuses[i] = status[id]
+	}
+	return statuses
+}
+
+// workflowChildrenRow summarizes a workflow's children as a count with a
+// breakdown by status, such as "3 · 2 Completed, 1 Running". It is colored
+// by the worst status among them. ok is false when there are none.
+func workflowChildrenRow(events []temporal.EnhancedHistoryEvent) (workflowInfoRow, bool) {
+	statuses := workflowChildStatuses(events)
+	if len(statuses) == 0 {
+		return workflowInfoRow{}, false
+	}
+	counts := make(map[string]int)
+	var names []string
+	for _, s := range statuses {
+		if counts[s] == 0 {
+			names = append(names, s)
+		}
+		counts[s]++
+	}
+	parts := make([]string, len(names))
+	for i, name := range names {
+		parts[i] = fmt.Sprintf("%d %s", counts[name], name)
+	}
+	count := fmt.Sprintf("%d", len(statuses))
+	handle := temporal.StatusCompleted
+	for _, worst := range []*theme.Status{temporal.StatusFailed, temporal.StatusTerminated, temporal.StatusTimedOut, temporal.StatusCanceled, temporal.StatusRunning, temporal.StatusScheduled} {
+		if counts[worst.Name()] > 0 {
+			handle = worst
+			break
+		}
+	}
+	return workflowInfoRow{
+		Key:      workflowInfoChildren,
+		Label:    "Children",
+		Value:    count,
+		Display:  count + " · " + strings.Join(parts, ", "),
+		Color:    handle.Color(),
+		ColorTag: handle.ColorTag(),
+	}, true
+}
+
+// withChildrenRow puts the children row after the parent, or after the ID
+// when there is no parent, so a workflow's relatives read together.
+func withChildrenRow(rows []workflowInfoRow, events []temporal.EnhancedHistoryEvent) []workflowInfoRow {
+	children, ok := workflowChildrenRow(events)
+	if !ok {
+		return rows
+	}
+	at := workflowInfoRowIndex(rows, workflowInfoParent)
+	if at < 0 {
+		at = workflowInfoRowIndex(rows, workflowInfoID)
+	}
+	at++
+	out := make([]workflowInfoRow, 0, len(rows)+1)
+	out = append(out, rows[:at]...)
+	out = append(out, children)
+	return append(out, rows[at:]...)
 }
 
 func (r workflowInfoRow) displayText() string {

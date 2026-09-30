@@ -3,6 +3,7 @@ package view
 import (
 	"github.com/atterpac/jig/components"
 	"github.com/atterpac/jig/theme"
+	"github.com/galaxy-io/tempo/internal/config"
 	"github.com/gdamore/tcell/v2"
 )
 
@@ -109,6 +110,10 @@ func (wl *WorkflowList) yankPreviewDetailRow() {
 
 func (wl *WorkflowList) activatePreviewDetailRow() {
 	row, ok := wl.selectedPreviewDetailRow()
+	if ok && row.Key == workflowInfoChildren {
+		wl.showPreviewChildren()
+		return
+	}
 	if !ok || row.Key != workflowInfoParent || row.Value == "" {
 		return
 	}
@@ -119,6 +124,20 @@ func (wl *WorkflowList) activatePreviewDetailRow() {
 	if wl.app != nil {
 		wl.app.ToastWarning("Parent workflow is not in the list")
 	}
+}
+
+// showPreviewChildren narrows the list to the previewed workflow's children,
+// layered on the running query like any clause added with f.
+func (wl *WorkflowList) showPreviewChildren() {
+	if wl.previewWorkflowID == "" {
+		return
+	}
+	wl.appendAdHocClauses([]config.FilterClause{{
+		Key:   filterOpRaw,
+		Op:    filterOpRaw,
+		Value: "ParentWorkflowId = " + quoteVisibilityValue(wl.previewWorkflowID),
+	}})
+	wl.setFocusPane(focusWorkflows)
 }
 
 func (wl *WorkflowList) handleActivityDetailKeys(event *tcell.EventKey) *tcell.EventKey {

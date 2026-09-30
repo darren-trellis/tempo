@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/galaxy-io/tempo/internal/config"
 	"github.com/galaxy-io/tempo/internal/temporal"
 	"github.com/gdamore/tcell/v2"
 )
@@ -226,5 +227,73 @@ func TestPreviewIOEditorPayload(t *testing.T) {
 	wl.activityDetailKind = activityDetailDetails
 	if _, _, ok := wl.previewIOEditorPayload(); ok {
 		t.Fatal("activity details table should not open the editor")
+	}
+}
+
+func childEvents() []temporal.EnhancedHistoryEvent {
+	return []temporal.EnhancedHistoryEvent{
+		{ID: 1, Type: "WorkflowExecutionStarted"},
+		{ID: 5, Type: "StartChildWorkflowExecutionInitiated", ChildWorkflowID: "a"},
+		{ID: 6, Type: "StartChildWorkflowExecutionInitiated", ChildWorkflowID: "b"},
+		{ID: 7, Type: "StartChildWorkflowExecutionInitiated", ChildWorkflowID: "c"},
+		{ID: 8, Type: "StartChildWorkflowExecutionInitiated", ChildWorkflowID: "d"},
+		{ID: 9, Type: "ChildWorkflowExecutionStarted", InitiatedEventID: 5},
+		{ID: 10, Type: "ChildWorkflowExecutionStarted", InitiatedEventID: 6},
+		{ID: 11, Type: "ChildWorkflowExecutionCompleted", InitiatedEventID: 5},
+		{ID: 12, Type: "StartChildWorkflowExecutionFailed", InitiatedEventID: 7},
+	}
+}
+
+func TestWorkflowChildStatuses(t *testing.T) {
+	got := strings.Join(workflowChildStatuses(childEvents()), ",")
+	if got != "Completed,Running,Failed,Scheduled" {
+		t.Fatalf("statuses=%s", got)
+	}
+	if n := len(workflowChildStatuses([]temporal.EnhancedHistoryEvent{{Type: "WorkflowExecutionStarted"}})); n != 0 {
+		t.Fatalf("a workflow without children has no statuses, got %d", n)
+	}
+}
+
+func TestPreviewDetailsShowsChildrenAfterParent(t *testing.T) {
+	wl := NewWorkflowList(&App{}, "default")
+	parent := "root-1"
+	w := temporal.Workflow{ID: "mid-1", RunID: "r", ParentID: &parent, Status: "Running"}
+	wl.previewEvents = childEvents()
+	wl.renderPreviewDetails(w)
+
+	idx := workflowInfoRowIndex(wl.previewDetailRows, workflowInfoChildren)
+	if idx != workflowInfoRowIndex(wl.previewDetailRows, workflowInfoParent)+1 {
+		t.Fatalf("children should follow the parent, rows=%+v", wl.previewDetailRows)
+	}
+	row := wl.previewDetailRows[idx]
+	if row.Value != "4" || row.Display != "4 · 1 Completed, 1 Running, 1 Failed, 1 Scheduled" {
+		t.Fatalf("children row=%+v", row)
+	}
+	if row.Color != temporal.StatusFailed.Color() {
+		t.Fatal("a failed child should color the row as failed")
+	}
+
+	wl.previewEvents = []temporal.EnhancedHistoryEvent{{ID: 1, Type: "WorkflowExecutionStarted"}}
+	wl.renderPreviewDetails(temporal.Workflow{ID: "leaf", RunID: "r"})
+	if workflowInfoRowIndex(wl.previewDetailRows, workflowInfoChildren) >= 0 {
+		t.Fatal("a workflow without children should have no children row")
+	}
+}
+
+func TestPreviewDetailsEnterOnChildrenListsThem(t *testing.T) {
+	_, wl := adHocWorkflowList(t, config.DefaultConfig())
+	wl.previewWorkflowID = "it's-1"
+	wl.previewRunID = "r"
+	wl.previewEvents = childEvents()
+	wl.renderPreviewDetails(temporal.Workflow{ID: "it's-1", RunID: "r"})
+	wl.workflowDetail.SelectRow(workflowInfoRowIndex(wl.previewDetailRows, workflowInfoChildren))
+	wl.focusPane = focusEvents
+
+	wl.activatePreviewDetailRow()
+	if !strings.Contains(wl.visibilityQuery, "ParentWorkflowId = 'it''s-1'") {
+		t.Fatalf("Enter on children should list them, query=%q", wl.visibilityQuery)
+	}
+	if wl.focusPane != focusWorkflows {
+		t.Fatalf("focus should move to the list, focus=%d", wl.focusPane)
 	}
 }
