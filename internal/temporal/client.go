@@ -76,6 +76,7 @@ type Client struct {
 	config    ConnectionConfig
 	connected bool
 	mu        sync.RWMutex
+	codec     codecGuard
 }
 
 // NewClient creates a new Temporal SDK client with the given configuration.
@@ -285,6 +286,9 @@ func (c *Client) reconnectWithConfig(ctx context.Context, connConfig ConnectionC
 	previous := c.client
 	c.client = newClient
 	c.config = connConfig // Update stored config
+	// A new profile may point at a different codec server, or at the same
+	// one after it came back.
+	c.codec.reset()
 	c.connected = true
 	c.mu.Unlock()
 

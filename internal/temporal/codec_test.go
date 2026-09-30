@@ -3,8 +3,10 @@ package temporal
 import (
 	"bytes"
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"runtime/debug"
 	"testing"
@@ -217,5 +219,94 @@ func TestDecodePayloadsInMessagesNoopWithoutCodec(t *testing.T) {
 	decodePayloadsInMessages(nil, event)
 	if string(payload.GetData()) != "ENC:secret" {
 		t.Fatalf("payload mutated without codec: %q", payload.GetData())
+	}
+}
+
+type scriptedCodec struct {
+	converter.PayloadCodec
+	calls int
+	err   error
+}
+
+func (c *scriptedCodec) Decode(payloads []*commonpb.Payload) ([]*commonpb.Payload, error) {
+	c.calls++
+	return payloads, c.err
+}
+
+type timeoutError struct{}
+
+func (timeoutError) Error() string   { return "i/o timeout" }
+func (timeoutError) Timeout() bool   { return true }
+func (timeoutError) Temporary() bool { return true }
+
+func TestCodecGuardPausesAfterNoAnswer(t *testing.T) {
+	now := time.Unix(0, 0)
+	var pauses int
+	guard := &codecGuard{now: func() time.Time { return now }, onPause: func(error) { pauses++ }}
+	inner := &scriptedCodec{err: &url.Error{Op: "Post", URL: "https://codec", Err: timeoutError{}}}
+	codec := guardedCodec{PayloadCodec: inner, guard: guard}
+	payloads := []*commonpb.Payload{{Data: []byte("x")}}
+
+	codec.Decode(payloads)
+	if _, err := codec.Decode(payloads); !errors.Is(err, errCodecPaused) {
+		t.Fatalf("a codec that did not answer should be paused, err=%v", err)
+	}
+	if inner.calls != 1 || pauses != 1 {
+		t.Fatalf("paused calls should not reach the server, calls=%d pauses=%d", inner.calls, pauses)
+	}
+
+	now = now.Add(codecCooldown)
+	inner.err = nil
+	if _, err := codec.Decode(payloads); err != nil || inner.calls != 2 {
+		t.Fatalf("the codec should be tried again after the cooldown, err=%v calls=%d", err, inner.calls)
+	}
+}
+
+func TestCodecGuardIgnoresServerErrors(t *testing.T) {
+	guard := &codecGuard{}
+	inner := &scriptedCodec{err: errors.New("Internal Server Error: decrypt: cipher: message authentication failed")}
+	codec := guardedCodec{PayloadCodec: inner, guard: guard}
+	codec.Decode([]*commonpb.Payload{{Data: []byte("x")}})
+	if guard.paused() {
+		t.Fatal("a server that answers with an error is up and should not be paused")
+	}
+}
+
+func TestDecodePayloadsSkipsQuietlyWhilePaused(t *testing.T) {
+	guard := &codecGuard{until: time.Now().Add(time.Minute)}
+	inner := &scriptedCodec{}
+	payload := &commonpb.Payload{Data: []byte("encoded")}
+	count, _ := decodePayloadsInMessages(guardedCodec{PayloadCodec: inner, guard: guard}, &commonpb.Payloads{Payloads: []*commonpb.Payload{payload}})
+	if inner.calls != 0 || count != 1 || string(payload.Data) != "encoded" {
+		t.Fatalf("a paused codec should leave payloads encoded without a call, calls=%d count=%d data=%s", inner.calls, count, payload.Data)
+	}
+}
+
+func TestCodecGuardPausesOnRealTimeouts(t *testing.T) {
+	for _, stall := range []string{"headers", "body"} {
+		t.Run(stall, func(t *testing.T) {
+			release := make(chan struct{})
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if stall == "body" {
+					w.WriteHeader(http.StatusOK)
+					w.(http.Flusher).Flush()
+				}
+				<-release
+			}))
+			defer srv.Close()
+			defer close(release)
+
+			guard := &codecGuard{}
+			codec := guardedCodec{guard: guard, PayloadCodec: converter.NewRemotePayloadCodec(converter.RemotePayloadCodecOptions{
+				Endpoint: srv.URL,
+				Client:   http.Client{Timeout: 50 * time.Millisecond},
+			})}
+			if _, err := codec.Decode([]*commonpb.Payload{{Data: []byte("x")}}); err == nil {
+				t.Fatal("a stalled codec server should fail the call")
+			}
+			if !guard.paused() {
+				t.Fatal("a codec server that stalls should be paused")
+			}
+		})
 	}
 }

@@ -98,6 +98,7 @@ func NewAppWithProvider(provider temporal.Provider, defaultNamespace string, cfg
 	if provider != nil {
 		a.setConnected(provider.IsConnected())
 	}
+	a.watchCodecPauses()
 	a.refreshNamespaceCatalog()
 	return a
 }

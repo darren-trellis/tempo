@@ -1,9 +1,12 @@
 package temporal
 
 import (
+	"errors"
+	"net"
 	"net/http"
 	"runtime/debug"
 	"strings"
+	"sync"
 	"time"
 
 	commonpb "go.temporal.io/api/common/v1"
@@ -13,6 +16,82 @@ import (
 )
 
 const codecRequestTimeout = 10 * time.Second
+
+// codecCooldown is how long tempo stops asking a codec server that did not
+// answer. Loads in that window show payloads still encoded at once instead
+// of each waiting out the timeout, and a struggling server is not buried
+// under retries from every refresh.
+const codecCooldown = 30 * time.Second
+
+var errCodecPaused = errors.New("codec server paused after it stopped answering")
+
+// codecGuard pauses the codec after a request that got no answer. A server
+// that answers with an error, such as a payload it cannot decrypt, is up,
+// so that does not pause it.
+type codecGuard struct {
+	mu      sync.Mutex
+	until   time.Time
+	now     func() time.Time
+	onPause func(error)
+}
+
+func (g *codecGuard) clock() time.Time {
+	if g.now != nil {
+		return g.now()
+	}
+	return time.Now()
+}
+
+func (g *codecGuard) paused() bool {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	return g.clock().Before(g.until)
+}
+
+func (g *codecGuard) fail(err error) {
+	var netErr net.Error
+	if !errors.As(err, &netErr) {
+		return
+	}
+	g.mu.Lock()
+	already := g.clock().Before(g.until)
+	g.until = g.clock().Add(codecCooldown)
+	onPause := g.onPause
+	g.mu.Unlock()
+	if !already && onPause != nil {
+		onPause(err)
+	}
+}
+
+func (g *codecGuard) reset() {
+	g.mu.Lock()
+	g.until = time.Time{}
+	g.mu.Unlock()
+}
+
+type guardedCodec struct {
+	converter.PayloadCodec
+	guard *codecGuard
+}
+
+func (c guardedCodec) Decode(payloads []*commonpb.Payload) ([]*commonpb.Payload, error) {
+	if c.guard.paused() {
+		return payloads, errCodecPaused
+	}
+	decoded, err := c.PayloadCodec.Decode(payloads)
+	if err != nil {
+		c.guard.fail(err)
+	}
+	return decoded, err
+}
+
+// SetCodecPauseHandler is called, off the UI thread, each time the codec
+// server stops answering and tempo starts showing payloads encoded.
+func (c *Client) SetCodecPauseHandler(fn func(error)) {
+	c.codec.mu.Lock()
+	c.codec.onPause = fn
+	c.codec.mu.Unlock()
+}
 
 func normalizeCodecEndpoint(endpoint string) string {
 	endpoint = strings.TrimSpace(endpoint)
@@ -88,7 +167,7 @@ func (c *Client) payloadCodec(namespace string) converter.PayloadCodec {
 	if namespace == "" {
 		namespace = defaultNS
 	}
-	return newRemotePayloadCodec(endpoint, namespace)
+	return guardedCodec{PayloadCodec: newRemotePayloadCodec(endpoint, namespace), guard: &c.codec}
 }
 
 func asProtoMessages[T proto.Message](items []T) []proto.Message {
@@ -127,6 +206,9 @@ func decodePayloadsInMessages(codec converter.PayloadCodec, msgs ...proto.Messag
 		bytes += len(p.GetData())
 	}
 	decoded, err := codec.Decode(payloads)
+	if errors.Is(err, errCodecPaused) {
+		return count, bytes
+	}
 	if err != nil || len(decoded) != len(payloads) {
 		if sdkLogger != nil {
 			sdkLogger.Warn("codec decode failed", "error", err)

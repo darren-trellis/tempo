@@ -25,6 +25,24 @@ func (a *App) setCodecStatus(icon string, colorFunc func() tcell.Color) {
 	a.chromeCodecColor = colorFunc
 }
 
+// watchCodecPauses tells the user when the codec server stops answering and
+// payloads start showing encoded, rather than leaving every load to stall.
+func (a *App) watchCodecPauses() {
+	pauser, ok := a.provider.(interface{ SetCodecPauseHandler(func(error)) })
+	if !ok {
+		return
+	}
+	pauser.SetCodecPauseHandler(func(err error) {
+		if a.app == nil {
+			return
+		}
+		go a.app.QueueUpdateDraw(func() {
+			a.setCodecStatus(theme.IconCloud, theme.Error)
+			a.ToastWarning("Codec server is not answering, showing payloads encoded for 30s")
+		})
+	})
+}
+
 func (a *App) refreshCodecStatus() {
 	var endpoint, namespace string
 	if a.provider != nil {
