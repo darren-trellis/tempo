@@ -572,11 +572,19 @@ func (wl *WorkflowList) loadPreview(gen uint64, w temporal.Workflow, indicate bo
 			}
 			ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 			defer cancel()
-			events, err = provider.GetEnhancedWorkflowHistory(ctx, wl.namespace, w.ID, w.RunID)
-			if err == nil {
-				if got, gerr := provider.GetWorkflow(ctx, wl.namespace, w.ID, w.RunID); gerr == nil && got != nil {
-					fresh = got
+			// The describe does not depend on the history, so it runs alongside
+			// it instead of after it.
+			described := make(chan *temporal.Workflow, 1)
+			go func() {
+				got, gerr := provider.GetWorkflow(ctx, wl.namespace, w.ID, w.RunID)
+				if gerr != nil {
+					got = nil
 				}
+				described <- got
+			}()
+			events, err = provider.GetEnhancedWorkflowHistory(ctx, wl.namespace, w.ID, w.RunID)
+			if got := <-described; err == nil {
+				fresh = got
 			}
 		} else {
 			events = mockPreviewEvents(w)
