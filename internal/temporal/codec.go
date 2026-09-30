@@ -99,9 +99,11 @@ func asProtoMessages[T proto.Message](items []T) []proto.Message {
 	return msgs
 }
 
-func decodePayloadsInMessages(codec converter.PayloadCodec, msgs ...proto.Message) {
+// decodePayloadsInMessages decodes every payload in msgs in place with one
+// codec call, and reports how many payloads and bytes it sent.
+func decodePayloadsInMessages(codec converter.PayloadCodec, msgs ...proto.Message) (count, bytes int) {
 	if codec == nil {
-		return
+		return 0, 0
 	}
 	defer func() {
 		if r := recover(); r != nil {
@@ -118,14 +120,18 @@ func decodePayloadsInMessages(codec converter.PayloadCodec, msgs ...proto.Messag
 		collectPayloads(msg.ProtoReflect(), &payloads)
 	}
 	if len(payloads) == 0 {
-		return
+		return 0, 0
+	}
+	count = len(payloads)
+	for _, p := range payloads {
+		bytes += len(p.GetData())
 	}
 	decoded, err := codec.Decode(payloads)
 	if err != nil || len(decoded) != len(payloads) {
 		if sdkLogger != nil {
 			sdkLogger.Warn("codec decode failed", "error", err)
 		}
-		return
+		return count, bytes
 	}
 	for i, p := range payloads {
 		if p == nil || decoded[i] == nil {
@@ -134,6 +140,7 @@ func decodePayloadsInMessages(codec converter.PayloadCodec, msgs ...proto.Messag
 		p.Metadata = decoded[i].GetMetadata()
 		p.Data = decoded[i].GetData()
 	}
+	return count, bytes
 }
 
 func collectPayloads(m protoreflect.Message, out *[]*commonpb.Payload) {

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"time"
 
 	commonpb "go.temporal.io/api/common/v1"
 	"go.temporal.io/api/enums/v1"
@@ -45,7 +46,14 @@ func (c *Client) forEachHistoryEvent(ctx context.Context, namespace, workflowID,
 		return err
 	}
 	var nextPageToken []byte
+	var t historyLoadTiming
+	start := time.Now()
+	defer func() {
+		t.total = time.Since(start)
+		t.log(workflowID)
+	}()
 	for {
+		fetchStart := time.Now()
 		resp, err := cl.WorkflowService().GetWorkflowExecutionHistory(ctx, &workflowservice.GetWorkflowExecutionHistoryRequest{
 			Namespace: namespace,
 			Execution: &commonpb.WorkflowExecution{
@@ -58,15 +66,49 @@ func (c *Client) forEachHistoryEvent(ctx context.Context, namespace, workflowID,
 			return fmt.Errorf("failed to get workflow history: %w", err)
 		}
 		historyEvents := resp.GetHistory().GetEvents()
-		decodePayloadsInMessages(c.payloadCodec(namespace), asProtoMessages(historyEvents)...)
+		t.fetch += time.Since(fetchStart)
+		t.pages++
+		t.events += len(historyEvents)
+		decodeStart := time.Now()
+		payloads, bytes := decodePayloadsInMessages(c.payloadCodec(namespace), asProtoMessages(historyEvents)...)
+		t.decode += time.Since(decodeStart)
+		t.payloads += payloads
+		t.payloadBytes += bytes
+		visitStart := time.Now()
 		for _, event := range historyEvents {
 			visit(event)
 		}
+		t.visit += time.Since(visitStart)
 		nextPageToken = resp.GetNextPageToken()
 		if len(nextPageToken) == 0 {
 			return nil
 		}
 	}
+}
+
+// historyLoadTiming is where a history load spent its time, written to the
+// log so a slow preview can be pinned on the server, the codec server, or
+// tempo's own formatting.
+type historyLoadTiming struct {
+	pages, events, payloads, payloadBytes int
+	fetch, decode, visit, total           time.Duration
+}
+
+func (t historyLoadTiming) log(workflowID string) {
+	if sdkLogger == nil {
+		return
+	}
+	sdkLogger.Info("history load",
+		"workflow", workflowID,
+		"pages", t.pages,
+		"events", t.events,
+		"payloads", t.payloads,
+		"payloadKB", t.payloadBytes/1024,
+		"fetch", t.fetch.Round(time.Millisecond),
+		"decode", t.decode.Round(time.Millisecond),
+		"format", t.visit.Round(time.Millisecond),
+		"total", t.total.Round(time.Millisecond),
+	)
 }
 
 // extractEnhancedEvent extracts structured data from a history event for tree/timeline views.
