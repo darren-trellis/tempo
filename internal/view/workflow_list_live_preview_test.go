@@ -86,3 +86,29 @@ func TestCursorPreviewLoadStillSaysLoading(t *testing.T) {
 	}
 	close(provider.release)
 }
+
+// A closed run's history cannot change, so auto-refresh leaves it alone.
+func TestAutoRefreshSkipsClosedPreview(t *testing.T) {
+	provider := &blockingHistoryProvider{started: make(chan struct{}, 1), release: make(chan struct{})}
+	a := &App{provider: provider}
+	wl := NewWorkflowList(a, "default")
+	wl.previewMode = true
+	w := temporal.Workflow{ID: "wf-1", RunID: "run-1", Status: "Completed"}
+	wl.workflows = []temporal.Workflow{w}
+	wl.previewWorkflowID = w.ID
+	wl.previewRunID = w.RunID
+	wl.previewEvents = []temporal.EnhancedHistoryEvent{
+		{Type: "WorkflowExecutionStarted"},
+		{Type: "WorkflowExecutionCompleted"},
+	}
+
+	wl.refreshLivePreview()
+	select {
+	case <-provider.started:
+		t.Fatal("a closed workflow's history should not be refetched")
+	case <-time.After(300 * time.Millisecond):
+	}
+	if a.loadingText() != "" {
+		t.Fatalf("nothing should be loading, got %q", a.loadingText())
+	}
+}

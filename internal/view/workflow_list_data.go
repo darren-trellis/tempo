@@ -857,6 +857,10 @@ func (wl *WorkflowList) refreshLivePreview() {
 		return
 	}
 	if wl.historyNeeded() && wl.previewWorkflowID == w.ID && wl.previewRunID == w.RunID && len(wl.previewEvents) > 0 {
+		// A closed run's history is final, so there is nothing to refetch.
+		if workflowHistoryComplete(wl.previewEvents) {
+			return
+		}
 		wl.reloadShownPreview(w)
 		return
 	}
