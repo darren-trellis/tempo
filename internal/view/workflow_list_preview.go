@@ -552,11 +552,40 @@ func (wl *WorkflowList) schedulePreview(w temporal.Workflow, force bool) {
 		wl.previewTimer.Stop()
 	}
 	wl.previewTimer = time.AfterFunc(wl.previewLoadDelay(), func() {
-		wl.loadPreview(gen, w)
+		wl.loadPreview(gen, w, true)
 	})
 }
 
-func (wl *WorkflowList) loadPreview(gen uint64, w temporal.Workflow) {
+// previewLiveKey is the spinner a live refresh of the preview holds. It is
+// separate from the preview's own key so an overlapping load started by the
+// cursor keeps its label and neither clears the other.
+const previewLiveKey = "workflow-preview-live"
+
+// reloadShownPreview refetches the preview already on screen after an
+// auto-refresh. It skips the highlight delay, which is for a moving cursor,
+// and takes the quiet spinner over from the list in the same update, so a
+// refresh reads as one quiet load instead of the list's spinner followed by
+// a second, labelled one.
+func (wl *WorkflowList) reloadShownPreview(w temporal.Workflow) {
+	gen := atomic.AddUint64(&wl.previewGen, 1)
+	if wl.previewTimer != nil {
+		wl.previewTimer.Stop()
+	}
+	if wl.app != nil {
+		wl.app.SetViewRefreshing(previewLiveKey, true)
+	}
+	go func() {
+		if wl.app != nil {
+			defer wl.app.SetViewRefreshing(previewLiveKey, false)
+		}
+		wl.loadPreview(gen, w, false)
+	}()
+}
+
+// loadPreview fetches w's history for the preview. indicate shows the
+// labelled spinner while it runs; a caller that passes false owns the
+// indicator.
+func (wl *WorkflowList) loadPreview(gen uint64, w temporal.Workflow, indicate bool) {
 	if atomic.LoadUint64(&wl.previewGen) != gen {
 		return
 	}
@@ -566,8 +595,10 @@ func (wl *WorkflowList) loadPreview(gen uint64, w temporal.Workflow) {
 	var err error
 	if wl.app != nil {
 		if provider := wl.app.Provider(); provider != nil {
-			wl.app.SetViewLoading("workflow-preview", true)
-			defer wl.app.SetViewLoading("workflow-preview", false)
+			if indicate {
+				wl.app.SetViewLoading("workflow-preview", true)
+				defer wl.app.SetViewLoading("workflow-preview", false)
+			}
 			ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 			defer cancel()
 			events, err = provider.GetEnhancedWorkflowHistory(ctx, wl.namespace, w.ID, w.RunID)

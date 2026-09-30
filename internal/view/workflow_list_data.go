@@ -859,6 +859,10 @@ func (wl *WorkflowList) refreshLivePreview() {
 	if !ok {
 		return
 	}
+	if wl.historyNeeded() && wl.previewWorkflowID == w.ID && wl.previewRunID == w.RunID && len(wl.previewEvents) > 0 {
+		wl.reloadShownPreview(w)
+		return
+	}
 	wl.schedulePreview(w, true)
 }
 
