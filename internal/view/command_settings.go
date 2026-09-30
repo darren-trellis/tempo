@@ -129,15 +129,15 @@ func tempoSettings() []tempoSetting {
 			get:  func(c *config.Config) string { return c.ResolvedSecondaryTab() },
 			apply: func(a *App, value string) error {
 				switch strings.ToLower(strings.TrimSpace(value)) {
-				case config.SecondaryTabDetails, config.SecondaryTabActivities, config.SecondaryTabEvents, config.SecondaryTabHierarchy:
+				case config.SecondaryTabDetails, config.SecondaryTabActivities, config.SecondaryTabEvents:
 					a.config.SecondaryTab = strings.ToLower(strings.TrimSpace(value))
 					return nil
 				default:
-					return fmt.Errorf("secondary_tab must be details, activities, events, or hierarchy")
+					return fmt.Errorf("secondary_tab must be details, activities, or events")
 				}
 			},
 			values: func() []string {
-				return []string{config.SecondaryTabDetails, config.SecondaryTabActivities, config.SecondaryTabEvents, config.SecondaryTabHierarchy}
+				return []string{config.SecondaryTabDetails, config.SecondaryTabActivities, config.SecondaryTabEvents}
 			},
 		},
 		{

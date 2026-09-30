@@ -111,9 +111,6 @@ func (wl *WorkflowList) tertiaryStack() (*tview.Flex, tview.Primitive) {
 	if wl.previewShowsSidePane() {
 		return wl.rightFlex, wl.eventDetailPanel
 	}
-	if wl.previewKind == previewHierarchy {
-		return wl.rightFlex, wl.hierarchyGraphPanel
-	}
 	return nil, nil
 }
 

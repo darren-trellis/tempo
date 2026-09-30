@@ -553,22 +553,3 @@ func TestTaskQueueForcedPollersDropCache(t *testing.T) {
 		t.Fatal("a forced poller load should drop the cached entry, not answer from it")
 	}
 }
-
-func TestGraphViewInvalidateDropsRelationships(t *testing.T) {
-	wg := NewWorkflowGraphView(&App{}, "default", nil)
-	wg.relationships = &temporal.WorkflowRelationships{}
-	wg.loading = true
-	gen := wg.loadGen
-
-	wg.Invalidate()
-
-	if wg.relationships != nil {
-		t.Fatal("invalidate should drop the relationship graph")
-	}
-	if wg.loading {
-		t.Fatal("invalidate should clear the loading flag so the next load can run")
-	}
-	if wg.loadGen == gen {
-		t.Fatal("invalidate should abandon the load already in flight")
-	}
-}

@@ -138,7 +138,6 @@ func (wl *WorkflowList) setupPreview() {
 	wl.setupActivitiesPane()
 	wl.setupActivityDetailPane()
 	wl.setupWorkflowIOPane()
-	wl.setupHierarchyPane()
 	wl.workflowDetail, wl.workflowDetailScroll = newInfoRowsTable(wl.app, func() []workflowInfoRow { return wl.previewDetailRows })
 	wl.workflowDetail.SetInputCapture(wl.handlePreviewDetailKeys)
 
@@ -147,8 +146,7 @@ func (wl *WorkflowList) setupPreview() {
 		SetShowBadges(false).
 		AddTabWithIcon(previewDetails.title(), previewDetails.icon(), wl.workflowDetailScroll).
 		AddTabWithIcon(previewActivities.title(), previewActivities.icon(), wl.eventTableScroll).
-		AddTabWithIcon(previewEvents.title(), previewEvents.icon(), wl.eventTableScroll).
-		AddTabWithIcon(previewHierarchy.title(), previewHierarchy.icon(), wl.hierarchyView.tree)
+		AddTabWithIcon(previewEvents.title(), previewEvents.icon(), wl.eventTableScroll)
 	wl.previewTabs.SetActive(int(previewEvents))
 	wl.eventTab = wl.previewTabs.GetActiveTab()
 	wl.previewTabs.SetOnChange(func(index int, name string) {
@@ -252,27 +250,6 @@ func (wl *WorkflowList) setupWorkflowIOPane() {
 		}).
 		SetActive(int(workflowIOInput))
 	wl.workflowIOTabs.SetInputCapture(wl.capturePreviewTabs)
-}
-
-func (wl *WorkflowList) setupHierarchyPane() {
-	wl.hierarchyView = NewWorkflowGraphView(wl.app, wl.namespace, nil)
-	wl.hierarchyView.SetEmbedded(true)
-	hierarchyInput := func(event *tcell.EventKey) *tcell.EventKey {
-		if wl.hierarchyView.handleGraphKeys(event) {
-			return nil
-		}
-		return wl.handlePreviewKeys(event)
-	}
-	if wl.hierarchyView.tree != nil {
-		wl.hierarchyView.tree.SetBackgroundColor(theme.Bg())
-		wl.hierarchyView.tree.SetInputCapture(hierarchyInput)
-	}
-	if wl.hierarchyView.graph != nil {
-		wl.hierarchyView.graph.SetBackgroundColor(theme.Bg())
-		wl.hierarchyView.graph.SetInputCapture(hierarchyInput)
-	}
-	wl.hierarchyGraphPanel = components.NewPanel()
-	wl.hierarchyGraphPanel.SetContent(wl.hierarchyView.graph)
 }
 
 func newPreviewTextView(app *App) *tview.TextView {
@@ -484,9 +461,6 @@ func (wl *WorkflowList) setPreviewStatus(message string) {
 		}
 		return
 	}
-	if wl.previewKind == previewHierarchy {
-		return
-	}
 	if wl.eventTable != nil {
 		wl.eventTable.ClearRows()
 		if wl.previewKind == previewActivities {
@@ -543,9 +517,6 @@ func (wl *WorkflowList) schedulePreview(w temporal.Workflow, force bool) {
 		wl.previewPending = true
 		wl.clearPreviewContent()
 		wl.setPreviewStatus("Loading...")
-		if wl.previewKind == previewHierarchy {
-			wl.renderPreviewHierarchy(w)
-		}
 	}
 
 	if wl.previewTimer != nil {
@@ -668,9 +639,6 @@ func (wl *WorkflowList) showPreviewEvents(w temporal.Workflow, events []temporal
 func (wl *WorkflowList) renderPreview(w temporal.Workflow) {
 	if wl.previewPending {
 		wl.setPreviewStatus("Loading...")
-		if wl.previewKind == previewHierarchy {
-			wl.renderPreviewHierarchy(w)
-		}
 		return
 	}
 	switch wl.previewKind {
@@ -678,18 +646,9 @@ func (wl *WorkflowList) renderPreview(w temporal.Workflow) {
 		wl.renderPreviewDetails(w)
 	case previewEvents:
 		wl.renderPreviewEvents(w)
-	case previewHierarchy:
-		wl.renderPreviewHierarchy(w)
 	default:
 		wl.renderPreviewActivities(w)
 	}
-}
-
-func (wl *WorkflowList) renderPreviewHierarchy(w temporal.Workflow) {
-	if wl.hierarchyView == nil {
-		return
-	}
-	wl.hierarchyView.ShowWorkflow(wl.namespace, w)
 }
 
 func (wl *WorkflowList) renderPreviewDetails(w temporal.Workflow) {
@@ -723,9 +682,6 @@ func (wl *WorkflowList) renderPreviewDetails(w temporal.Workflow) {
 func (wl *WorkflowList) eventsPreviewPrimitive() tview.Primitive {
 	if wl.previewKind == previewDetails && wl.workflowDetail != nil {
 		return wl.workflowDetail
-	}
-	if wl.previewKind == previewHierarchy && wl.hierarchyView != nil && wl.hierarchyView.tree != nil {
-		return wl.hierarchyView.tree
 	}
 	if wl.previewKind == previewEvents && wl.eventTreeMode && wl.eventTreeView != nil {
 		return wl.eventTreeView

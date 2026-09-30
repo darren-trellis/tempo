@@ -408,8 +408,6 @@ func previewKindFromConfig(name string) previewKind {
 		return previewDetails
 	case config.SecondaryTabEvents:
 		return previewEvents
-	case config.SecondaryTabHierarchy:
-		return previewHierarchy
 	default:
 		return previewActivities
 	}

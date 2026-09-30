@@ -69,9 +69,6 @@ func (wl *WorkflowList) invalidateCaches() {
 	// A preview load started by the refresh already running would otherwise
 	// land after this one and draw the preview twice.
 	atomic.AddUint64(&wl.previewGen, 1)
-	if wl.hierarchyView != nil {
-		wl.hierarchyView.Invalidate()
-	}
 }
 
 // beginFetch starts a list fetch and stops the one already running, so an

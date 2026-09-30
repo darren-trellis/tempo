@@ -46,9 +46,6 @@ func (wl *WorkflowList) handlePreviewTabKey(event *tcell.EventKey) bool {
 	case '3':
 		wl.setPreviewKind(previewEvents)
 		return true
-	case '4':
-		wl.setPreviewKind(previewHierarchy)
-		return true
 	}
 	return false
 }
@@ -127,15 +124,8 @@ func (wl *WorkflowList) applyPreviewPage() {
 		var tertiary tview.Primitive
 		if wl.previewShowsSidePane() {
 			tertiary = wl.eventDetailPanel
-		} else if wl.previewKind == previewHierarchy {
-			tertiary = wl.hierarchyGraphPanel
 		}
 		wl.addSecondaryTertiary(wl.rightFlex, wl.previewPanel, tertiary)
-	}
-	if wl.previewKind == previewHierarchy {
-		if w, ok := wl.selectedWorkflow(); ok {
-			wl.renderPreviewHierarchy(w)
-		}
 	}
 	wl.syncPreviewChrome()
 	wl.syncSearchTitles()
@@ -180,9 +170,6 @@ func (wl *WorkflowList) previewTabAt(x, y int) (previewKind, bool) {
 // syncPreviewChrome swaps in the tertiary pane's content. The pane carries no
 // title: its tabs already name what it holds.
 func (wl *WorkflowList) syncPreviewChrome() {
-	if wl.previewKind == previewHierarchy {
-		return
-	}
 	if wl.eventDetailPanel == nil {
 		return
 	}

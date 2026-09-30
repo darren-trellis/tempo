@@ -484,7 +484,6 @@ const (
 	SecondaryTabDetails    = "details"
 	SecondaryTabActivities = "activities"
 	SecondaryTabEvents     = "events"
-	SecondaryTabHierarchy  = "hierarchy"
 	TertiaryTabDetails     = "details"
 	TertiaryTabInput       = "input"
 	TertiaryTabOutput      = "output"
@@ -511,12 +510,12 @@ func (c *Config) ResolvedSecondaryTab() string {
 		return SecondaryTabActivities
 	}
 	switch strings.ToLower(strings.TrimSpace(c.SecondaryTab)) {
-	case SecondaryTabDetails:
+	// The Hierarchy tab folded into Details, so a config that still names it
+	// opens where the children now are.
+	case SecondaryTabDetails, "hierarchy":
 		return SecondaryTabDetails
 	case SecondaryTabEvents:
 		return SecondaryTabEvents
-	case SecondaryTabHierarchy:
-		return SecondaryTabHierarchy
 	default:
 		return SecondaryTabActivities
 	}

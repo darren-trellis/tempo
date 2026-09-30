@@ -277,8 +277,8 @@ func TestResolvedPaneTabs(t *testing.T) {
 	if (&Config{PrimaryTab: "SCHEDULES"}).ResolvedPrimaryTab() != PrimaryTabSchedules {
 		t.Fatal("SCHEDULES should resolve to schedules")
 	}
-	if (&Config{SecondaryTab: "hierarchy"}).ResolvedSecondaryTab() != SecondaryTabHierarchy {
-		t.Fatal("secondary_tab: hierarchy should stick")
+	if (&Config{SecondaryTab: "hierarchy"}).ResolvedSecondaryTab() != SecondaryTabDetails {
+		t.Fatal("secondary_tab: hierarchy should open Details, where the children now are")
 	}
 	if (&Config{TertiaryTab: "output"}).ResolvedTertiaryTab() != TertiaryTabOutput {
 		t.Fatal("tertiary_tab: output should stick")

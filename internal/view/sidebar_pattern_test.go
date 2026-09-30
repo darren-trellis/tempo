@@ -186,20 +186,3 @@ func TestEveryScrollablePaneTakesAHorizontalWheel(t *testing.T) {
 		t.Fatal("namespaces: no horizontal mouse scrolling")
 	}
 }
-
-func TestGraphPanePansWithHorizontalWheel(t *testing.T) {
-	wg := NewWorkflowGraphView(&App{}, "default", nil)
-	capture := wg.graph.GetMouseCapture()
-	if capture == nil {
-		t.Fatal("the hierarchy graph pans with h/l, so it needs a horizontal wheel too")
-	}
-	action, _ := capture(tview.MouseScrollRight, tcell.NewEventMouse(0, 0, tcell.WheelRight, tcell.ModNone))
-	if action != tview.MouseConsumed {
-		t.Fatal("horizontal wheel should be consumed by the graph")
-	}
-	// A vertical wheel still belongs to the component.
-	action, _ = capture(tview.MouseScrollDown, tcell.NewEventMouse(0, 0, tcell.WheelDown, tcell.ModNone))
-	if action == tview.MouseConsumed {
-		t.Fatal("vertical wheel should pass through to the graph")
-	}
-}

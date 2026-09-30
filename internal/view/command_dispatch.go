@@ -392,12 +392,12 @@ func (a *App) execPreview(args []string) {
 		a.ToastWarning("usage: preview")
 		return
 	}
-	wl, ok := a.requireWorkflowList("usage: preview on|off|toggle|details|activities|events|hierarchy")
+	wl, ok := a.requireWorkflowList("usage: preview on|off|toggle|details|activities|events")
 	if !ok {
 		return
 	}
 	if !wl.workflowsActive() {
-		a.ToastWarning("usage: preview on|off|toggle|details|activities|events|hierarchy")
+		a.ToastWarning("usage: preview on|off|toggle|details|activities|events")
 		return
 	}
 	if len(args) == 0 {
@@ -421,11 +421,8 @@ func (a *App) execPreview(args []string) {
 	case "events":
 		wl.setPreviewVisible(true)
 		wl.setPreviewKind(previewEvents)
-	case "hierarchy":
-		wl.setPreviewVisible(true)
-		wl.setPreviewKind(previewHierarchy)
 	default:
-		a.ToastWarning("usage: preview on|off|toggle|details|activities|events|hierarchy")
+		a.ToastWarning("usage: preview on|off|toggle|details|activities|events")
 	}
 }
 

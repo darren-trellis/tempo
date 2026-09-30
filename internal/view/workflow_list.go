@@ -92,8 +92,6 @@ type WorkflowList struct {
 	workflowIOTabs         *components.Tabs
 	workflowIOView         *tview.TextView
 	workflowIOTree         *jsonTreeSelection
-	hierarchyView          *WorkflowGraphView
-	hierarchyGraphPanel    *components.Panel
 	previewEvents          []temporal.EnhancedHistoryEvent
 	previewEventSearch     string
 	previewActivities      []previewActivity
@@ -321,9 +319,6 @@ func (wl *WorkflowList) RefreshTheme() {
 	}
 	if wl.workers != nil {
 		wl.workers.RefreshTheme()
-	}
-	if wl.hierarchyView != nil {
-		wl.hierarchyView.RefreshTheme()
 	}
 	wl.populateTable()
 	wl.applyFocusStyles()
@@ -774,13 +769,6 @@ func (wl *WorkflowList) previewShowsIO() bool {
 }
 
 func (wl *WorkflowList) previewListHints() []KeyHint {
-	if wl.previewKind == previewHierarchy {
-		return []KeyHint{
-			{Key: "space", Description: "Collapse/Expand"},
-			{Key: "+/-", Description: "Depth"},
-			{Key: "p", Description: "Preview"},
-		}
-	}
 	hints := wl.previewIOHint()
 	if wl.previewKind == previewDetails && wl.focusPane == focusEvents {
 		hints = append(hints, KeyHint{Key: "y", Description: "Yank"})
@@ -820,13 +808,6 @@ func (wl *WorkflowList) previewSideHints() []KeyHint {
 			KeyHint{Key: "r", Description: "Refresh"},
 			KeyHint{Key: "p", Description: "Preview"},
 		)
-	}
-	if wl.previewKind == previewHierarchy {
-		return []KeyHint{
-			{Key: "c", Description: "Center Graph"},
-			{Key: "+/-", Description: "Depth"},
-			{Key: "p", Description: "Preview"},
-		}
 	}
 	if wl.previewIOViewFocused() {
 		hints := []KeyHint{
@@ -990,10 +971,6 @@ func (wl *WorkflowList) Focus(delegate func(p tview.Primitive)) {
 	case focusEventDetail:
 		if wl.previewKind == previewDetails && wl.workflowIOView != nil {
 			delegate(wl.workflowIOView)
-			return
-		}
-		if wl.previewKind == previewHierarchy && wl.hierarchyView != nil && wl.hierarchyView.graph != nil {
-			delegate(wl.hierarchyView.graph)
 			return
 		}
 		if p := wl.activityDetailFocusPrimitive(); p != nil {

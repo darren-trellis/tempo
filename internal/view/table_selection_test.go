@@ -177,10 +177,4 @@ func TestWorkflowAndActivityRowsStayHighlightedWhenUnfocused(t *testing.T) {
 	if !tableShowsSelectedRow(t, wl.eventTable) {
 		t.Fatal("the activity highlight should stay painted when the list is unfocused")
 	}
-
-	wl.previewKind = previewHierarchy
-	wl.applyFocusStyles()
-	if rows, _ := wl.eventTable.GetSelectable(); rows {
-		t.Fatal("the activity table should not stay selectable on the hierarchy tab")
-	}
 }

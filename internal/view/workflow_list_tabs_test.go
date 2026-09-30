@@ -493,8 +493,8 @@ func TestConfiguredPaneTabsUpdateLive(t *testing.T) {
 	if !ok {
 		t.Fatal("missing secondary_tab")
 	}
-	a.commitSetting(s, config.SecondaryTabHierarchy)
-	if wl.previewKind != previewHierarchy {
+	a.commitSetting(s, config.SecondaryTabEvents)
+	if wl.previewKind != previewEvents {
 		t.Fatalf("setting secondary_tab should switch preview, got %d", wl.previewKind)
 	}
 

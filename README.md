@@ -105,7 +105,7 @@ tempo --address localhost:7233 // default dev server address loads without flag
 | `Esc` / `Backspace` | Go back |
 | `q` | Quit (from root view) |
 
-The **Primary** pane is Workflows, Task Queues, Schedules, or Workers. **Secondary** is the preview. **Tertiary** is Input/Output, Activity Details, Event Details, or Graph.
+The **Primary** pane is Workflows, Task Queues, Schedules, or Workers. **Secondary** is the preview. **Tertiary** is Input/Output, Activity Details, or Event Details.
 
 **Global**
 | Key | Action |

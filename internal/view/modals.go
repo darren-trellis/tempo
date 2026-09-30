@@ -111,7 +111,7 @@ func (m *HelpModal) updateContent() {
 
 Primary      Workflows, Task Queues, Schedules, Workers
 Secondary    Preview
-Tertiary     Input/Output, Activity Details, Event Details, Graph
+Tertiary     Input/Output, Activity Details, Event Details
 `, theme.TagAccent(),
 		theme.TagAccent(),
 		theme.TagAccent(),

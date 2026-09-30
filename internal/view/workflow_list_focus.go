@@ -45,13 +45,6 @@ func (wl *WorkflowList) paneAt(x, y int) (workflowFocusPane, bool) {
 			if wl.workflowDetail != nil && wl.workflowDetail.InRect(x, y) {
 				return focusEvents, true
 			}
-		} else if wl.previewKind == previewHierarchy {
-			if wl.hierarchyGraphPanel != nil && wl.hierarchyGraphPanel.InRect(x, y) {
-				return focusEventDetail, true
-			}
-			if wl.hierarchyView != nil && wl.hierarchyView.tree != nil && wl.hierarchyView.tree.InRect(x, y) {
-				return focusEvents, true
-			}
 		} else {
 			if wl.eventDetailPanel != nil && wl.eventDetailPanel.InRect(x, y) {
 				return focusEventDetail, true
@@ -148,7 +141,7 @@ func (wl *WorkflowList) previewFocusOrder() []workflowFocusPane {
 	}
 	order = append(order, focusWorkflows)
 	if wl.previewModeEnabled() {
-		if wl.previewShowsSidePane() || wl.previewKind == previewHierarchy {
+		if wl.previewShowsSidePane() {
 			order = append(order, focusEvents, focusEventDetail)
 		} else {
 			order = append(order, focusEventDetail)
@@ -214,8 +207,6 @@ func (wl *WorkflowList) setFocusPane(pane workflowFocusPane) {
 	case focusEventDetail:
 		if wl.previewKind == previewDetails && wl.workflowIOView != nil {
 			wl.app.JigApp().SetFocus(wl.workflowIOView)
-		} else if wl.previewKind == previewHierarchy && wl.hierarchyView != nil && wl.hierarchyView.graph != nil {
-			wl.app.JigApp().SetFocus(wl.hierarchyView.graph)
 		} else if p := wl.activityDetailFocusPrimitive(); p != nil {
 			wl.app.JigApp().SetFocus(p)
 		} else {
@@ -253,9 +244,6 @@ func (wl *WorkflowList) applyFocusStyles() {
 	}
 	if wl.eventDetailPanel != nil {
 		wl.eventDetailPanel.SetFocused(active && wl.previewShowsSidePane() && wl.focusPane == focusEventDetail)
-	}
-	if wl.hierarchyGraphPanel != nil {
-		wl.hierarchyGraphPanel.SetFocused(active && wl.previewKind == previewHierarchy && wl.focusPane == focusEventDetail)
 	}
 	if wl.eventsPanel != nil {
 		wl.eventsPanel.SetFocused(active && wl.focusPane == focusEvents)
@@ -297,7 +285,7 @@ func (wl *WorkflowList) applyFocusStyles() {
 		wl.table.SetSelectable(wl.workflowsActive(), false)
 	}
 	if wl.eventTable != nil {
-		wl.eventTable.SetSelectable(wl.previewKind != previewHierarchy, false)
+		wl.eventTable.SetSelectable(true, false)
 	}
 	if wl.workflowDetail != nil {
 		wl.workflowDetail.SetSelectable(active && wl.previewKind == previewDetails && wl.focusPane == focusEvents, false)
@@ -322,10 +310,6 @@ func (wl *WorkflowList) syncFocusFromPrimitives() {
 		pane = focusEventDetail
 	case wl.eventDetail != nil && wl.eventDetail.HasFocus():
 		pane = focusEventDetail
-	case wl.hierarchyView != nil && wl.hierarchyView.graph != nil && wl.hierarchyView.graph.HasFocus():
-		pane = focusEventDetail
-	case wl.hierarchyView != nil && wl.hierarchyView.tree != nil && wl.hierarchyView.tree.HasFocus():
-		pane = focusEvents
 	case wl.eventTreeView != nil && wl.eventTreeView.HasFocus():
 		pane = focusEvents
 	case wl.eventTable != nil && wl.eventTable.HasFocus():

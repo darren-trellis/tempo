@@ -255,55 +255,6 @@ func TestWorkflowTableKeepsHorizontalScrollKeys(t *testing.T) {
 	}
 }
 
-func TestPreviewHierarchyTab(t *testing.T) {
-	if previewHierarchy.title() != "Hierarchy" {
-		t.Fatalf("hierarchy title: %q", previewHierarchy.title())
-	}
-
-	wl := NewWorkflowList(&App{}, "default")
-	wl.togglePreviewMode()
-	wl.setPreviewKind(previewHierarchy)
-	wl.setFocusPane(focusEvents)
-	if !wl.previewModeEnabled() {
-		t.Fatal("preview should be on")
-	}
-	if wl.previewKind != previewHierarchy {
-		t.Fatalf("should open hierarchy, got %d", wl.previewKind)
-	}
-	if wl.rightFlex.GetItemCount() != 2 {
-		t.Fatalf("hierarchy should show the graph pane, got %d items", wl.rightFlex.GetItemCount())
-	}
-	if wl.focusPane != focusEvents {
-		t.Fatalf("should focus the hierarchy tree, got %d", wl.focusPane)
-	}
-	if desc := hintDescription(wl.Hints(), "space"); desc != "Collapse/Expand" {
-		t.Fatalf("hierarchy hints: %q", desc)
-	}
-	if desc := hintDescription(wl.Hints(), "c"); desc != "" {
-		t.Fatalf("tree pane should not show center graph, got %q", desc)
-	}
-	if desc := hintDescription(wl.Hints(), "i"); desc != "" {
-		t.Fatalf("hierarchy should not show io, got %q", desc)
-	}
-
-	wl.setFocusPane(focusEventDetail)
-	if desc := hintDescription(wl.Hints(), "c"); desc != "Center Graph" {
-		t.Fatalf("graph pane should show center, got %q", desc)
-	}
-
-	wl.hierarchyView.loading = true
-	if ev := wl.handlePreviewKeys(tcell.NewEventKey(tcell.KeyRune, ']', 0)); ev != nil {
-		t.Fatal("] should switch tabs while hierarchy is loading")
-	}
-	if wl.previewKind != previewDetails {
-		t.Fatalf("] should leave hierarchy while loading, got %d", wl.previewKind)
-	}
-
-	if hintDescription(wl.Hints(), "o") != "" {
-		t.Fatal("hierarchy should not have a dedicated footer key")
-	}
-}
-
 func TestPreviewEventsTreeToggle(t *testing.T) {
 	wl := NewWorkflowList(&App{}, "default")
 	wl.togglePreviewMode()
