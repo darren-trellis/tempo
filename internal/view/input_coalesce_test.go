@@ -1,10 +1,12 @@
 package view
 
 import (
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/gdamore/tcell/v2"
+	"github.com/rivo/tview"
 )
 
 func simulatedCoalesceScreen(t *testing.T) (*coalesceScreen, tcell.SimulationScreen) {
@@ -136,5 +138,91 @@ func TestNavigationWaitsForTheLastDraw(t *testing.T) {
 	c.PollEvent()
 	if waited := time.Since(start); waited >= c.wait {
 		t.Fatalf("a drawn event should let the next through at once, waited %s", waited)
+	}
+}
+
+func TestCollapsedWheelTicksAreCounted(t *testing.T) {
+	c, sim := simulatedCoalesceScreen(t)
+	for i := 0; i < 5; i++ {
+		sim.InjectMouse(1, 1, tcell.WheelDown, tcell.ModNone)
+	}
+	waitQueued(t, sim)
+	event, ok := c.PollEvent().(*tcell.EventMouse)
+	if !ok {
+		t.Fatal("expected the wheel event")
+	}
+	if got := c.extraTicks(event); got != 4 {
+		t.Fatalf("five ticks collapsed into one should carry four extra, got %d", got)
+	}
+	if got := c.extraTicks(event); got != 0 {
+		t.Fatalf("extra ticks should be handed out once, got %d", got)
+	}
+}
+
+// drawnScrollPage is a long text view in a page, drawn once so its scroll
+// offset is settled.
+func drawnScrollPage(t *testing.T) (*tview.TextView, *tview.Pages) {
+	t.Helper()
+	view := tview.NewTextView()
+	view.SetText(strings.Repeat("line\n", 100))
+	pages := tview.NewPages().AddPage("main", view, true, true)
+	pages.SetRect(0, 0, 20, 10)
+	sim := tcell.NewSimulationScreen("")
+	if err := sim.Init(); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(sim.Fini)
+	sim.SetSize(20, 10)
+	pages.Draw(sim)
+	return view, pages
+}
+
+func TestReplayWheelTicksScrollsTheWholeBurst(t *testing.T) {
+	view, pages := drawnScrollPage(t)
+	start, _ := view.GetScrollOffset()
+	app := tview.NewApplication()
+	var captured int
+	app.SetMouseCapture(func(event *tcell.EventMouse, action tview.MouseAction) (*tcell.EventMouse, tview.MouseAction) {
+		captured++
+		return event, action
+	})
+
+	event := tcell.NewEventMouse(2, 2, tcell.WheelDown, tcell.ModNone)
+	replayWheelTicks(app, pages, func(e *tcell.EventMouse) int {
+		if e == event {
+			return 3
+		}
+		return 0
+	})
+	ev, _ := app.GetMouseCapture()(event, tview.MouseScrollDown)
+	if ev != nil {
+		t.Fatal("a burst should be reported consumed so tview redraws it")
+	}
+	if row, _ := view.GetScrollOffset(); row != start+4 {
+		t.Fatalf("the event and its three collapsed ticks should all scroll, offset %d -> %d", start, row)
+	}
+	if captured != 4 {
+		t.Fatalf("every tick should pass the existing capture, it saw %d", captured)
+	}
+
+	// A lone tick is left for tview to route as usual.
+	single := tcell.NewEventMouse(2, 2, tcell.WheelDown, tcell.ModNone)
+	if ev, _ := app.GetMouseCapture()(single, tview.MouseScrollDown); ev != single {
+		t.Fatal("a tick with nothing collapsed into it should pass through")
+	}
+}
+
+func TestReplayWheelTicksRespectsAConsumingCapture(t *testing.T) {
+	view, pages := drawnScrollPage(t)
+	start, _ := view.GetScrollOffset()
+	app := tview.NewApplication()
+	app.SetMouseCapture(func(event *tcell.EventMouse, action tview.MouseAction) (*tcell.EventMouse, tview.MouseAction) {
+		return nil, tview.MouseConsumed // a modal took it
+	})
+	event := tcell.NewEventMouse(2, 2, tcell.WheelDown, tcell.ModNone)
+	replayWheelTicks(app, pages, func(*tcell.EventMouse) int { return 3 })
+	app.GetMouseCapture()(event, tview.MouseScrollDown)
+	if row, _ := view.GetScrollOffset(); row != start {
+		t.Fatalf("ticks a capture consumed should not reach the page, offset %d -> %d", start, row)
 	}
 }

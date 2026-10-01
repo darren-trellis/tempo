@@ -132,6 +132,9 @@ func (a *App) buildApp() {
 		}
 		return a.app.Pages().Current()
 	})
+	replayWheelTicks(tviewApp, a.app.Pages(), func(event *tcell.EventMouse) int {
+		return a.inputScreen.extraTicks(event)
+	})
 	tviewApp.SetAfterDrawFunc(func(screen tcell.Screen) {
 		a.drawHintStatus(screen)
 		a.drawHintLoading(screen)
