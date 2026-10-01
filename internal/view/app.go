@@ -68,6 +68,7 @@ type App struct {
 
 	// mouseEnabled tracks terminal mouse reporting so ctrl+o can toggle it.
 	mouseEnabled bool
+	inputScreen  *coalesceScreen
 
 	// Loading indicator - which views have a fetch in flight
 	loadMu       sync.Mutex
@@ -136,6 +137,9 @@ func (a *App) buildApp() {
 		a.drawHintLoading(screen)
 		a.drawHintPrompt(screen)
 		a.drawBottomChrome(screen)
+		if a.inputScreen != nil {
+			a.inputScreen.drawn()
+		}
 	})
 }
 

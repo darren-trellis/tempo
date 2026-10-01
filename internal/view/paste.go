@@ -32,7 +32,8 @@ func (a *App) installPasteScreen() {
 	screen.onPaste = func(text string) {
 		tapp.QueueUpdateDraw(func() { deliverPaste(tapp, text) })
 	}
-	tapp.SetScreen(screen)
+	a.inputScreen = newCoalesceScreen(screen)
+	tapp.SetScreen(a.inputScreen)
 	// tview never sees a paste event, but the flag keeps bracketed paste on
 	// when tview swaps in a replacement screen.
 	tapp.EnablePaste(true)
