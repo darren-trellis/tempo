@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"time"
 
 	"github.com/galaxy-io/tempo/internal/config"
 	"go.temporal.io/api/workflowservice/v1"
@@ -69,6 +70,10 @@ type staticHeadersProvider struct {
 func (p *staticHeadersProvider) GetHeaders(_ context.Context) (map[string]string, error) {
 	return p.headers, nil
 }
+
+// previousClientGrace is how long a replaced connection stays open for the
+// calls still running on it.
+const previousClientGrace = 60 * time.Second
 
 // Client implements the Provider interface using the Temporal SDK.
 type Client struct {
@@ -292,10 +297,13 @@ func (c *Client) reconnectWithConfig(ctx context.Context, connConfig ConnectionC
 	c.connected = true
 	c.mu.Unlock()
 
-	// Calls still running on the old connection now fail with an error rather
-	// than crashing on a nil client.
+	// Calls still running on the old connection, such as a long history
+	// download, are given time to finish before it is closed under them.
 	if previous != nil {
-		previous.Close()
+		if sdkLogger != nil {
+			sdkLogger.Info("reconnected", "address", connConfig.Address)
+		}
+		time.AfterFunc(previousClientGrace, previous.Close)
 	}
 
 	return nil

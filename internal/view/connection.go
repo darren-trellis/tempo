@@ -78,6 +78,7 @@ func (a *App) connectionMonitor() {
 	defer ticker.Stop()
 
 	backoff := reconnectInitialBackoff
+	failures := 0
 
 	for {
 		select {
@@ -99,6 +100,13 @@ func (a *App) connectionMonitor() {
 			cancel()
 
 			if err != nil {
+				// One slow check is not a lost connection: a large history
+				// download on the same connection can hold it past the
+				// timeout, and reconnecting then cut that download off.
+				failures++
+				if failures < connectionCheckFailures {
+					continue
+				}
 				// Connection lost - update UI
 				a.app.QueueUpdateDraw(func() {
 					a.setConnected(false)
@@ -121,6 +129,7 @@ func (a *App) connectionMonitor() {
 				}
 			} else {
 				// Connection is good - reset backoff
+				failures = 0
 				backoff = reconnectInitialBackoff
 				a.mu.Lock()
 				a.reconnecting = false

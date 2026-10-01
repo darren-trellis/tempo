@@ -21,6 +21,9 @@ const (
 	reconnectInitialBackoff = 2 * time.Second
 	reconnectMaxBackoff     = 30 * time.Second
 	connectionCheckTimeout  = 5 * time.Second
+	// connectionCheckFailures is how many checks in a row must fail before
+	// tempo calls the connection lost and reconnects.
+	connectionCheckFailures = 2
 )
 
 // App is the main application controller.
