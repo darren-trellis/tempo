@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	commonpb "go.temporal.io/api/common/v1"
@@ -18,7 +20,7 @@ import (
 // GetWorkflowHistory returns the event history for a workflow execution.
 func (c *Client) GetWorkflowHistory(ctx context.Context, namespace, workflowID, runID string) ([]HistoryEvent, error) {
 	var events []HistoryEvent
-	err := c.forEachHistoryEvent(ctx, namespace, workflowID, runID, func(event *historypb.HistoryEvent) {
+	_, err := c.forEachHistoryEvent(ctx, namespace, workflowID, runID, nil, func(event *historypb.HistoryEvent) {
 		events = append(events, HistoryEvent{
 			ID:      event.GetEventId(),
 			Type:    formatEventType(event.GetEventType().String()),
@@ -30,23 +32,63 @@ func (c *Client) GetWorkflowHistory(ctx context.Context, namespace, workflowID, 
 }
 
 // GetEnhancedWorkflowHistory returns event history with relational data for tree/timeline views.
+// Events are immutable once written, so a run loaded before only has its new
+// events sent through the codec; the rest are reused as they were decoded.
 func (c *Client) GetEnhancedWorkflowHistory(ctx context.Context, namespace, workflowID, runID string) ([]EnhancedHistoryEvent, error) {
+	key := historyCacheKey(namespace, workflowID, runID)
+	known := c.histories.get(key)
+	reuse := func(event *historypb.HistoryEvent) (EnhancedHistoryEvent, bool) {
+		i := int(event.GetEventId()) - 1
+		if i >= 0 && i < len(known) && known[i].ID == event.GetEventId() {
+			return known[i], true
+		}
+		return EnhancedHistoryEvent{}, false
+	}
 	var events []EnhancedHistoryEvent
-	err := c.forEachHistoryEvent(ctx, namespace, workflowID, runID, func(event *historypb.HistoryEvent) {
-		events = append(events, extractEnhancedEvent(event))
-	})
+	decoded, err := c.forEachHistoryEvent(ctx, namespace, workflowID, runID,
+		func(event *historypb.HistoryEvent) bool {
+			_, ok := reuse(event)
+			return ok
+		},
+		func(event *historypb.HistoryEvent) {
+			if ev, ok := reuse(event); ok {
+				events = append(events, ev)
+				return
+			}
+			events = append(events, extractEnhancedEvent(event))
+		})
+	// Events read while the codec was failing are still encoded; keeping
+	// them would keep them encoded on every later load.
+	if err == nil && decoded {
+		c.histories.put(key, events)
+	}
 	return events, err
 }
 
+// historyDecodeConcurrency is how many history pages are decoded at once,
+// while later pages are still being fetched.
+const historyDecodeConcurrency = 3
+
 // forEachHistoryEvent pages through a run's history, decoding payloads through
-// the namespace's codec before handing each event over.
-func (c *Client) forEachHistoryEvent(ctx context.Context, namespace, workflowID, runID string, visit func(*historypb.HistoryEvent)) error {
+// the namespace's codec before handing each event over in order. Pages are
+// decoded concurrently while the next ones are fetched. Events skip reports
+// true for are already known and are not decoded. decoded reports whether
+// every payload sent to the codec came back decoded.
+func (c *Client) forEachHistoryEvent(ctx context.Context, namespace, workflowID, runID string, skip func(*historypb.HistoryEvent) bool, visit func(*historypb.HistoryEvent)) (decoded bool, err error) {
 	cl, err := c.conn()
 	if err != nil {
-		return err
+		return false, err
 	}
-	var nextPageToken []byte
-	var t historyLoadTiming
+	codec := c.payloadCodec(namespace)
+	var (
+		t         historyLoadTiming
+		tMu       sync.Mutex
+		wg        sync.WaitGroup
+		pages     [][]*historypb.HistoryEvent
+		failed    atomic.Bool
+		sem       = make(chan struct{}, historyDecodeConcurrency)
+		pageToken []byte
+	)
 	start := time.Now()
 	defer func() {
 		t.total = time.Since(start)
@@ -60,38 +102,74 @@ func (c *Client) forEachHistoryEvent(ctx context.Context, namespace, workflowID,
 				WorkflowId: workflowID,
 				RunId:      runID,
 			},
-			NextPageToken: nextPageToken,
+			NextPageToken: pageToken,
 		})
 		if err != nil {
-			return fmt.Errorf("failed to get workflow history: %w", err)
+			return false, fmt.Errorf("failed to get workflow history: %w", err)
 		}
-		historyEvents := resp.GetHistory().GetEvents()
+		page := resp.GetHistory().GetEvents()
+		tMu.Lock()
 		t.fetch += time.Since(fetchStart)
 		t.pages++
-		t.events += len(historyEvents)
-		decodeStart := time.Now()
-		payloads, bytes := decodePayloadsInMessages(c.payloadCodec(namespace), asProtoMessages(historyEvents)...)
-		t.decode += time.Since(decodeStart)
-		t.payloads += payloads
-		t.payloadBytes += bytes
-		visitStart := time.Now()
-		for _, event := range historyEvents {
-			visit(event)
+		t.events += len(page)
+		tMu.Unlock()
+		pages = append(pages, page)
+
+		var fresh []*historypb.HistoryEvent
+		for _, event := range page {
+			if skip == nil || !skip(event) {
+				fresh = append(fresh, event)
+			}
 		}
-		t.visit += time.Since(visitStart)
-		nextPageToken = resp.GetNextPageToken()
-		if len(nextPageToken) == 0 {
-			return nil
+		tMu.Lock()
+		t.reused += len(page) - len(fresh)
+		tMu.Unlock()
+		if len(fresh) > 0 {
+			wg.Add(1)
+			sem <- struct{}{}
+			go func() {
+				defer wg.Done()
+				defer func() { <-sem }()
+				decodeStart := time.Now()
+				payloads, bytes, ok := decodePayloadsInMessages(codec, asProtoMessages(fresh)...)
+				if !ok {
+					failed.Store(true)
+				}
+				tMu.Lock()
+				t.decode += time.Since(decodeStart)
+				t.payloads += payloads
+				t.payloadBytes += bytes
+				tMu.Unlock()
+			}()
+		}
+
+		pageToken = resp.GetNextPageToken()
+		if len(pageToken) == 0 {
+			break
 		}
 	}
+	waitStart := time.Now()
+	wg.Wait()
+	t.decodeWait = time.Since(waitStart)
+
+	visitStart := time.Now()
+	for _, page := range pages {
+		for _, event := range page {
+			visit(event)
+		}
+	}
+	t.visit = time.Since(visitStart)
+	return !failed.Load(), nil
 }
 
 // historyLoadTiming is where a history load spent its time, written to the
 // log so a slow preview can be pinned on the server, the codec server, or
 // tempo's own formatting.
 type historyLoadTiming struct {
-	pages, events, payloads, payloadBytes int
-	fetch, decode, visit, total           time.Duration
+	pages, events, reused, payloads, payloadBytes int
+	// decode adds up every page's codec call, which overlap; decodeWait is
+	// how long the load still waited on them after the last page arrived.
+	fetch, decode, decodeWait, visit, total time.Duration
 }
 
 func (t historyLoadTiming) log(workflowID string) {
@@ -102,10 +180,12 @@ func (t historyLoadTiming) log(workflowID string) {
 		"workflow", workflowID,
 		"pages", t.pages,
 		"events", t.events,
+		"reused", t.reused,
 		"payloads", t.payloads,
 		"payloadKB", t.payloadBytes/1024,
 		"fetch", t.fetch.Round(time.Millisecond),
 		"decode", t.decode.Round(time.Millisecond),
+		"decodeWait", t.decodeWait.Round(time.Millisecond),
 		"format", t.visit.Round(time.Millisecond),
 		"total", t.total.Round(time.Millisecond),
 	)

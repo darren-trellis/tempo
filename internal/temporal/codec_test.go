@@ -276,7 +276,10 @@ func TestDecodePayloadsSkipsQuietlyWhilePaused(t *testing.T) {
 	guard := &codecGuard{until: time.Now().Add(time.Minute)}
 	inner := &scriptedCodec{}
 	payload := &commonpb.Payload{Data: []byte("encoded")}
-	count, _ := decodePayloadsInMessages(guardedCodec{PayloadCodec: inner, guard: guard}, &commonpb.Payloads{Payloads: []*commonpb.Payload{payload}})
+	count, _, ok := decodePayloadsInMessages(guardedCodec{PayloadCodec: inner, guard: guard}, &commonpb.Payloads{Payloads: []*commonpb.Payload{payload}})
+	if ok {
+		t.Fatal("payloads left encoded should not count as decoded")
+	}
 	if inner.calls != 0 || count != 1 || string(payload.Data) != "encoded" {
 		t.Fatalf("a paused codec should leave payloads encoded without a call, calls=%d count=%d data=%s", inner.calls, count, payload.Data)
 	}
