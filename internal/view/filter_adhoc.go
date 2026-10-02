@@ -44,6 +44,20 @@ func (wl *WorkflowList) appendAdHocClauses(clauses []config.FilterClause) {
 	wl.revealActiveFilterChip()
 }
 
+// rebaseVisibilityQuery swaps the query the ad-hoc clauses sit on, so moving
+// between filters carries them along instead of dropping them.
+func (wl *WorkflowList) rebaseVisibilityQuery(query string) {
+	if wl == nil {
+		return
+	}
+	if !wl.adHoc.active() {
+		wl.applyVisibilityQuery(query)
+		return
+	}
+	wl.adHoc.base = query
+	wl.runVisibilityQuery(wl.adHocQuery())
+}
+
 func (wl *WorkflowList) clearAdHocFilter() {
 	if wl == nil {
 		return

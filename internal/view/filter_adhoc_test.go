@@ -100,7 +100,7 @@ func TestAdHocClausesShowOnTheStatusBar(t *testing.T) {
 	}
 }
 
-func TestApplyingAFilterDropsAdHocClauses(t *testing.T) {
+func TestSwitchingFiltersCarriesAdHocClauses(t *testing.T) {
 	cfg := config.DefaultConfig()
 	cfg.SavedFilters = []config.SavedFilter{
 		{Name: "Running", Query: "ExecutionStatus = 'Running'"},
@@ -111,16 +111,25 @@ func TestApplyingAFilterDropsAdHocClauses(t *testing.T) {
 	wl.appendAdHocClauses([]config.FilterClause{{Key: "WorkflowType", Op: filterOpEq, Value: "Order"}})
 
 	wl.applySavedFilter(cfg.SavedFilters[1])
-	if wl.visibilityQuery != "ExecutionStatus = 'Failed'" {
-		t.Fatalf("query=%q", wl.visibilityQuery)
+	if want := "ExecutionStatus = 'Failed' AND WorkflowType = 'Order'"; wl.visibilityQuery != want {
+		t.Fatalf("query=%q want %q", wl.visibilityQuery, want)
 	}
-	if wl.adHoc.active() {
-		t.Fatal("switching filters should drop the ad-hoc clauses")
+	items := filterBarItems(wl)
+	if items[1].label != "Running" || items[2].label != "Failed*" || !items[2].active {
+		t.Fatalf("the new filter should carry the asterisk, got %+v", items)
 	}
-	for _, item := range filterBarItems(wl) {
-		if strings.HasSuffix(item.label, "*") {
-			t.Fatalf("no chip should stay marked unsaved, got %+v", item)
-		}
+
+	wl.applyAllWorkflowsFilter()
+	if wl.visibilityQuery != "WorkflowType = 'Order'" || wl.activeFilterName != "" {
+		t.Fatalf("All should keep the ad-hoc clauses, name=%q query=%q", wl.activeFilterName, wl.visibilityQuery)
+	}
+	if items := filterBarItems(wl); items[0].label != "All*" {
+		t.Fatalf("All should be marked unsaved, got %+v", items)
+	}
+
+	wl.clearTransientWorkflowFilter()
+	if wl.adHoc.active() || wl.visibilityQuery != "" {
+		t.Fatalf("peeling the clauses off All should leave nothing, query=%q", wl.visibilityQuery)
 	}
 }
 

@@ -500,7 +500,7 @@ func (wl *WorkflowList) applySavedFilter(f config.SavedFilter) {
 	}
 	wl.activeFilterName = f.Name
 	wl.filterClauses = savedFilterClauses(f)
-	wl.applyVisibilityQuery(compiledFilterQueryFor(wl, f))
+	wl.rebaseVisibilityQuery(compiledFilterQueryFor(wl, f))
 	wl.revealActiveFilterChip()
 }
 
@@ -508,7 +508,15 @@ func (wl *WorkflowList) applyAllWorkflowsFilter() {
 	if wl == nil {
 		return
 	}
-	wl.clearAllFilters()
+	if wl.adHoc.active() {
+		wl.activeFilterName = ""
+		wl.filterClauses = nil
+		wl.serverCompletions = nil
+		wl.lastCompletionQuery = ""
+		wl.rebaseVisibilityQuery("")
+	} else {
+		wl.clearAllFilters()
+	}
 	wl.revealActiveFilterChip()
 }
 
