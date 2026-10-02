@@ -81,6 +81,7 @@ type WorkflowList struct {
 	workflowTreePrefixes   []string
 	workflowHasChildren    []bool
 	workflowCollapsed      map[string]bool
+	treeParents            treeParents
 	focusPane              workflowFocusPane
 	previewKind            previewKind
 	activityDetailKind     activityDetailKind

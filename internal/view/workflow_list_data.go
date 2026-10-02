@@ -57,6 +57,7 @@ func (wl *WorkflowList) refresh() {
 // invalidateCaches drops the preview history and hierarchy held for this list.
 func (wl *WorkflowList) invalidateCaches() {
 	wl.previewCache.clear()
+	wl.treeParents.reset(wl.namespace)
 	wl.previewEvents = nil
 	wl.previewActivities = nil
 	wl.previewPending = false
