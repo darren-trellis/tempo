@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"github.com/atterpac/jig/theme"
 	"github.com/galaxy-io/tempo/internal/config"
@@ -228,6 +229,36 @@ func TestToggleWorkflowTreeFoldHidesChildren(t *testing.T) {
 	}
 	if !strings.Contains(wl.workflowRowPrefix(wl.table.SelectedRow()), workflowTreeExpanded) {
 		t.Fatalf("unfolded parent should show an empty diamond, got %q", wl.workflowRowPrefix(wl.table.SelectedRow()))
+	}
+}
+
+func TestWorkflowTreeLinesUpLeafAndParentIDs(t *testing.T) {
+	wl := NewWorkflowList(&App{}, "default")
+	wl.loadMockData()
+	widths := map[bool]map[int]int{false: {}, true: {}}
+	for i := range wl.workflows {
+		depth := wl.workflowDepths[i]
+		widths[wl.workflowHasChildAt(i)][depth] = utf8.RuneCountInString(wl.workflowRowPrefix(i))
+	}
+	compared := 0
+	for depth, parent := range widths[true] {
+		leaf, ok := widths[false][depth]
+		if !ok {
+			continue
+		}
+		compared++
+		if leaf != parent {
+			t.Fatalf("depth %d: leaf prefix is %d wide, parent prefix %d", depth, leaf, parent)
+		}
+	}
+	if compared == 0 {
+		t.Fatal("mock data should hold a leaf and a parent at the same depth")
+	}
+	if workflowTreeLeafPrefix("") != "  " {
+		t.Fatalf("a root leaf should get two spaces, got %q", workflowTreeLeafPrefix(""))
+	}
+	if got := workflowTreeLeafPrefix("│   └── "); got != "│   └──── " {
+		t.Fatalf("a child leaf should stretch its elbow, got %q", got)
 	}
 }
 

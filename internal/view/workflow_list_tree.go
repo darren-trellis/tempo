@@ -94,14 +94,27 @@ func (wl *WorkflowList) workflowRowPrefix(index int) string {
 		return ""
 	}
 	prefix := wl.workflowTreePrefixAt(index)
-	if !wl.workflowTreeMode || !wl.workflowHasChildAt(index) || index >= len(wl.workflows) {
+	if !wl.workflowTreeMode || index >= len(wl.workflows) {
 		return prefix
+	}
+	if !wl.workflowHasChildAt(index) {
+		return workflowTreeLeafPrefix(prefix)
 	}
 	mark := workflowTreeExpanded
 	if wl.workflowCollapsed[workflowIdentityKey(wl.workflows[index])] {
 		mark = workflowTreeCollapsed
 	}
 	return prefix + mark + " "
+}
+
+// workflowTreeLeafPrefix pads a row without children by the width of a fold
+// mark so its ID lines up with the parents'. A child stretches its elbow
+// across the gap rather than leaving blank space after it.
+func workflowTreeLeafPrefix(prefix string) string {
+	if prefix == "" {
+		return "  "
+	}
+	return strings.TrimSuffix(prefix, " ") + theme.IconTreeHoriz + theme.IconTreeHoriz + " "
 }
 
 func (wl *WorkflowList) anyWorkflowFolded() bool {
