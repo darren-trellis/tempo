@@ -32,17 +32,26 @@ func TestFormatJSONTreeExpandsNestedObject(t *testing.T) {
 	if !strings.Contains(got, "◇ annotations") {
 		t.Fatalf("root object key should fold, got %q", got)
 	}
-	if !strings.Contains(got, "url: \"http://x\"") {
+	if !strings.Contains(got, "url: http://x") {
 		t.Fatalf("nested string should render, got %q", got)
 	}
 	if !strings.Contains(got, "◇ tags") {
 		t.Fatalf("arrays should show a count, got %q", got)
 	}
-	if !strings.Contains(got, "0: \"a\"") || !strings.Contains(got, "1: \"b\"") {
+	if !strings.Contains(got, "0: a") || !strings.Contains(got, "1: b") {
 		t.Fatalf("array items should be indexed, got %q", got)
 	}
 	if !strings.Contains(got, "├── ") || !strings.Contains(got, "└── ") {
 		t.Fatalf("tree should use box-drawing branches, got %q", got)
+	}
+}
+
+func TestFormatJSONTreeShowsStringsWithoutQuotes(t *testing.T) {
+	got := stripTreeTags(formatJSONTree(`{"label":"say \"hi\"","path":"C:\\tmp","multi":"a\nb","empty":""}`))
+	for _, want := range []string{`label: say "hi"`, `path: C:\tmp`, `multi: a\nb`, `empty: ""`} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("want %q in %q", want, got)
+		}
 	}
 }
 

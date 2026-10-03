@@ -191,10 +191,7 @@ func (s *jsonTreeSelection) panPadding(text string, barWidth int) string {
 	if w < barWidth {
 		w = barWidth
 	}
-	if s.rowsWidth <= w {
-		return ""
-	}
-	return strings.Repeat(" ", s.rowsWidth-w)
+	return jsonTreeBlankRun(s.rowsWidth - w)
 }
 
 func (s *jsonTreeSelection) wrappedRow(index, width int) []string {
@@ -379,18 +376,24 @@ func jsonTreeHighlightedWrapped(text string, width int) []string {
 }
 
 // jsonTreeBar paints plain in the selection colors, padded out to width.
-// The opening tag is repeated before the padding because tview runs every
-// line through Unicode sentence segmentation, which rescans to the end of the
-// line for each space that follows a full stop. A value ending in "." padded
-// out to a very wide row took minutes to draw; the letter in the repeated tag
-// ends the sentence so the padding costs nothing extra.
 func jsonTreeBar(plain string, width int) string {
 	open := "[" + theme.ColorToHex(accentTextColor()) + ":" + theme.TagAccent() + ":b]"
-	pad := ""
-	if n := width - tview.TaggedStringWidth(plain); n > 0 {
-		pad = strings.Repeat(" ", n)
+	return open + plain + jsonTreeBlankRun(width-tview.TaggedStringWidth(plain)) + "[-:-:-]"
+}
+
+// jsonTreeSentenceStop is a blank cell that is not a space. tview runs every
+// line through Unicode sentence segmentation, which rescans to the end of the
+// line for each space that follows a full stop, so a value ending in "." padded
+// out to a very wide row took seconds to draw. Leading the padding with this
+// ends the sentence and the spaces after it cost nothing extra.
+const jsonTreeSentenceStop = "\u2800"
+
+// jsonTreeBlankRun is n blank cells that a full stop before them cannot slow.
+func jsonTreeBlankRun(n int) string {
+	if n <= 0 {
+		return ""
 	}
-	return open + plain + open + pad + "[-:-:-]"
+	return jsonTreeSentenceStop + strings.Repeat(" ", n-1)
 }
 
 type wrapCell struct {

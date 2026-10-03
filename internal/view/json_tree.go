@@ -209,11 +209,10 @@ func jsonTreeScalar(v any) string {
 	case json.Number:
 		return fmt.Sprintf("[%s]%s[-]", theme.TagFg(), val.String())
 	case string:
-		encoded, err := json.Marshal(val)
-		if err != nil {
-			encoded = []byte(strconv.Quote(val))
+		if val == "" {
+			return fmt.Sprintf("[%s]\"\"[-]", theme.TagFgDim())
 		}
-		return fmt.Sprintf("[%s]%s[-]", theme.TagFg(), escapeForTView(string(encoded)))
+		return fmt.Sprintf("[%s]%s[-]", theme.TagFg(), escapeForTView(jsonTreeStringText(val)))
 	case map[string]any:
 		return fmt.Sprintf("[%s]{}[-]", theme.TagFgDim())
 	case []any:
@@ -225,6 +224,29 @@ func jsonTreeScalar(v any) string {
 		}
 		return fmt.Sprintf("[%s]%s[-]", theme.TagFg(), escapeForTView(string(encoded)))
 	}
+}
+
+// jsonTreeStringText shows a string without quotes, escaping only the control
+// characters that would break the row onto more lines.
+func jsonTreeStringText(s string) string {
+	var b strings.Builder
+	for _, r := range s {
+		switch r {
+		case '\n':
+			b.WriteString(`\n`)
+		case '\r':
+			b.WriteString(`\r`)
+		case '\t':
+			b.WriteString(`\t`)
+		default:
+			if r < 0x20 || r == 0x7f {
+				fmt.Fprintf(&b, `\u%04x`, r)
+				continue
+			}
+			b.WriteRune(r)
+		}
+	}
+	return b.String()
 }
 
 func sortedJSONKeys(m map[string]any) []string {
