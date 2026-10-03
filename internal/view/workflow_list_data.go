@@ -524,6 +524,11 @@ func (wl *WorkflowList) applyLoadedWindow() {
 	}
 	wl.allWorkflows = wl.pager.items()
 	wl.applyFilter()
+	if wl.filterText != "" {
+		// The rows a search was topped up with are as old as the pages were.
+		wl.lastCompletionQuery = ""
+		wl.requestSearchFill(wl.filterText)
+	}
 }
 
 func (wl *WorkflowList) rememberListAnchor() {

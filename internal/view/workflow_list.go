@@ -141,6 +141,9 @@ type WorkflowList struct {
 	// Server-side completion support
 	serverCompletions   []string            // Cached completions from server query
 	lastCompletionQuery string              // Last query sent to server (to avoid duplicates)
+	searchFill          []temporal.Workflow // Server matches topping a / search up to a page
+	searchFillTerm      string              // The search searchFill answers
+	searchFillBase      string              // The list query searchFill was narrowed from
 	originalWorkflows   []temporal.Workflow // Original workflows before server search
 	preloaded           bool                // True if workflows were provided at construction time
 	keepDataOnStart     bool

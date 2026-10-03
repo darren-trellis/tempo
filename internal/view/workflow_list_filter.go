@@ -20,7 +20,7 @@ func (wl *WorkflowList) applyFilterWithFallback(serverFallback bool) {
 	if wl.filterText == "" {
 		filtered = wl.allWorkflows
 	} else {
-		filtered = matchingWorkflows(wl.allWorkflows, wl.filterText)
+		filtered = wl.searchMatches(wl.filterText)
 		if len(filtered) == 0 && serverFallback && (wl.visibilityQuery == "" || wl.searchOwnsQuery()) {
 			wl.convertFilterToVisibilityQuery()
 			return
@@ -107,6 +107,9 @@ func (wl *WorkflowList) restoreSearch(text string) {
 	wl.filterText = text
 	wl.lastCompletionQuery = ""
 	wl.serverCompletions = nil
+	if text == "" {
+		wl.searchFill = nil
+	}
 	if text == "" && !wl.searchOwnsQuery() {
 		wl.originalWorkflows = nil
 	}
@@ -123,7 +126,8 @@ func (wl *WorkflowList) clearSearch() {
 	wl.restoreSearch("")
 }
 
-// applyFilterWithServerSearch filters locally, and if no results, triggers server search.
+// applyFilterWithServerSearch filters the loaded rows, then asks the server
+// for more matches when they hold less than a page.
 func (wl *WorkflowList) applyFilterWithServerSearch(text string) {
 	if text == "" {
 		wl.applyWorkflowOrder(wl.allWorkflows)
@@ -133,8 +137,12 @@ func (wl *WorkflowList) applyFilterWithServerSearch(text string) {
 		return
 	}
 
-	filtered := wl.expandFilteredWorkflows(matchingWorkflows(wl.allWorkflows, text))
-	wl.applyWorkflowOrder(filtered)
+	wl.showSearchMatches(text)
+	wl.requestSearchFill(text)
+}
+
+func (wl *WorkflowList) showSearchMatches(text string) {
+	wl.applyWorkflowOrder(wl.expandFilteredWorkflows(wl.searchMatches(text)))
 
 	// Show top match hint
 	topHint := ""
@@ -143,23 +151,75 @@ func (wl *WorkflowList) applyFilterWithServerSearch(text string) {
 	}
 	wl.updateFilterTitle(text, topHint)
 
-	// If no local results and query is long enough, search server
-	if len(wl.workflows) == 0 && len(text) >= 2 {
-		// Avoid duplicate requests
-		if text == wl.lastCompletionQuery {
-			return
-		}
-		wl.lastCompletionQuery = text
-		wl.searchServer(text)
-		return
-	}
-
 	wl.populateTable()
 	wl.updateStats()
 }
 
-// searchServer performs a server-side search and updates the table.
-func (wl *WorkflowList) searchServer(searchTerm string) {
+// searchMatches is the loaded rows that match text, topped up with what the
+// server found until there is a page of them. Rows found for a shorter term
+// still count while the request for the longer one is out.
+func (wl *WorkflowList) searchMatches(text string) []temporal.Workflow {
+	matches := matchingWorkflows(wl.allWorkflows, text)
+	if text == "" || !strings.HasPrefix(text, wl.searchFillTerm) || wl.searchFillBase != wl.searchBaseQuery() {
+		return matches
+	}
+	return topUpSearchMatches(matches, wl.searchFill, text, wl.pageSize())
+}
+
+func topUpSearchMatches(matches, extra []temporal.Workflow, text string, limit int) []temporal.Workflow {
+	if len(matches) >= limit {
+		return matches
+	}
+	seen := make(map[string]bool, len(matches))
+	for _, w := range matches {
+		seen[workflowIdentityKey(w)] = true
+	}
+	filter := strings.ToLower(text)
+	for _, w := range extra {
+		if len(matches) >= limit {
+			break
+		}
+		key := workflowIdentityKey(w)
+		if seen[key] || !workflowMatchesFilter(w, filter) {
+			continue
+		}
+		seen[key] = true
+		matches = append(matches, w)
+	}
+	return matches
+}
+
+// searchBaseQuery is the query a / search narrows on the server: whatever the
+// list is showing, unless the list only exists because of an earlier search.
+func (wl *WorkflowList) searchBaseQuery() string {
+	if wl.searchOwnsQuery() {
+		return ""
+	}
+	return wl.pager.query
+}
+
+// requestSearchFill asks the server for more workflows matching text when the
+// loaded rows hold less than a page of them. The server only matches IDs by
+// prefix, so it can add rows but never stands in for the loaded ones.
+func (wl *WorkflowList) requestSearchFill(text string) {
+	if wl.preloaded || len(text) < 2 || wl.app == nil || wl.app.Provider() == nil {
+		return
+	}
+	if len(matchingWorkflows(wl.allWorkflows, text)) >= wl.pageSize() {
+		return
+	}
+	base := wl.searchBaseQuery()
+	key := text + "\x00" + base
+	if key == wl.lastCompletionQuery {
+		return
+	}
+	wl.lastCompletionQuery = key
+	wl.searchServer(text, base)
+}
+
+// searchServer fetches a page of workflows whose IDs start with searchTerm
+// under the list's own query, to top the search results up with.
+func (wl *WorkflowList) searchServer(searchTerm, base string) {
 	provider := wl.app.Provider()
 	if provider == nil {
 		return
@@ -169,40 +229,30 @@ func (wl *WorkflowList) searchServer(searchTerm string) {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 
-		query := workflowIDFilterQuery(searchTerm)
-		opts := temporal.ListOptions{
+		workflows, _, err := provider.ListWorkflows(ctx, wl.namespace, temporal.ListOptions{
 			PageSize: wl.pageSize(),
-			Query:    query,
-		}
-		workflows, _, err := provider.ListWorkflows(ctx, wl.namespace, opts)
+			Query:    andFilterQueries(base, workflowIDFilterQuery(searchTerm)),
+		})
 
 		wl.app.JigApp().QueueUpdateDraw(func() {
-			// Only update if we're still filtering with the same term
-			if wl.filterText != searchTerm {
-				return
-			}
-
-			if err != nil {
-				return
-			}
-
-			wl.applyWorkflowOrder(wl.expandFilteredWorkflows(workflows))
-			wl.serverCompletions = make([]string, 0, len(workflows))
-			for _, w := range workflows {
-				wl.serverCompletions = append(wl.serverCompletions, w.ID)
-			}
-
-			// Update hint with top server result
-			topHint := ""
-			if len(workflows) > 0 {
-				topHint = workflows[0].ID
-			}
-			wl.updateFilterTitle(searchTerm, topHint)
-
-			wl.populateTable()
-			wl.updateStats()
+			wl.acceptSearchFill(searchTerm, base, workflows, err)
 		})
 	}()
+}
+
+func (wl *WorkflowList) acceptSearchFill(searchTerm, base string, workflows []temporal.Workflow, err error) {
+	// Only update if we're still searching the same term in the same list
+	if err != nil || wl.filterText != searchTerm || wl.searchBaseQuery() != base {
+		return
+	}
+	wl.searchFill = workflows
+	wl.searchFillTerm = searchTerm
+	wl.searchFillBase = base
+	wl.serverCompletions = make([]string, 0, len(workflows))
+	for _, w := range workflows {
+		wl.serverCompletions = append(wl.serverCompletions, w.ID)
+	}
+	wl.showSearchMatches(searchTerm)
 }
 
 // updateFilterTitle updates the panel title with filter info and hint.
@@ -258,6 +308,7 @@ func (wl *WorkflowList) clearAllFilters() {
 	wl.clearAdHocFilter()
 	wl.serverCompletions = nil
 	wl.lastCompletionQuery = ""
+	wl.searchFill = nil
 	orig := wl.originalWorkflows
 	wl.originalWorkflows = nil
 	if !server {

@@ -3,6 +3,7 @@ package view
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -368,4 +369,100 @@ func ids(workflows []temporal.Workflow) []string {
 		out[i] = w.ID
 	}
 	return out
+}
+
+func TestSearchAsksTheServerToFillAPage(t *testing.T) {
+	queries := make(chan temporal.ListOptions, 4)
+	provider := &pageListProvider{
+		list: func(_ context.Context, _ string, opts temporal.ListOptions) ([]temporal.Workflow, string, error) {
+			queries <- opts
+			return nil, "", nil
+		},
+	}
+	a := &App{provider: provider, app: layout.NewApp(layout.AppConfig{})}
+	wl := NewWorkflowList(a, "default")
+	wl.visibilityQuery = "ExecutionStatus = 'Running'"
+	wl.pager.reset(wl.visibilityQuery)
+	wl.pager.accept(0, "", "", []temporal.Workflow{{ID: "pay-1", RunID: "r"}, {ID: "other", RunID: "r"}})
+	wl.allWorkflows = wl.pager.items()
+
+	wl.filterText = "pay"
+	wl.applyFilterWithServerSearch("pay")
+	if len(wl.workflows) != 1 || wl.workflows[0].ID != "pay-1" {
+		t.Fatalf("loaded matches should show right away, got %v", workflowIDs(wl.workflows))
+	}
+	select {
+	case opts := <-queries:
+		want := "ExecutionStatus = 'Running' AND WorkflowId STARTS_WITH 'pay'"
+		if opts.Query != want || opts.PageSize != wl.pageSize() {
+			t.Fatalf("query=%q size=%d, want %q size=%d", opts.Query, opts.PageSize, want, wl.pageSize())
+		}
+	case <-time.After(time.Second):
+		t.Fatal("a search with less than a page of matches should ask the server")
+	}
+
+	wl.applyFilterWithServerSearch("pay")
+	select {
+	case opts := <-queries:
+		t.Fatalf("the same search should not ask twice, got %q", opts.Query)
+	case <-time.After(50 * time.Millisecond):
+	}
+}
+
+func TestSearchSkipsTheServerWhenAPageIsLoaded(t *testing.T) {
+	provider := &pageListProvider{
+		list: func(context.Context, string, temporal.ListOptions) ([]temporal.Workflow, string, error) {
+			t.Error("a full page of loaded matches should not ask the server")
+			return nil, "", nil
+		},
+	}
+	a := &App{provider: provider, app: layout.NewApp(layout.AppConfig{})}
+	wl := NewWorkflowList(a, "default")
+	wl.pager.reset("")
+	loaded := make([]temporal.Workflow, wl.pageSize())
+	for i := range loaded {
+		loaded[i] = temporal.Workflow{ID: fmt.Sprintf("pay-%d", i), RunID: "r"}
+	}
+	wl.pager.accept(0, "", "", loaded)
+	wl.allWorkflows = wl.pager.items()
+
+	wl.filterText = "pay"
+	wl.applyFilterWithServerSearch("pay")
+	time.Sleep(50 * time.Millisecond)
+}
+
+func TestSearchFillTopsUpToAPage(t *testing.T) {
+	wl := NewWorkflowList(&App{}, "default")
+	wl.pager.reset("")
+	wl.pager.accept(0, "", "", []temporal.Workflow{{ID: "pay-1", RunID: "r"}, {ID: "other", RunID: "r"}})
+	wl.allWorkflows = wl.pager.items()
+	wl.filterText = "pay"
+
+	fill := []temporal.Workflow{{ID: "pay-1", RunID: "r"}}
+	for i := 2; i <= wl.pageSize()+5; i++ {
+		fill = append(fill, temporal.Workflow{ID: fmt.Sprintf("pay-%d", i), RunID: "r"})
+	}
+	wl.acceptSearchFill("pay", "", fill, nil)
+	if len(wl.workflows) != wl.pageSize() {
+		t.Fatalf("search should fill exactly a page, got %d rows", len(wl.workflows))
+	}
+	if wl.workflows[0].ID != "pay-1" || wl.workflows[1].ID != "pay-2" {
+		t.Fatalf("loaded matches should lead and not repeat, got %v", workflowIDs(wl.workflows[:3]))
+	}
+
+	wl.filterText = "pay-1"
+	wl.applyFilter()
+	for _, w := range wl.workflows {
+		if !strings.HasPrefix(w.ID, "pay-1") {
+			t.Fatalf("a longer term should keep only the fill rows that still match, got %v", workflowIDs(wl.workflows))
+		}
+	}
+	if len(wl.workflows) < 2 {
+		t.Fatalf("fill rows for the shorter term should still show, got %v", workflowIDs(wl.workflows))
+	}
+
+	wl.acceptSearchFill("pa", "", fill, nil)
+	if wl.searchFillTerm != "pay" {
+		t.Fatal("results for a term no longer searched should be dropped")
+	}
 }
