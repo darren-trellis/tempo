@@ -23,8 +23,13 @@ func treeModeHint(tree bool) string {
 }
 
 func (wl *WorkflowList) toggleWorkflowTree() {
+	rootsOnly := wl.rootsOnlyFilter()
 	wl.workflowTreeMode = !wl.workflowTreeMode
 	id, runID, _ := wl.CommandContext()
+	if wl.rootsOnlyFilter() != rootsOnly {
+		// The server is asked for different workflows in each view.
+		wl.loadData()
+	}
 	wl.applyFilter()
 	wl.updatePanelTitle()
 	if id != "" {
@@ -68,7 +73,7 @@ func (wl *WorkflowList) applyWorkflowOrder(workflows []temporal.Workflow) {
 		if wl.filterText != "" {
 			collapsed = nil
 		}
-		workflows = wl.withTreeParents(workflows)
+		workflows = wl.withTreeRelatives(workflows)
 		wl.workflows, wl.workflowDepths, wl.workflowTreePrefixes, wl.workflowHasChildren = nestWorkflows(workflows, collapsed)
 		return
 	}
@@ -168,7 +173,7 @@ func (wl *WorkflowList) toggleWorkflowTreeFoldAll() bool {
 }
 
 func (wl *WorkflowList) foldAllWorkflowParents() {
-	full, _, _, hasKids := nestWorkflows(wl.withTreeParents(wl.allWorkflows), nil)
+	full, _, _, hasKids := nestWorkflows(wl.withTreeRelatives(wl.allWorkflows), nil)
 	collapsed := make(map[string]bool)
 	for i, w := range full {
 		if i < len(hasKids) && hasKids[i] {

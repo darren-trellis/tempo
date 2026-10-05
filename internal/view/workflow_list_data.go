@@ -58,6 +58,7 @@ func (wl *WorkflowList) refresh() {
 func (wl *WorkflowList) invalidateCaches() {
 	wl.previewCache.clear()
 	wl.treeParents.reset(wl.namespace)
+	wl.treeChildren.reset(wl.namespace)
 	wl.previewEvents = nil
 	wl.previewActivities = nil
 	wl.previewPending = false
@@ -154,6 +155,7 @@ func (wl *WorkflowList) startWindow(live bool) {
 		wl.liveBusy = false
 		return
 	}
+	resolvedQuery = wl.listQuery(resolvedQuery)
 
 	provider := wl.app.Provider()
 	if provider == nil {
@@ -328,7 +330,7 @@ func (wl *WorkflowList) refreshCounts() {
 			wl.liveBusy = false
 			return
 		}
-		query = resolved
+		query = wl.listQuery(resolved)
 	}
 	gen := wl.pageGen
 	wl.setRefreshing(true)
