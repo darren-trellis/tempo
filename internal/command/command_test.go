@@ -70,3 +70,26 @@ func TestRunPassesEnv(t *testing.T) {
 		t.Fatalf("got %q", out)
 	}
 }
+
+func TestOutputKeepsStderrApart(t *testing.T) {
+	out, errOut, err := Output(context.Background(), `printf '{"a":1}'; echo warning >&2`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out != `{"a":1}` || strings.TrimSpace(errOut) != "warning" {
+		t.Fatalf("stdout=%q stderr=%q", out, errOut)
+	}
+}
+
+func TestExpandLeavesJSONBracesAlone(t *testing.T) {
+	got, err := ExpandShellCmd(`aws s3 cp s3://b/{value} - | jq '{rows: .rows, "k": 1}'`, Context{Value: "x/out.json"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != `aws s3 cp s3://b/'x/out.json' - | jq '{rows: .rows, "k": 1}'` {
+		t.Fatalf("got %q", got)
+	}
+	if _, err := ExpandCmd("echo {valeu}", Context{Value: "x"}); err == nil {
+		t.Fatal("a misspelled placeholder should still be reported")
+	}
+}

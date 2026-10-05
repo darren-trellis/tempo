@@ -41,7 +41,9 @@ type Context struct {
 	Key   string
 }
 
-var placeholderRe = regexp.MustCompile(`\{([^}]+)\}`)
+// placeholderRe matches {name} and {1}. Other braces, such as JSON or a jq
+// program in a script, are left as they are.
+var placeholderRe = regexp.MustCompile(`\{([A-Za-z_][A-Za-z0-9_]*|[0-9]+)\}`)
 
 // ExpandCmd replaces {var} placeholders in a command template.
 // Returns an error if a required variable is empty.
@@ -210,6 +212,18 @@ func Run(ctx context.Context, cmdStr string, env ...string) (string, error) {
 	cmd := shellCommand(ctx, cmdStr, env)
 	out, err := cmd.CombinedOutput()
 	return string(out), err
+}
+
+// Output runs a command via sh -c and returns what it wrote to stdout, kept
+// apart from stderr so warnings a tool prints cannot corrupt its result. env
+// is added to the inherited environment.
+func Output(ctx context.Context, cmdStr string, env ...string) (stdout, stderr string, err error) {
+	cmd := shellCommand(ctx, cmdStr, env)
+	var out, errOut strings.Builder
+	cmd.Stdout = &out
+	cmd.Stderr = &errOut
+	err = cmd.Run()
+	return out.String(), errOut.String(), err
 }
 
 // RunStreaming executes a command with line-by-line streaming via scanner on stdout pipe.
