@@ -26,31 +26,39 @@ func matchIOTrigger(triggers []config.TriggerConfig, value, path string) (ioTrig
 		if t.Event() != config.TriggerIOEnter {
 			continue
 		}
-		if t.Path != "" {
-			re, err := regexp.Compile(t.Path)
-			if err != nil {
-				return ioTriggerHit{}, false, fmt.Errorf("Trigger %q: bad path pattern: %s", triggerName(t), err)
-			}
-			if !re.MatchString(path) {
-				continue
-			}
+		if hit, ok, err := matchTrigger(t, value, path); err != nil || ok {
+			return hit, ok, err
 		}
-		hit := ioTriggerHit{trigger: t, match: value}
-		if t.Match != "" {
-			re, err := regexp.Compile(t.Match)
-			if err != nil {
-				return ioTriggerHit{}, false, fmt.Errorf("Trigger %q: bad match pattern: %s", triggerName(t), err)
-			}
-			found := re.FindStringSubmatch(value)
-			if found == nil {
-				continue
-			}
-			hit.match = found[0]
-			hit.groups = found[1:]
-		}
-		return hit, true, nil
 	}
 	return ioTriggerHit{}, false, nil
+}
+
+// matchTrigger reports whether one trigger's path and match patterns hold
+// for a value at a dotted path.
+func matchTrigger(t config.TriggerConfig, value, path string) (ioTriggerHit, bool, error) {
+	if t.Path != "" {
+		re, err := regexp.Compile(t.Path)
+		if err != nil {
+			return ioTriggerHit{}, false, fmt.Errorf("Trigger %q: bad path pattern: %s", triggerName(t), err)
+		}
+		if !re.MatchString(path) {
+			return ioTriggerHit{}, false, nil
+		}
+	}
+	hit := ioTriggerHit{trigger: t, match: value}
+	if t.Match != "" {
+		re, err := regexp.Compile(t.Match)
+		if err != nil {
+			return ioTriggerHit{}, false, fmt.Errorf("Trigger %q: bad match pattern: %s", triggerName(t), err)
+		}
+		found := re.FindStringSubmatch(value)
+		if found == nil {
+			return ioTriggerHit{}, false, nil
+		}
+		hit.match = found[0]
+		hit.groups = found[1:]
+	}
+	return hit, true, nil
 }
 
 func triggerName(t config.TriggerConfig) string {

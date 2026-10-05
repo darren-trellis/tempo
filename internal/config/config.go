@@ -44,17 +44,22 @@ type CommandConfig struct {
 	Confirm     bool              `yaml:"confirm,omitempty"`
 }
 
-// TriggerIOEnter fires when Enter is pressed on a value in the input/output
-// tree.
-const TriggerIOEnter = "io_enter"
+const (
+	// TriggerIOEnter fires when Enter is pressed on a value in the
+	// input/output tree.
+	TriggerIOEnter = "io_enter"
+	// TriggerIOShow fires on its own for every matching value when an input
+	// or output is shown. Its command's stdout is added to the payload under
+	// the trigger's name.
+	TriggerIOShow = "io_show"
+)
 
 // TriggerConfig runs a script or opens a URL when an event matches it. The
 // first trigger that matches wins, so order them from most to least specific.
 type TriggerConfig struct {
 	Name        string `yaml:"name"`
 	Description string `yaml:"description,omitempty"`
-	// On is the event to react to. Only io_enter exists today, and it is the
-	// default.
+	// On is the event to react to: io_enter, the default, or io_show.
 	On string `yaml:"on,omitempty"`
 	// Match is a regular expression the highlighted value must contain. Its
 	// match is {match} and its capture groups are {1}, {2}, and so on.
@@ -63,6 +68,7 @@ type TriggerConfig struct {
 	// items.0.url, must contain.
 	Path string `yaml:"path,omitempty"`
 	// URL is opened in the browser. It must expand to an http or https URL.
+	// io_show triggers only run cmd.
 	URL string `yaml:"url,omitempty"`
 	// Cmd runs through sh. Placeholders are substituted already quoted, so
 	// they must not be wrapped in quotes again.

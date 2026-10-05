@@ -208,6 +208,7 @@ func (wl *WorkflowList) setupActivityDetailPane() {
 	wl.eventDetail = newPreviewTextView(wl.app)
 	wl.eventDetailTree = newJSONTreeSelection(wl.eventDetail)
 	wl.eventDetailTree.onEnter = wl.runIOTrigger
+	wl.eventDetailTree.augment = wl.app.augmentIO
 	wl.eventDetail.SetInputCapture(wl.capturePreviewTextView(wl.eventDetail))
 
 	wl.activityDetail, wl.activityDetailScroll = newInfoRowsTable(wl.app, func() []workflowInfoRow { return wl.activityDetailRows })
@@ -236,6 +237,7 @@ func (wl *WorkflowList) setupWorkflowIOPane() {
 	wl.workflowIOView = newPreviewTextView(wl.app)
 	wl.workflowIOTree = newJSONTreeSelection(wl.workflowIOView)
 	wl.workflowIOTree.onEnter = wl.runIOTrigger
+	wl.workflowIOTree.augment = wl.app.augmentIO
 	wl.workflowIOView.SetInputCapture(wl.capturePreviewTextView(wl.workflowIOView))
 
 	wl.workflowIOTabs = components.NewTabs().

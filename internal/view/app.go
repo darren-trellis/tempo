@@ -69,6 +69,7 @@ type App struct {
 	// mouseEnabled tracks terminal mouse reporting so ctrl+o can toggle it.
 	mouseEnabled bool
 	inputScreen  *coalesceScreen
+	augments     ioAugmenter
 
 	// Loading indicator - which views have a fetch in flight
 	loadMu       sync.Mutex

@@ -28,6 +28,11 @@ type jsonTreeSelection struct {
 	// onEnter gets first say over Enter on a row and reports whether it
 	// handled it. Otherwise Enter folds.
 	onEnter func(jsonTreeRow) bool
+	// augment returns the payload to draw for source, such as with io_show
+	// results added, and calls rerender when more of it is ready. content is
+	// what is drawn; source is what the caller set.
+	augment func(source string, rerender func()) string
+	source  string
 }
 
 func newJSONTreeSelection(view *tview.TextView) *jsonTreeSelection {
@@ -82,21 +87,39 @@ func (s *jsonTreeSelection) setContent(content string, enabled bool) bool {
 	if s == nil || s.view == nil {
 		return false
 	}
-	fresh := content != s.content
+	fresh := content != s.source
+	keepPath := ""
+	if row, ok := s.selectedRow(); ok && !fresh {
+		keepPath = row.path
+	}
 	if fresh {
-		s.content = content
+		s.source = content
 		s.folded = nil
 		s.selected = 0
 	}
+	s.content = content
 	s.setRows(nil)
 	if !enabled {
 		return false
 	}
-	rows, ok := buildJSONTreeRows(content, s.folded)
+	if s.augment != nil {
+		source := content
+		s.content = s.augment(content, func() {
+			// Redraw only if this payload is still the one on screen.
+			if s.source == source && s.active() {
+				s.setContent(source, true)
+			}
+		})
+	}
+	rows, ok := buildJSONTreeRows(s.content, s.folded)
 	if !ok || len(rows) == 0 {
 		return false
 	}
 	s.setRows(rows)
+	// Added entries can shift rows, so follow the highlighted one by path.
+	if index, found := s.indexOfPath(keepPath); keepPath != "" && found {
+		s.selected = index
+	}
 	if s.selected >= len(rows) {
 		s.selected = len(rows) - 1
 	}

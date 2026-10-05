@@ -149,6 +149,8 @@ func showWorkflowIO(app *App, background tview.Primitive, workflowType, input, o
 	outputTree := newJSONTreeSelection(outputView)
 	inputTree.onEnter = app.runIOTrigger
 	outputTree.onEnter = app.runIOTrigger
+	inputTree.augment = app.augmentIO
+	outputTree.augment = app.augmentIO
 	if !inputTree.setContent(input, treeEnabled) {
 		inputView.SetText(formatIOContent("Input", input, treeEnabled))
 	}
