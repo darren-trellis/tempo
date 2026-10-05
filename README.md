@@ -181,9 +181,13 @@ Values are Go durations, clamped between 5s and 1h.
 
 ### Triggers
 
-Triggers run a script or open a link when something happens in tempo. Today the
-one event is `io_enter`: pressing `Enter` on a value in the input/output tree
-(`io_tree: true`), in the Input/Output window (`i`) or the preview panes.
+Triggers run a script or open a link when something happens in tempo. Both
+events work on the input/output tree (`io_tree: true`), in the Input/Output
+window (`i`) and the preview panes:
+
+- `io_enter` (the default) fires when you press `Enter` on a value.
+- `io_show` fires on its own, in the background, for every matching value when
+  an input or output is shown, and adds what its command prints to the payload.
 
 ```yaml
 io_tree: true
@@ -214,7 +218,7 @@ Profile triggers (`profiles.<name>.triggers`) are tried before global ones.
 
 | Field | Meaning |
 |-------|---------|
-| `on` | Event to react to. Defaults to `io_enter`. |
+| `on` | `io_enter` (default) or `io_show`. |
 | `match` | Regular expression the value must contain. Without it the whole value matches. |
 | `path` | Regular expression for the value's dotted path, such as `items.0.url`. |
 | `url` | Open this in the browser. It must expand to an `http` or `https` URL. |
@@ -234,6 +238,33 @@ can also read `TEMPO_VALUE`, `TEMPO_MATCH`, `TEMPO_PATH`, `TEMPO_KEY`,
 `TEMPO_WORKFLOW_ID`, `TEMPO_RUN_ID`, `TEMPO_WORKFLOW_TYPE`, `TEMPO_NAMESPACE`,
 `TEMPO_ADDRESS`, and `TEMPO_PROFILE` from the environment, which is easier for
 multi-line JSON values.
+
+#### Adding to a payload with `io_show`
+
+An `io_show` trigger's command runs once per matching value. Its stdout is added
+to the payload under the trigger's name: as JSON when it parses, so it can be
+folded and browsed like the rest, otherwise as text. A payload that is one
+object gets a new key; any other payload gets one more value after it. Two
+matches from the same trigger are numbered (`s3-output 1`, `s3-output 2`).
+
+```yaml
+triggers:
+  # Show the result a workflow wrote to S3 next to the key it returned.
+  - name: s3-output
+    on: io_show
+    path: '(^|\.)output_s3_key$'
+    cmd: aws s3 cp s3://my-bucket/{value} -
+```
+
+While the command runs the entry reads `fetching…`, and the tree redraws when it
+finishes. Results are cached, so showing the payload again does not run the
+command again. A command that fails shows the last line it wrote to stderr and
+is tried again after 30 seconds; one that runs past 30 seconds is stopped.
+Only stdout is added, so warnings on stderr cannot spoil the JSON. `url`,
+`output` and `confirm` do not apply to `io_show`.
+
+Only `{name}` and `{1}` count as placeholders, so a command can contain JSON or
+a `jq` program: `cmd: aws s3 cp s3://my-bucket/{value} - | jq '{rows: .rows}'`.
 
 ## Themes
 
