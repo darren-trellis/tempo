@@ -17,24 +17,59 @@ const (
 	treeParentStale = 5 * time.Second
 )
 
-// treeParent is a parent workflow fetched for the tree because the list had
-// not loaded it.
-type treeParent struct {
+// lookedUpWorkflow is a workflow fetched by ID, such as a tree parent the
+// list had not loaded.
+type lookedUpWorkflow struct {
 	workflow temporal.Workflow
 	fetched  time.Time
 }
 
-// treeParents holds the parents fetched for one namespace.
-type treeParents struct {
+// workflowLookup caches workflows fetched by ID for one namespace.
+type workflowLookup struct {
 	namespace string
 	gen       uint64
-	found     map[string]treeParent
+	found     map[string]lookedUpWorkflow
 	missing   map[string]bool // asked for, and the server has no such workflow
 	pending   map[string]bool
 }
 
-func (t *treeParents) reset(namespace string) {
-	*t = treeParents{namespace: namespace, gen: t.gen + 1}
+func (t *workflowLookup) reset(namespace string) {
+	*t = workflowLookup{namespace: namespace, gen: t.gen + 1}
+}
+
+// due reports whether id should be fetched: it is not known, or it was still
+// running when fetched and that is now stale, and it is neither on its way
+// nor known not to exist.
+func (t *workflowLookup) due(id string, now time.Time) bool {
+	if t.missing[id] || t.pending[id] {
+		return false
+	}
+	w, ok := t.found[id]
+	return !ok || (w.workflow.Status == "Running" && now.Sub(w.fetched) > treeParentStale)
+}
+
+// accept records what a lookup found and reports whether it found anything.
+// IDs it did not find are not asked for again; after an error they may be.
+func (t *workflowLookup) accept(gen uint64, ids []string, found map[string]temporal.Workflow, err error) bool {
+	if gen != t.gen {
+		return false
+	}
+	if t.found == nil {
+		t.found = make(map[string]lookedUpWorkflow)
+	}
+	if t.missing == nil {
+		t.missing = make(map[string]bool)
+	}
+	now := time.Now()
+	for _, id := range ids {
+		delete(t.pending, id)
+		if w, ok := found[id]; ok {
+			t.found[id] = lookedUpWorkflow{workflow: w, fetched: now}
+		} else if err == nil {
+			t.missing[id] = true
+		}
+	}
+	return len(found) > 0
 }
 
 // withTreeParents puts each workflow's unloaded parent, when it has been
@@ -65,11 +100,9 @@ func (wl *WorkflowList) withTreeParents(workflows []temporal.Workflow) []tempora
 			return
 		}
 		parent, ok := wl.treeParents.found[id]
-		if !ok || (parent.workflow.Status == "Running" && now.Sub(parent.fetched) > treeParentStale) {
-			if !wl.treeParents.missing[id] && !wl.treeParents.pending[id] && !queued[id] {
-				queued[id] = true
-				fetch = append(fetch, id)
-			}
+		if wl.treeParents.due(id, now) && !queued[id] {
+			queued[id] = true
+			fetch = append(fetch, id)
 		}
 		if !ok {
 			return
@@ -97,62 +130,53 @@ func (wl *WorkflowList) withTreeParents(workflows []temporal.Workflow) []tempora
 // are in. It reports whether it already found some, which only happens
 // without a running UI, where the lookup cannot wait for one.
 func (wl *WorkflowList) fetchTreeParents(ids []string) bool {
+	return wl.lookupWorkflows(&wl.treeParents, ids, func() {
+		if wl.workflowTreeMode {
+			wl.applyFilter()
+		}
+	})
+}
+
+// acceptTreeParents records what a tree parent lookup found.
+func (wl *WorkflowList) acceptTreeParents(gen uint64, ids []string, found map[string]temporal.Workflow, err error) bool {
+	return wl.treeParents.accept(gen, ids, found, err)
+}
+
+// lookupWorkflows fetches workflows by ID into cache and calls redraw on the
+// UI thread when it found some. Without a running UI there is no thread to
+// hand the result back to, so it looks them up in place and reports whether
+// it found any instead.
+func (wl *WorkflowList) lookupWorkflows(cache *workflowLookup, ids []string, redraw func()) bool {
 	if wl.app == nil || wl.app.Provider() == nil {
 		return false
 	}
 	provider := wl.app.Provider()
 	namespace := wl.namespace
-	gen := wl.treeParents.gen
-	if wl.treeParents.pending == nil {
-		wl.treeParents.pending = make(map[string]bool)
+	gen := cache.gen
+	if cache.pending == nil {
+		cache.pending = make(map[string]bool)
 	}
 	for _, id := range ids {
-		wl.treeParents.pending[id] = true
+		cache.pending[id] = true
 	}
 	lookup := func() (map[string]temporal.Workflow, error) {
 		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 		defer cancel()
 		return fetchWorkflowsByID(ctx, provider, namespace, ids)
 	}
-	// Without a running UI there is no thread to hand the result back to.
 	if wl.app.JigApp() == nil {
 		found, err := lookup()
-		return wl.acceptTreeParents(gen, ids, found, err)
+		return cache.accept(gen, ids, found, err)
 	}
 	go func() {
 		found, err := lookup()
 		wl.app.JigApp().QueueUpdateDraw(func() {
-			if wl.acceptTreeParents(gen, ids, found, err) && wl.workflowTreeMode {
-				wl.applyFilter()
+			if cache.accept(gen, ids, found, err) {
+				redraw()
 			}
 		})
 	}()
 	return false
-}
-
-// acceptTreeParents records what a lookup found and reports whether the tree
-// has anything new to show. IDs it did not find are not asked for again;
-// after an error they may be.
-func (wl *WorkflowList) acceptTreeParents(gen uint64, ids []string, found map[string]temporal.Workflow, err error) bool {
-	if gen != wl.treeParents.gen {
-		return false
-	}
-	if wl.treeParents.found == nil {
-		wl.treeParents.found = make(map[string]treeParent)
-	}
-	if wl.treeParents.missing == nil {
-		wl.treeParents.missing = make(map[string]bool)
-	}
-	now := time.Now()
-	for _, id := range ids {
-		delete(wl.treeParents.pending, id)
-		if w, ok := found[id]; ok {
-			wl.treeParents.found[id] = treeParent{workflow: w, fetched: now}
-		} else if err == nil {
-			wl.treeParents.missing[id] = true
-		}
-	}
-	return len(found) > 0
 }
 
 // fetchWorkflowsByID returns the latest run of each workflow ID that exists.

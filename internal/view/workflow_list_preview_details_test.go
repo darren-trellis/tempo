@@ -1,6 +1,7 @@
 package view
 
 import (
+	"context"
 	"strings"
 	"testing"
 
@@ -244,13 +245,74 @@ func childEvents() []temporal.EnhancedHistoryEvent {
 	}
 }
 
-func TestWorkflowChildStatuses(t *testing.T) {
-	got := strings.Join(workflowChildStatuses(childEvents()), ",")
-	if got != "Completed,Running,Failed,Scheduled" {
-		t.Fatalf("statuses=%s", got)
+func childSummary(children []workflowChild) string {
+	parts := make([]string, len(children))
+	for i, c := range children {
+		parts[i] = c.id + ":" + c.status
+		if c.open {
+			parts[i] += "(open)"
+		}
 	}
-	if n := len(workflowChildStatuses([]temporal.EnhancedHistoryEvent{{Type: "WorkflowExecutionStarted"}})); n != 0 {
-		t.Fatalf("a workflow without children has no statuses, got %d", n)
+	return strings.Join(parts, ",")
+}
+
+func TestWorkflowChildren(t *testing.T) {
+	if got := childSummary(workflowChildren(childEvents())); got != "a:Completed,b:Running(open),c:Failed to Start,d:Scheduled(open)" {
+		t.Fatalf("children=%s", got)
+	}
+	if n := len(workflowChildren([]temporal.EnhancedHistoryEvent{{Type: "WorkflowExecutionStarted"}})); n != 0 {
+		t.Fatalf("a workflow without children has none, got %d", n)
+	}
+}
+
+// The case that miscounted: a recording child the parent did not wait for,
+// then a second start of the same child that was refused as already running.
+func TestWorkflowChildrenIgnoresARepeatedStart(t *testing.T) {
+	events := []temporal.EnhancedHistoryEvent{
+		{ID: 141, Type: "StartChildWorkflowExecutionInitiated", ChildWorkflowID: "agent"},
+		{ID: 142, Type: "ChildWorkflowExecutionStarted", InitiatedEventID: 141},
+		{ID: 150, Type: "ChildWorkflowExecutionCompleted", InitiatedEventID: 141},
+		{ID: 169, Type: "StartChildWorkflowExecutionInitiated", ChildWorkflowID: "wait"},
+		{ID: 170, Type: "ChildWorkflowExecutionStarted", InitiatedEventID: 169},
+		{ID: 180, Type: "ChildWorkflowExecutionCompleted", InitiatedEventID: 169},
+		{ID: 235, Type: "StartChildWorkflowExecutionInitiated", ChildWorkflowID: "recording"},
+		{ID: 236, Type: "ChildWorkflowExecutionStarted", InitiatedEventID: 235},
+		{ID: 281, Type: "StartChildWorkflowExecutionInitiated", ChildWorkflowID: "recording"},
+		{ID: 282, Type: "StartChildWorkflowExecutionFailed", InitiatedEventID: 281},
+		{ID: 327, Type: "WorkflowExecutionCompleted"},
+	}
+	children := workflowChildren(events)
+	if got := childSummary(children); got != "agent:Completed,wait:Completed,recording:Running(open)" {
+		t.Fatalf("children=%s", got)
+	}
+	if ids := openChildIDs(children); len(ids) != 1 || ids[0] != "recording" {
+		t.Fatalf("open=%v", ids)
+	}
+	row, _ := workflowChildrenRow(children, map[string]string{"recording": "Completed"})
+	if row.Display != "3 · 3 Completed" || row.Color != temporal.StatusCompleted.Color() {
+		t.Fatalf("the child's own status should win, row=%+v", row)
+	}
+}
+
+// With a provider, children the parent's history leaves open are looked up,
+// so Details agrees with the tree.
+func TestPreviewDetailsLooksUpOpenChildren(t *testing.T) {
+	var queries []string
+	provider := &pageListProvider{list: func(_ context.Context, _ string, opts temporal.ListOptions) ([]temporal.Workflow, string, error) {
+		queries = append(queries, opts.Query)
+		return []temporal.Workflow{{ID: "b", Status: "Completed"}, {ID: "d", Status: "Failed"}}, "", nil
+	}}
+	wl := NewWorkflowList(&App{provider: provider}, "ns")
+	wl.previewWorkflowID = "parent"
+	wl.previewEvents = childEvents()
+	wl.renderPreviewDetails(temporal.Workflow{ID: "parent", RunID: "r"})
+	row := wl.previewDetailRows[workflowInfoRowIndex(wl.previewDetailRows, workflowInfoChildren)]
+	if row.Display != "4 · 2 Completed, 1 Failed to Start, 1 Failed" {
+		t.Fatalf("children row=%+v", row)
+	}
+	wl.renderPreviewDetails(temporal.Workflow{ID: "parent", RunID: "r"})
+	if len(queries) != 1 {
+		t.Fatalf("closed children should not be looked up again, queries=%v", queries)
 	}
 }
 
@@ -266,11 +328,11 @@ func TestPreviewDetailsShowsChildrenAfterParent(t *testing.T) {
 		t.Fatalf("children should follow the parent, rows=%+v", wl.previewDetailRows)
 	}
 	row := wl.previewDetailRows[idx]
-	if row.Value != "4" || row.Display != "4 · 1 Completed, 1 Running, 1 Failed, 1 Scheduled" {
+	if row.Value != "4" || row.Display != "4 · 1 Completed, 1 Running, 1 Failed to Start, 1 Scheduled" {
 		t.Fatalf("children row=%+v", row)
 	}
 	if row.Color != temporal.StatusFailed.Color() {
-		t.Fatal("a failed child should color the row as failed")
+		t.Fatal("a child that failed to start should color the row as failed")
 	}
 
 	wl.previewEvents = []temporal.EnhancedHistoryEvent{{ID: 1, Type: "WorkflowExecutionStarted"}}

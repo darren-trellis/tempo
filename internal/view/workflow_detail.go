@@ -72,50 +72,112 @@ func workflowInfoRows(now time.Time, w temporal.Workflow) []workflowInfoRow {
 	return rows
 }
 
-// workflowChildStatuses reads the latest status of each child workflow off
-// the parent's history, in the order they were started. A child that was
-// asked for but has not started yet is Scheduled.
-func workflowChildStatuses(events []temporal.EnhancedHistoryEvent) []string {
+// workflowChildStartFailed labels a child the parent asked for that never
+// started, such as when its ID was already taken by another workflow.
+const workflowChildStartFailed = "Failed to Start"
+
+// workflowChild is one child run as the parent's history records it.
+type workflowChild struct {
+	id     string
+	status string
+	// open is true when the history holds no outcome: the child has not
+	// started yet, is still running, or the parent closed without waiting
+	// for it, so its outcome was never written to the parent's history.
+	open bool
+}
+
+// workflowChildren reads the parent's child runs off its history, in the
+// order they were started. A start that failed for an ID the parent did run,
+// such as a second start of a child that was already running, is not a
+// child of its own and is left out.
+func workflowChildren(events []temporal.EnhancedHistoryEvent) []workflowChild {
+	type attempt struct {
+		child  workflowChild
+		failed bool
+	}
 	var order []int64
-	status := make(map[int64]string)
+	attempts := make(map[int64]*attempt)
 	for _, ev := range events {
 		if ev.Type == "StartChildWorkflowExecutionInitiated" {
 			order = append(order, ev.ID)
-			status[ev.ID] = temporal.StatusScheduled.Name()
+			attempts[ev.ID] = &attempt{child: workflowChild{id: ev.ChildWorkflowID, status: temporal.StatusScheduled.Name(), open: true}}
 			continue
 		}
-		if _, known := status[ev.InitiatedEventID]; !known {
+		a, known := attempts[ev.InitiatedEventID]
+		if !known {
 			continue
 		}
+		status, open := a.child.status, false
 		switch ev.Type {
 		case "ChildWorkflowExecutionStarted":
-			status[ev.InitiatedEventID] = temporal.StatusRunning.Name()
+			status, open = temporal.StatusRunning.Name(), true
 		case "ChildWorkflowExecutionCompleted":
-			status[ev.InitiatedEventID] = temporal.StatusCompleted.Name()
-		case "ChildWorkflowExecutionFailed", "StartChildWorkflowExecutionFailed":
-			status[ev.InitiatedEventID] = temporal.StatusFailed.Name()
+			status = temporal.StatusCompleted.Name()
+		case "ChildWorkflowExecutionFailed":
+			status = temporal.StatusFailed.Name()
+		case "StartChildWorkflowExecutionFailed":
+			status, a.failed = workflowChildStartFailed, true
 		case "ChildWorkflowExecutionCanceled":
-			status[ev.InitiatedEventID] = temporal.StatusCanceled.Name()
+			status = temporal.StatusCanceled.Name()
 		case "ChildWorkflowExecutionTimedOut":
-			status[ev.InitiatedEventID] = temporal.StatusTimedOut.Name()
+			status = temporal.StatusTimedOut.Name()
 		case "ChildWorkflowExecutionTerminated":
-			status[ev.InitiatedEventID] = temporal.StatusTerminated.Name()
+			status = temporal.StatusTerminated.Name()
+		default:
+			continue
+		}
+		a.child.status, a.child.open = status, open
+	}
+
+	ran := make(map[string]bool)
+	for _, a := range attempts {
+		if !a.failed {
+			ran[a.child.id] = true
 		}
 	}
-	statuses := make([]string, len(order))
-	for i, id := range order {
-		statuses[i] = status[id]
+	var children []workflowChild
+	failedOnce := make(map[string]bool)
+	for _, id := range order {
+		a := attempts[id]
+		if a.failed {
+			if ran[a.child.id] || failedOnce[a.child.id] {
+				continue
+			}
+			failedOnce[a.child.id] = true
+		}
+		children = append(children, a.child)
 	}
-	return statuses
+	return children
+}
+
+// openChildIDs lists the children whose outcome the history does not hold.
+func openChildIDs(children []workflowChild) []string {
+	var ids []string
+	seen := make(map[string]bool)
+	for _, c := range children {
+		if c.open && c.id != "" && !seen[c.id] {
+			seen[c.id] = true
+			ids = append(ids, c.id)
+		}
+	}
+	return ids
 }
 
 // workflowChildrenRow summarizes a workflow's children as a count with a
 // breakdown by status, such as "3 · 2 Completed, 1 Running". It is colored
-// by the worst status among them. ok is false when there are none.
-func workflowChildrenRow(events []temporal.EnhancedHistoryEvent) (workflowInfoRow, bool) {
-	statuses := workflowChildStatuses(events)
-	if len(statuses) == 0 {
+// by the worst status among them. An open child takes its status from
+// resolved, which holds what each child workflow reports about itself.
+// ok is false when there are none.
+func workflowChildrenRow(children []workflowChild, resolved map[string]string) (workflowInfoRow, bool) {
+	if len(children) == 0 {
 		return workflowInfoRow{}, false
+	}
+	statuses := make([]string, len(children))
+	for i, c := range children {
+		statuses[i] = c.status
+		if s, ok := resolved[c.id]; ok && c.open {
+			statuses[i] = s
+		}
 	}
 	counts := make(map[string]int)
 	var names []string
@@ -131,9 +193,20 @@ func workflowChildrenRow(events []temporal.EnhancedHistoryEvent) (workflowInfoRo
 	}
 	count := fmt.Sprintf("%d", len(statuses))
 	handle := temporal.StatusCompleted
-	for _, worst := range []*theme.Status{temporal.StatusFailed, temporal.StatusTerminated, temporal.StatusTimedOut, temporal.StatusCanceled, temporal.StatusRunning, temporal.StatusScheduled} {
-		if counts[worst.Name()] > 0 {
-			handle = worst
+	for _, worst := range []struct {
+		name   string
+		status *theme.Status
+	}{
+		{temporal.StatusFailed.Name(), temporal.StatusFailed},
+		{workflowChildStartFailed, temporal.StatusFailed},
+		{temporal.StatusTerminated.Name(), temporal.StatusTerminated},
+		{temporal.StatusTimedOut.Name(), temporal.StatusTimedOut},
+		{temporal.StatusCanceled.Name(), temporal.StatusCanceled},
+		{temporal.StatusRunning.Name(), temporal.StatusRunning},
+		{temporal.StatusScheduled.Name(), temporal.StatusScheduled},
+	} {
+		if counts[worst.name] > 0 {
+			handle = worst.status
 			break
 		}
 	}
@@ -149,8 +222,8 @@ func workflowChildrenRow(events []temporal.EnhancedHistoryEvent) (workflowInfoRo
 
 // withChildrenRow puts the children row after the parent, or after the ID
 // when there is no parent, so a workflow's relatives read together.
-func withChildrenRow(rows []workflowInfoRow, events []temporal.EnhancedHistoryEvent) []workflowInfoRow {
-	children, ok := workflowChildrenRow(events)
+func withChildrenRow(rows []workflowInfoRow, children []workflowChild, resolved map[string]string) []workflowInfoRow {
+	row, ok := workflowChildrenRow(children, resolved)
 	if !ok {
 		return rows
 	}
@@ -161,7 +234,7 @@ func withChildrenRow(rows []workflowInfoRow, events []temporal.EnhancedHistoryEv
 	at++
 	out := make([]workflowInfoRow, 0, len(rows)+1)
 	out = append(out, rows[:at]...)
-	out = append(out, children)
+	out = append(out, row)
 	return append(out, rows[at:]...)
 }
 

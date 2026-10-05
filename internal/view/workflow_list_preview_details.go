@@ -1,6 +1,8 @@
 package view
 
 import (
+	"time"
+
 	"github.com/atterpac/jig/components"
 	"github.com/atterpac/jig/theme"
 	"github.com/galaxy-io/tempo/internal/config"
@@ -124,6 +126,43 @@ func (wl *WorkflowList) activatePreviewDetailRow() {
 	if wl.app != nil {
 		wl.app.ToastWarning("Parent workflow is not in the list")
 	}
+}
+
+// resolveChildStatuses returns what each open child reports about itself, as
+// far as is known, and looks up the rest. A parent's history stops when the
+// parent closes, so a child it did not wait for still reads as running there
+// after it finished; only the child itself knows how it ended.
+func (wl *WorkflowList) resolveChildStatuses(children []workflowChild) map[string]string {
+	ids := openChildIDs(children)
+	if len(ids) == 0 {
+		return nil
+	}
+	cache := &wl.childStatuses
+	if cache.namespace != wl.namespace {
+		cache.reset(wl.namespace)
+	}
+	resolved := make(map[string]string)
+	var fetch []string
+	now := time.Now()
+	for _, id := range ids {
+		if c, ok := cache.found[id]; ok {
+			resolved[id] = c.workflow.Status
+		}
+		if cache.due(id, now) {
+			fetch = append(fetch, id)
+		}
+	}
+	shown := wl.previewWorkflowID
+	if len(fetch) > 0 && wl.lookupWorkflows(cache, fetch, func() {
+		if wl.previewKind == previewDetails && wl.previewWorkflowID == shown {
+			if w, ok := wl.currentPreviewWorkflow(); ok {
+				wl.renderPreviewDetails(w)
+			}
+		}
+	}) {
+		return wl.resolveChildStatuses(children)
+	}
+	return resolved
 }
 
 // showPreviewChildren narrows the list to the previewed workflow's children,
