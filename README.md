@@ -161,6 +161,8 @@ preview_load_delay: 200ms
 
 `workflow_page_size` is how many workflows each list page fetches (default 100, between 10 and 1000). Scrolling loads more pages.
 
+`filter_roots_only: true` makes a filter in the tree view pick root workflows only, those no other workflow started, and shows every child of those roots under them whether it matches or not. Children are looked up by their parent's ID as the roots load. It is off by default, and the flat list and `/` searches always filter every workflow.
+
 `show_scrollbars` draws a track and thumb on overflow tables, text views, and the event tree (default on). Set `show_scrollbars: false` to hide them.
 
 `preview_load_delay` is how long preview waits after you highlight a workflow before fetching its history (default `200ms`). That keeps rapid movement from firing a request per row. Set `0` to load immediately. Values are Go durations, clamped to 2s.
