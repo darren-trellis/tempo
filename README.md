@@ -101,6 +101,7 @@ tempo --address localhost:7233 // default dev server address loads without flag
 | `j` / `k` | Navigate down / up |
 | `Tab` | Switch pane (Primary / Secondary / Tertiary) |
 | `Shift+Option+←↑↓→` | Resize the focused pane |
+| `m` | Maximize / minimize the focused Secondary, Tertiary or Timeline pane (or click its `[+]`/`[-]`) |
 | `Enter` | Select / expand |
 | `Esc` / `Backspace` | Go back |
 | `q` | Quit (from root view) |
