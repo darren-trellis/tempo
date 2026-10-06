@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/galaxy-io/tempo/internal/config"
 	"github.com/galaxy-io/tempo/internal/temporal"
 )
 
@@ -149,5 +150,95 @@ func TestSearchShowsNoChildrenOfItsMatches(t *testing.T) {
 	wl.applyFilter()
 	if got := treeIDs(wl.workflows); got != "parent,child-1" {
 		t.Fatalf("order=%s", got)
+	}
+}
+
+// relativesTestList filters for running workflows, one of which is the child
+// of a parent that is not running, and notes every query the tree makes.
+func relativesTestList(t *testing.T, showParents, showChildren bool) (*WorkflowList, *[]string) {
+	t.Helper()
+	var queries []string
+	provider := &pageListProvider{list: func(_ context.Context, _ string, opts temporal.ListOptions) ([]temporal.Workflow, string, error) {
+		queries = append(queries, opts.Query)
+		switch {
+		case opts.Query == "WorkflowId IN ('parent')":
+			return []temporal.Workflow{{ID: "parent", Status: "Completed"}}, "", nil
+		case strings.HasPrefix(opts.Query, "ParentWorkflowId") && strings.Contains(opts.Query, "'running'"):
+			return []temporal.Workflow{{ID: "below", ParentID: strptr("running"), Status: "Completed"}}, "", nil
+		}
+		return nil, "", nil
+	}}
+	wl := treeTestList(t, provider, []temporal.Workflow{
+		{ID: "running", ParentID: strptr("parent"), Status: "Running"},
+		{ID: "other", Status: "Running"},
+	})
+	wl.app.config = &config.Config{FilterShowParents: &showParents, FilterShowChildren: &showChildren}
+	wl.visibilityQuery = "ExecutionStatus = 'Running'"
+	return wl, &queries
+}
+
+func countQueries(queries []string, prefix string) int {
+	n := 0
+	for _, q := range queries {
+		if strings.HasPrefix(q, prefix) {
+			n++
+		}
+	}
+	return n
+}
+
+func TestFilterShowParentsOffLeavesOutUnmatchedAncestors(t *testing.T) {
+	wl, queries := relativesTestList(t, false, true)
+	wl.applyFilter()
+	if got := treeIDs(wl.workflows); got != "running,below,other" {
+		t.Fatalf("order=%s", got)
+	}
+	if wl.workflowDepths[0] != 0 || wl.workflowDepths[1] != 1 {
+		t.Fatalf("the match should be a root with its child under it, depths=%v", wl.workflowDepths)
+	}
+	if n := countQueries(*queries, "WorkflowId IN"); n != 0 {
+		t.Fatalf("no parent should be looked up, queries=%v", *queries)
+	}
+}
+
+func TestFilterShowChildrenOffLeavesOutUnmatchedDescendants(t *testing.T) {
+	wl, queries := relativesTestList(t, true, false)
+	wl.applyFilter()
+	if got := treeIDs(wl.workflows); got != "parent,running,other" {
+		t.Fatalf("order=%s", got)
+	}
+	if n := countQueries(*queries, "ParentWorkflowId"); n != 0 {
+		t.Fatalf("no children should be looked up, queries=%v", *queries)
+	}
+}
+
+func TestFilterWithoutRelativesShowsOnlyTheMatches(t *testing.T) {
+	wl, queries := relativesTestList(t, false, false)
+	wl.applyFilter()
+	if got := treeIDs(wl.workflows); got != "running,other" || len(*queries) != 0 {
+		t.Fatalf("order=%s queries=%v", got, *queries)
+	}
+}
+
+// With no filter every workflow is a match, so the settings do not hide a
+// parent that is only on a page not loaded yet.
+func TestFilterRelativeSettingsLeaveTheUnfilteredTreeAlone(t *testing.T) {
+	wl, queries := relativesTestList(t, false, false)
+	wl.visibilityQuery = ""
+	wl.applyFilter()
+	if got := treeIDs(wl.workflows); got != "parent,running,other" || countQueries(*queries, "WorkflowId IN") != 1 {
+		t.Fatalf("order=%s queries=%v", got, *queries)
+	}
+}
+
+func TestFilterRelativeSettingsDefaultOn(t *testing.T) {
+	for _, name := range []string{"filter_show_parents", "filter_show_children"} {
+		s, ok := lookupTempoSetting(name)
+		if !ok {
+			t.Fatalf("%s should be a setting", name)
+		}
+		if got := s.get(config.DefaultConfig()); got != "on" {
+			t.Fatalf("%s should default on, got %q", name, got)
+		}
 	}
 }

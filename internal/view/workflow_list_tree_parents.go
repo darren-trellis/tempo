@@ -77,9 +77,11 @@ func (t *workflowLookup) accept(gen uint64, ids []string, found map[string]tempo
 // have yet. The list is ordered by close time, so a parent that started a
 // child and finished at once sits far below the child, often on a page that
 // is not loaded, and the child would otherwise show with no parent. A text
-// search hoists its matches to the top on purpose, so it is left alone.
+// search hoists its matches to the top on purpose, so it is left alone, and
+// filter_show_parents turns it off for a filter, whose matches then show
+// without the ancestors that do not match.
 func (wl *WorkflowList) withTreeParents(workflows []temporal.Workflow) []temporal.Workflow {
-	if wl.filterText != "" {
+	if wl.filterText != "" || (wl.treeFilterActive() && !wl.config().ShouldFilterShowParents()) {
 		return workflows
 	}
 	if wl.treeParents.namespace != wl.namespace {

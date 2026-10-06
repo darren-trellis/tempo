@@ -87,6 +87,7 @@ func (a *App) applyLoadedConfig(cfg *config.Config, force bool) {
 	oldIOTree := false
 	oldIOWrap := false
 	oldTreeColumn := config.WorkflowColumnWorkflowID
+	oldShowParents, oldShowChildren := true, true
 	if old != nil {
 		oldTheme = old.Theme
 		oldCols = old.WorkflowColumnLayout()
@@ -101,6 +102,8 @@ func (a *App) applyLoadedConfig(cfg *config.Config, force bool) {
 		oldIOTree = old.ShouldShowIOTree()
 		oldIOWrap = old.ShouldWrapIO()
 		oldTreeColumn = old.WorkflowTreeColumnID()
+		oldShowParents = old.ShouldFilterShowParents()
+		oldShowChildren = old.ShouldFilterShowChildren()
 		if conn, ok := old.GetProfile(oldProfile); ok {
 			oldConn = conn
 		}
@@ -156,6 +159,9 @@ func (a *App) applyLoadedConfig(cfg *config.Config, force bool) {
 				}
 				if cfg.ShouldWrapIO() != oldIOWrap {
 					wl.applyIOWrap(cfg.ShouldWrapIO())
+				}
+				if cfg.ShouldFilterShowParents() != oldShowParents || cfg.ShouldFilterShowChildren() != oldShowChildren {
+					wl.applyFilter()
 				}
 				wl.syncAutoRefresh()
 				if wl.taskQueuesActive() && wl.taskQueues != nil {

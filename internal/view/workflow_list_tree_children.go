@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/galaxy-io/tempo/internal/config"
 	"github.com/galaxy-io/tempo/internal/temporal"
 )
 
@@ -100,10 +101,25 @@ func (wl *WorkflowList) withTreeRelatives(workflows []temporal.Workflow) []tempo
 // treeShowsDescendants reports whether the tree looks up the descendants of
 // the workflows the list loaded. Without a filter the list already holds
 // every workflow, and a search, local or moved to the server, is looking for
-// a workflow, so it shows just the matches.
+// a workflow, so it shows just the matches. filter_show_children turns it
+// off for filters too.
 func (wl *WorkflowList) treeShowsDescendants() bool {
+	return wl.treeFilterActive() && wl.config().ShouldFilterShowChildren()
+}
+
+// treeFilterActive reports whether a filter, rather than a search, picks the
+// workflows the tree shows.
+func (wl *WorkflowList) treeFilterActive() bool {
 	return wl != nil && wl.workflowTreeMode && wl.visibilityQuery != "" &&
 		wl.filterText == "" && !wl.searchOwnsQuery()
+}
+
+// config is the app's config, or nil when there is none.
+func (wl *WorkflowList) config() *config.Config {
+	if wl == nil || wl.app == nil {
+		return nil
+	}
+	return wl.app.Config()
 }
 
 // withTreeChildren adds every descendant of roots that has been fetched to

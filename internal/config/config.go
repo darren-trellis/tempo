@@ -225,6 +225,12 @@ type Config struct {
 	// WorkflowTreeColumn is the workflows column that draws the tree's
 	// hierarchy glyphs. Defaults to the workflow ID.
 	WorkflowTreeColumn string `yaml:"workflow_tree_column,omitempty"`
+	// FilterShowParents shows, in the tree, the ancestors of a filter's
+	// matches that do not match the filter themselves. Defaults to on.
+	FilterShowParents *bool `yaml:"filter_show_parents,omitempty"`
+	// FilterShowChildren shows, in the tree, the descendants of a filter's
+	// matches that do not match the filter themselves. Defaults to on.
+	FilterShowChildren *bool `yaml:"filter_show_children,omitempty"`
 	// How long a worker may go unseen before the workers tab calls it stale,
 	// written as a duration such as "45s" or "2m", or as a plain number of
 	// seconds.
@@ -354,6 +360,24 @@ func (c *Config) ShouldColorCodeWorkflows() bool {
 		return false
 	}
 	return *c.ColorCodeWorkflows
+}
+
+// ShouldFilterShowParents reports whether a filter in the tree shows the
+// ancestors of its matches that do not match it. Defaults to on.
+func (c *Config) ShouldFilterShowParents() bool {
+	if c == nil || c.FilterShowParents == nil {
+		return true
+	}
+	return *c.FilterShowParents
+}
+
+// ShouldFilterShowChildren reports whether a filter in the tree shows the
+// descendants of its matches that do not match it. Defaults to on.
+func (c *Config) ShouldFilterShowChildren() bool {
+	if c == nil || c.FilterShowChildren == nil {
+		return true
+	}
+	return *c.FilterShowChildren
 }
 
 func (c *Config) ShouldShowIOTree() bool {

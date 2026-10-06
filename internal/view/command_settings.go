@@ -182,6 +182,12 @@ func tempoSettings() []tempoSetting {
 		boolSetting("color_code_workflows", "Color workflow rows by status", func(c *config.Config) bool {
 			return c.ShouldColorCodeWorkflows()
 		}, func(c *config.Config, on bool) { c.ColorCodeWorkflows = &on }),
+		boolSetting("filter_show_parents", "Show a filter's unmatched parent workflows in the tree", func(c *config.Config) bool {
+			return c.ShouldFilterShowParents()
+		}, func(c *config.Config, on bool) { c.FilterShowParents = &on }),
+		boolSetting("filter_show_children", "Show a filter's unmatched child workflows in the tree", func(c *config.Config) bool {
+			return c.ShouldFilterShowChildren()
+		}, func(c *config.Config, on bool) { c.FilterShowChildren = &on }),
 		boolSetting("io_tree", "Show input and output as a JSON tree", func(c *config.Config) bool {
 			return c.ShouldShowIOTree()
 		}, func(c *config.Config, on bool) { c.IOTree = &on }),
@@ -743,6 +749,10 @@ func (a *App) applySettingSideEffects(name string) {
 	case "filter_wrap":
 		if hasWL {
 			wl.syncFilterBarLayout()
+		}
+	case "filter_show_parents", "filter_show_children":
+		if hasWL {
+			wl.applyFilter()
 		}
 	case "saved_filters_position":
 		if hasWL {
