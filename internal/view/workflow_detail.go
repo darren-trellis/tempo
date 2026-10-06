@@ -3,10 +3,12 @@ package view
 import (
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
 	"github.com/atterpac/jig/theme"
+	"github.com/galaxy-io/tempo/internal/config"
 	"github.com/galaxy-io/tempo/internal/temporal"
 	"github.com/gdamore/tcell/v2"
 )
@@ -23,6 +25,10 @@ const (
 	workflowInfoRunID     = "Run ID"
 	workflowInfoLabelPad  = 13
 )
+
+// workflowInfoSearchAttribute prefixes the key of a custom search attribute's
+// row, so a row keeps its selection across redraws.
+const workflowInfoSearchAttribute = "SearchAttribute:"
 
 type workflowInfoRow struct {
 	Key      string
@@ -236,6 +242,34 @@ func withChildrenRow(rows []workflowInfoRow, children []workflowChild, resolved 
 	out = append(out, rows[:at]...)
 	out = append(out, row)
 	return append(out, rows[at:]...)
+}
+
+// withSearchAttributeRows adds a row for each custom search attribute set on
+// w, by name, after the rest. A time shows relative to now, like Started, and
+// copies as the stored value.
+func withSearchAttributeRows(rows []workflowInfoRow, now time.Time, w temporal.Workflow) []workflowInfoRow {
+	names := make([]string, 0, len(w.SearchAttributes))
+	for name := range w.SearchAttributes {
+		names = append(names, name)
+	}
+	sort.Slice(names, func(i, j int) bool {
+		return strings.ToLower(names[i]) < strings.ToLower(names[j])
+	})
+	for _, name := range names {
+		value := w.SearchAttributes[name]
+		row := workflowInfoRow{
+			Key:      workflowInfoSearchAttribute + name,
+			Label:    name,
+			Value:    value,
+			Color:    theme.Fg(),
+			ColorTag: theme.TagFg(),
+		}
+		if shown := formatSearchAttributeColumn(value, now, config.TimeFormatRelative); shown != value {
+			row.Display = shown
+		}
+		rows = append(rows, row)
+	}
+	return rows
 }
 
 func (r workflowInfoRow) displayText() string {

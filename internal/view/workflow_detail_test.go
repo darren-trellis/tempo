@@ -73,3 +73,45 @@ func TestWorkflowInfoRowsMarkUnhandledFailure(t *testing.T) {
 		t.Fatalf("display=%q", rows[idx].Display)
 	}
 }
+
+func TestSearchAttributeRowsFollowTheDetailsByName(t *testing.T) {
+	now := time.Date(2026, 10, 5, 12, 0, 0, 0, time.UTC)
+	w := temporal.Workflow{
+		ID:        "wf",
+		StartTime: now,
+		SearchAttributes: map[string]string{
+			"organization": "acme",
+			"CustomerId":   "c-42",
+			"DueAt":        "2026-10-05T11:00:00Z",
+		},
+	}
+	rows := withSearchAttributeRows(workflowInfoRows(now, w), now, w)
+
+	run := workflowInfoRowIndex(rows, workflowInfoRunID)
+	var labels []string
+	for _, row := range rows[run+1:] {
+		labels = append(labels, row.Label)
+	}
+	if got := strings.Join(labels, ","); got != "CustomerId,DueAt,organization" {
+		t.Fatalf("search attribute rows=%s", got)
+	}
+	due := rows[workflowInfoRowIndex(rows, workflowInfoSearchAttribute+"DueAt")]
+	if due.Value != "2026-10-05T11:00:00Z" {
+		t.Fatalf("a time should copy as stored, value=%q", due.Value)
+	}
+	if got := due.displayText(); got != formatRelativeTime(now, now.Add(-time.Hour)) {
+		t.Fatalf("a time should show relative to now, display=%q", got)
+	}
+	if got := rows[workflowInfoRowIndex(rows, workflowInfoSearchAttribute+"CustomerId")].displayText(); got != "c-42" {
+		t.Fatalf("display=%q", got)
+	}
+}
+
+func TestNoSearchAttributeRowsWithoutAttributes(t *testing.T) {
+	now := time.Now()
+	w := temporal.Workflow{ID: "wf", StartTime: now}
+	base := workflowInfoRows(now, w)
+	if got := withSearchAttributeRows(base, now, w); len(got) != len(base) {
+		t.Fatalf("rows=%+v", got)
+	}
+}
