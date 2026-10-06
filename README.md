@@ -168,6 +168,8 @@ preview_load_delay: 200ms
 
 Whether or not it is on, when a filter in the tree view matches a child whose parent it does not, the tree fetches the parent and shows all of that parent's children and their descendants, not just the ones that matched. A `/` search shows only its matches under the parent.
 
+`workflow_tree_column` is the workflows column that draws the tree's hierarchy glyphs (default `workflow_id`). Set it with `*` in the Workflow Columns modal (`|`), which also shows the column if it was hidden. If the column is hidden later, the glyphs move to the first visible column.
+
 `show_scrollbars` draws a track and thumb on overflow tables, text views, and the event tree (default on). Set `show_scrollbars: false` to hide them.
 
 `preview_load_delay` is how long preview waits after you highlight a workflow before fetching its history (default `200ms`). That keeps rapid movement from firing a request per row. Set `0` to load immediately. Values are Go durations, clamped to 2s.
