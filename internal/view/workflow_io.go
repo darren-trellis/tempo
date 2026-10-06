@@ -112,7 +112,11 @@ func showWorkflowIO(app *App, background tview.Primitive, workflowType, input, o
 		return
 	}
 
+	// closing is set while the modal closes itself, so its dismiss check
+	// does not hold it open to clear a search first.
+	closing := false
 	closeModal := func() {
+		closing = true
 		app.setSearchStatus("")
 		app.JigApp().Pages().DismissModal()
 		if onClose != nil {
@@ -191,8 +195,54 @@ func showWorkflowIO(app *App, background tview.Primitive, workflowType, input, o
 			app.setSearchStatus("")
 			return
 		}
-		app.setSearchStatus(searchLabel(query, countSearchMatches(view.GetText(true), query)))
+		tree := outputTree
+		if focusedInput {
+			tree = inputTree
+		}
+		count := 0
+		if tree.filtering() {
+			count = tree.matches
+		} else {
+			count = countSearchMatches(view.GetText(true), query)
+		}
+		app.setSearchStatus(searchLabel(query, count))
 	}
+	// applySearch narrows a pane's tree to the keys that hold text, or in
+	// plain text scrolls to the first match, as the preview panes do.
+	applySearch := func(targetInput bool, text string) {
+		view, tree := outputView, outputTree
+		if targetInput {
+			view, tree = inputView, inputTree
+			inputQuery = text
+		} else {
+			outputQuery = text
+		}
+		tree.setFilter(text)
+		if !tree.active() {
+			scrollTextViewToMatch(view, text)
+		}
+		searchStatus()
+	}
+	// clearSearch drops the focused pane's search and reports whether there
+	// was one, so Esc clears it before it closes the modal.
+	clearSearch := func() bool {
+		if focusedInput && inputQuery != "" {
+			applySearch(true, "")
+			return true
+		}
+		if !focusedInput && outputQuery != "" {
+			applySearch(false, "")
+			return true
+		}
+		return false
+	}
+	modal.SetOnDismiss(func() bool {
+		if !closing && clearSearch() {
+			return false
+		}
+		app.setSearchStatus("")
+		return true
+	})
 	applyIOFocus := func() {
 		inputPanel.SetTitle(fmt.Sprintf("%s Input", theme.IconArrowRight))
 		outputPanel.SetTitle(fmt.Sprintf("%s Output", theme.IconArrowLeft))
@@ -228,7 +278,9 @@ func showWorkflowIO(app *App, background tview.Primitive, workflowType, input, o
 
 		switch event.Key() {
 		case tcell.KeyEscape:
-			closeModal()
+			if !clearSearch() {
+				closeModal()
+			}
 			return nil
 		case tcell.KeyTab, tcell.KeyBacktab:
 			switchFocus()
@@ -259,19 +311,11 @@ func showWorkflowIO(app *App, background tview.Primitive, workflowType, input, o
 			case '/':
 				query := outputQuery
 				targetInput := focusedInput
-				target := outputView
 				if targetInput {
 					query = inputQuery
-					target = inputView
 				}
 				app.ShowSearchPrompt(query, func(text string) {
-					if targetInput {
-						inputQuery = text
-					} else {
-						outputQuery = text
-					}
-					scrollTextViewToMatch(target, text)
-					searchStatus()
+					applySearch(targetInput, text)
 				}, nil)
 				return nil
 			case 'w':

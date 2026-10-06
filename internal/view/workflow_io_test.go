@@ -1,6 +1,7 @@
 package view
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -184,4 +185,48 @@ func firstTextView(p tview.Primitive) *tview.TextView {
 		return firstTextView(v.GetContent())
 	}
 	return nil
+}
+
+// In io_tree mode the modal's / narrows the focused tree to the matching keys
+// and counts keys, not text. Esc clears the search before it closes the modal.
+func TestWorkflowIOModalSearchFiltersTheTree(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	cfg := config.DefaultConfig()
+	on := true
+	cfg.IOTree = &on
+	a := NewAppWithProvider(nil, "default", cfg, "local")
+	wl := NewWorkflowList(a, "default")
+	wl.keepDataOnStart = true
+	a.app.Pages().Push(wl)
+	showWorkflowIO(a, tview.NewBox(), "Order", `{"id":{"note":"id id"},"total":5}`, `{"ok":true}`, nil)
+	modal := a.app.Pages().Current().(*overlayModal)
+	focused := firstTextView(modal.GetPanel())
+
+	if ev := focused.GetInputCapture()(tcell.NewEventKey(tcell.KeyRune, '/', 0)); ev != nil {
+		t.Fatal("/ should open search")
+	}
+	a.prompt().input.SetText("id")
+	if text := focused.GetText(true); strings.Contains(text, "total") || !strings.Contains(text, "note") {
+		t.Fatalf("the tree should keep the matching key and what is under it, text=%q", text)
+	}
+	if a.searchStatus != "/id (1)" {
+		t.Fatalf("the status bar should count matching keys, got %q", a.searchStatus)
+	}
+	a.exitPrompt()
+
+	// Escape reaches the modal through the app's dismiss, as the key capture does.
+	if behavior := a.app.Pages().CurrentModalBehavior(); behavior == nil || !behavior.DismissOnEsc {
+		t.Fatal("the modal should dismiss on escape")
+	}
+	a.app.Pages().DismissModal()
+	if a.app.Pages().Current() != tview.Primitive(modal) {
+		t.Fatal("the first escape should clear the search, not close the modal")
+	}
+	if text := focused.GetText(true); !strings.Contains(text, "total") || a.searchStatus != "" {
+		t.Fatalf("clearing should show the whole payload, text=%q status=%q", text, a.searchStatus)
+	}
+	a.app.Pages().DismissModal()
+	if a.app.Pages().CurrentIsModal() {
+		t.Fatal("with no search left, escape should close the modal")
+	}
 }
