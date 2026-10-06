@@ -167,11 +167,11 @@ func TestPreviewSearchShowsInThePaneTitle(t *testing.T) {
 		{ScheduledID: 5, Type: "ChargeCard"},
 	}
 	wl.applyPreviewActivitySearch("charge")
-	if got := drawnPanelTitle(wl.previewPanel); got != "/charge (1)" {
+	if got := drawnPanelTitle(wl.previewPanel.Panel); got != "/charge (1)" {
 		t.Fatalf("activities title: %q", got)
 	}
 	wl.applyPreviewActivitySearch("")
-	if got := drawnPanelTitle(wl.previewPanel); got != "" {
+	if got := drawnPanelTitle(wl.previewPanel.Panel); got != "" {
 		t.Fatalf("clearing the search should clear the title, got %q", got)
 	}
 
@@ -182,7 +182,7 @@ func TestPreviewSearchShowsInThePaneTitle(t *testing.T) {
 		{ID: 3, Type: "ActivityTaskCompleted", ActivityType: "Charge"},
 	}
 	wl.applyPreviewEventSearch("charge")
-	if got := drawnPanelTitle(wl.previewPanel); got != "/charge (2)" {
+	if got := drawnPanelTitle(wl.previewPanel.Panel); got != "/charge (2)" {
 		t.Fatalf("events title: %q", got)
 	}
 }
@@ -206,12 +206,12 @@ func TestInputSearchShowsInThePaneTitle(t *testing.T) {
 	if row != 1 || col == 0 {
 		t.Fatalf("search should scroll to the first match, row=%d col=%d", row, col)
 	}
-	if got := drawnPanelTitle(wl.eventDetailPanel); got != "/order (2)" {
+	if got := drawnPanelTitle(wl.eventDetailPanel.Panel); got != "/order (2)" {
 		t.Fatalf("input title: %q", got)
 	}
 
 	wl.setWorkflowIOKind(workflowIOOutput)
-	if got := drawnPanelTitle(wl.eventDetailPanel); got != "" {
+	if got := drawnPanelTitle(wl.eventDetailPanel.Panel); got != "" {
 		t.Fatalf("output has its own search, got %q", got)
 	}
 }

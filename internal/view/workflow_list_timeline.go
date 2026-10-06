@@ -3,82 +3,13 @@ package view
 import (
 	"fmt"
 
-	"github.com/atterpac/jig/components"
 	"github.com/atterpac/jig/theme"
 	"github.com/galaxy-io/tempo/internal/temporal"
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 )
 
-const (
-	timelinePanelHeight = 12
-	timelineSizeButton  = 3
-)
-
-type timelineFrame struct {
-	*components.Panel
-	list *WorkflowList
-}
-
-func (f *timelineFrame) Draw(screen tcell.Screen) {
-	f.Panel.Draw(screen)
-	drawTimelineSizeButton(screen, f, f.list != nil && !f.list.timelineNarrow)
-}
-
-func (f *timelineFrame) MouseHandler() func(tview.MouseAction, *tcell.EventMouse, func(tview.Primitive)) (bool, tview.Primitive) {
-	return f.WrapMouseHandler(func(action tview.MouseAction, event *tcell.EventMouse, setFocus func(tview.Primitive)) (bool, tview.Primitive) {
-		if event != nil && f.list != nil {
-			x, y := event.Position()
-			if timelineSizeButtonHit(f, x, y) && (action == tview.MouseLeftDown || action == tview.MouseLeftClick) {
-				f.list.toggleTimelineSize()
-				return true, nil
-			}
-		}
-		if handler := f.Panel.MouseHandler(); handler != nil {
-			return handler(action, event, setFocus)
-		}
-		return false, nil
-	})
-}
-
-func timelineSizeButtonLabel(maximized bool) string {
-	if maximized {
-		return "[-]"
-	}
-	return "[+]"
-}
-
-func timelineSizeHint(narrow bool) string {
-	if narrow {
-		return "Maximize"
-	}
-	return "Minimize"
-}
-
-func timelineSizeButtonOrigin(p tview.Primitive) (x, y int) {
-	px, py, pw, _ := p.GetRect()
-	return px + pw - 2 - timelineSizeButton, py
-}
-
-func timelineSizeButtonHit(p tview.Primitive, x, y int) bool {
-	bx, by := timelineSizeButtonOrigin(p)
-	return y == by && x >= bx && x < bx+timelineSizeButton
-}
-
-func drawTimelineSizeButton(screen tcell.Screen, p tview.Primitive, maximized bool) {
-	if screen == nil || p == nil {
-		return
-	}
-	x, y := timelineSizeButtonOrigin(p)
-	_, _, w, h := p.GetRect()
-	if w < timelineSizeButton+4 || h < 1 {
-		return
-	}
-	style := tcell.StyleDefault.Foreground(theme.PanelTitle()).Background(theme.Bg())
-	for i, r := range timelineSizeButtonLabel(maximized) {
-		screen.SetContent(x+i, y, r, nil, style)
-	}
-}
+const timelinePanelHeight = 12
 
 func (wl *WorkflowList) setupTimeline() {
 	wl.timelineView = NewTimelineView()
@@ -88,10 +19,11 @@ func (wl *WorkflowList) setupTimeline() {
 	wl.timelineView.SetShowScrollbars(func() bool {
 		return appShowsScrollbars(wl.app)
 	})
-	wl.timelinePanel = &timelineFrame{
-		Panel: components.NewPanel().SetTitle(fmt.Sprintf("%s Timeline", theme.IconEvent)),
-		list:  wl,
-	}
+	wl.timelinePanel = newPaneFrame(
+		func() bool { return !wl.timelineNarrow },
+		wl.toggleTimelineSize,
+	)
+	wl.timelinePanel.SetTitle(fmt.Sprintf("%s Timeline", theme.IconEvent))
 	wl.timelinePanel.SetContent(wl.timelineView)
 
 	wl.timelineView.SetOnSelectionChange(func(lane *TimelineLane) {
@@ -149,6 +81,11 @@ func (wl *WorkflowList) timelineDocked() bool {
 }
 
 func (wl *WorkflowList) applyMainLayout() {
+	if frame := wl.maximizedFrame(); frame != nil {
+		wl.Clear()
+		wl.AddItem(frame, 0, 1, true)
+		return
+	}
 	if !wl.workflowsActive() {
 		if wl.mainFlex != nil {
 			wl.mainFlex.Clear()

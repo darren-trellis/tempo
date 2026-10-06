@@ -73,11 +73,15 @@ func (wl *WorkflowList) MouseHandler() func(tview.MouseAction, *tcell.EventMouse
 			return false, nil
 		}
 
-		if wl.timelineVisible && wl.timelinePanel != nil && timelineSizeButtonHit(wl.timelinePanel, x, y) {
-			if action == tview.MouseLeftDown || action == tview.MouseLeftClick {
-				wl.toggleTimelineSize()
+		if wl.maximizedFrame() != nil {
+			if wl.maximizedMouse(action, x, y) {
 				return true, nil
 			}
+			return wl.Flex.MouseHandler()(action, event, setFocus)
+		}
+
+		if (action == tview.MouseLeftDown || action == tview.MouseLeftClick) && wl.sizeButtonAt(x, y) {
+			return true, nil
 		}
 
 		if kind, ok := wl.listTabAt(x, y); ok {
@@ -173,6 +177,11 @@ func (wl *WorkflowList) cycleFocus(delta int) {
 }
 
 func (wl *WorkflowList) setFocusPane(pane workflowFocusPane) {
+	// Moving to another pane, such as with Tab, puts the layout back first so
+	// the pane is on screen.
+	if wl.maximizedPane != previewPaneNone && pane != wl.maximizedPane.focus() {
+		wl.restorePaneSize()
+	}
 	if pane == focusTimeline {
 		wl.syncTimelineFromActivity()
 	}

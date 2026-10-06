@@ -110,6 +110,9 @@ func (wl *WorkflowList) escapeFromPreview() bool {
 	if wl.clearFocusedIOSearch() {
 		return true
 	}
+	if wl.restorePaneSize() {
+		return true
+	}
 	switch wl.focusPane {
 	case focusEvents, focusEventDetail:
 		wl.setPreviewVisible(false)
@@ -160,7 +163,10 @@ func (wl *WorkflowList) setupPreview() {
 	wl.previewTabs.SetInputCapture(wl.handlePreviewKeys)
 	wl.applyEventsTabMode()
 
-	wl.previewPanel = components.NewPanel()
+	wl.previewPanel = newPaneFrame(
+		func() bool { return wl.maximizedPane == previewPaneSecondary },
+		func() { wl.togglePaneMaximized(previewPaneSecondary) },
+	)
 	wl.previewPanel.SetContent(wl.previewTabs)
 
 	wl.rightFlex = tview.NewFlex().SetDirection(tview.FlexRow)
@@ -231,7 +237,10 @@ func (wl *WorkflowList) setupActivityDetailPane() {
 		SetActive(int(activityDetailDetails))
 	wl.activityDetailTabs.SetInputCapture(wl.capturePreviewTabs)
 
-	wl.eventDetailPanel = components.NewPanel()
+	wl.eventDetailPanel = newPaneFrame(
+		func() bool { return wl.maximizedPane == previewPaneTertiary },
+		func() { wl.togglePaneMaximized(previewPaneTertiary) },
+	)
 	wl.eventDetailPanel.SetContent(wl.activityDetailTabs)
 }
 
@@ -344,6 +353,11 @@ func (wl *WorkflowList) handlePreviewKeys(event *tcell.EventKey) *tcell.EventKey
 	case 'p':
 		wl.togglePreviewMode()
 		return nil
+	case 'm':
+		if pane := previewPaneFor(wl.focusPane); pane != previewPaneNone {
+			wl.togglePaneMaximized(pane)
+			return nil
+		}
 	case 'b':
 		if wl.previewKind == previewEvents {
 			wl.toggleEventTree()

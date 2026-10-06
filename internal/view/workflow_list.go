@@ -53,7 +53,7 @@ type WorkflowList struct {
 	filterBarRows          int
 	filterBarSide          bool
 	workflowsPanel         *chromePanel
-	previewPanel           *components.Panel
+	previewPanel           *paneFrame
 	previewTabs            *components.Tabs
 	rightFlex              *tview.Flex
 	eventTable             *components.Table
@@ -63,13 +63,14 @@ type WorkflowList struct {
 	eventTab               *components.Tab
 	eventDetail            *tview.TextView
 	eventDetailTree        *jsonTreeSelection
-	eventDetailPanel       *components.Panel
+	eventDetailPanel       *paneFrame
 	eventsPanel            *components.Panel
 	workflowDetail         *components.Table
 	workflowDetailScroll   *charScrollView
 	previewDetailRows      []workflowInfoRow
 	timelineView           *TimelineView
-	timelinePanel          *timelineFrame
+	maximizedPane          previewPane
+	timelinePanel          *paneFrame
 	timelineVisible        bool
 	timelineNarrow         bool
 	highlightedActivityID  int64
@@ -772,9 +773,9 @@ func (wl *WorkflowList) Hints() []KeyHint {
 
 	switch wl.focusPane {
 	case focusEvents:
-		return wl.previewListHints()
+		return append(wl.previewListHints(), wl.paneSizeHintFor(previewPaneSecondary))
 	case focusEventDetail:
-		return wl.previewSideHints()
+		return append(wl.previewSideHints(), wl.paneSizeHintFor(previewPaneTertiary))
 	case focusTimeline:
 		return wl.timelineHints()
 	}
@@ -862,7 +863,7 @@ func (wl *WorkflowList) previewSideHints() []KeyHint {
 func (wl *WorkflowList) timelineHints() []KeyHint {
 	return []KeyHint{
 		{Key: "+/-", Description: "Zoom"},
-		{Key: "m", Description: timelineSizeHint(wl.timelineNarrow)},
+		{Key: "m", Description: paneSizeHint(!wl.timelineNarrow)},
 		{Key: "p", Description: "Preview"},
 		{Key: "?", Description: "Legend"},
 	}
