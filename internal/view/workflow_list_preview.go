@@ -107,6 +107,9 @@ func (wl *WorkflowList) escapeFromPreview() bool {
 	if !wl.workflowsActive() || !wl.previewModeEnabled() {
 		return false
 	}
+	if wl.clearFocusedIOSearch() {
+		return true
+	}
 	switch wl.focusPane {
 	case focusEvents, focusEventDetail:
 		wl.setPreviewVisible(false)

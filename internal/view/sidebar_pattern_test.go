@@ -141,6 +141,44 @@ func TestEscapeClosesWorkflowPreview(t *testing.T) {
 	}
 }
 
+// Escape in Input/Output with a search running clears the search first, and
+// only the next escape closes the preview. Both routes to escape agree.
+func TestEscapeClearsTheIOSearchBeforeClosingThePreview(t *testing.T) {
+	wl := NewWorkflowList(&App{}, "default")
+	wl.togglePreviewMode()
+	wl.previewKind = previewDetails
+	wl.workflowIOKind = workflowIOOutput
+	wl.focusPane = focusEventDetail
+
+	wl.applyFocusedIOSearch("id")
+	if !wl.HandleEscape() || wl.workflowOutputSearch != "" {
+		t.Fatalf("escape should clear the search, query=%q", wl.workflowOutputSearch)
+	}
+	if !wl.previewModeEnabled() || wl.focusPane != focusEventDetail {
+		t.Fatal("clearing the search should leave the preview open and focused")
+	}
+
+	wl.applyFocusedIOSearch("id")
+	if ev := wl.handlePreviewKeys(tcell.NewEventKey(tcell.KeyEscape, 0, tcell.ModNone)); ev != nil || wl.workflowOutputSearch != "" {
+		t.Fatalf("the pane's own escape should clear the search too, query=%q", wl.workflowOutputSearch)
+	}
+	if !wl.previewModeEnabled() {
+		t.Fatal("the pane's own escape should not close the preview while clearing")
+	}
+
+	if !wl.HandleEscape() || wl.previewModeEnabled() {
+		t.Fatal("with no search left, escape should close the preview")
+	}
+
+	// A search in a pane that is not focused does not hold up escape.
+	wl.setPreviewVisible(true)
+	wl.applyFocusedIOSearch("id")
+	wl.focusPane = focusEvents
+	if !wl.HandleEscape() || wl.previewModeEnabled() {
+		t.Fatal("escape from another preview pane should close the preview")
+	}
+}
+
 // TestEveryScrollablePaneTakesAHorizontalWheel guards the rule that anything
 // scrollable by key is also scrollable by mouse.
 func TestEveryScrollablePaneTakesAHorizontalWheel(t *testing.T) {

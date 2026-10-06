@@ -359,6 +359,17 @@ func (wl *WorkflowList) showFocusedIOSearch() bool {
 	return true
 }
 
+// clearFocusedIOSearch drops the search in the focused Input/Output pane, so
+// Esc there undoes the search before it closes anything. It reports whether
+// there was one.
+func (wl *WorkflowList) clearFocusedIOSearch() bool {
+	if !wl.previewIOViewFocused() || wl.focusedIOQuery() == "" {
+		return false
+	}
+	wl.applyFocusedIOSearch("")
+	return true
+}
+
 func (wl *WorkflowList) focusedIOQuery() string {
 	if wl == nil {
 		return ""
