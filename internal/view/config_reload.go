@@ -122,7 +122,9 @@ func (a *App) applyLoadedConfig(cfg *config.Config, force bool) {
 
 	a.config = cfg
 
-	a.app.QueueUpdateDraw(func() {
+	// tview's QueueUpdateDraw waits for the event loop to run the update, so
+	// queue it from a goroutine: :config load calls this on the UI thread.
+	go a.app.QueueUpdateDraw(func() {
 		if needTheme {
 			if selected := themes.Get(cfg.Theme); selected != nil {
 				theme.SetProvider(selected)
