@@ -33,6 +33,9 @@ type jsonTreeSelection struct {
 	// what is drawn; source is what the caller set.
 	augment func(source string, rerender func()) string
 	source  string
+	// unfocused hides the highlight while the pane does not have focus, so
+	// the row stays selected but does not look like where keys go.
+	unfocused bool
 }
 
 func newJSONTreeSelection(view *tview.TextView) *jsonTreeSelection {
@@ -69,6 +72,17 @@ func newJSONTreeSelection(view *tview.TextView) *jsonTreeSelection {
 		return x, y, width, height
 	})
 	return selection
+}
+
+// setFocused shows the highlight only while the tree's pane has focus.
+func (s *jsonTreeSelection) setFocused(focused bool) {
+	if s == nil || s.unfocused == !focused {
+		return
+	}
+	s.unfocused = !focused
+	if s.active() {
+		s.render(false)
+	}
 }
 
 // relayout redraws the tree after wrap is toggled, so lines break at the new
@@ -358,16 +372,20 @@ func (s *jsonTreeSelection) layout(toTop bool, width int) {
 		// right edge of the viewport.
 		width += column
 	}
+	highlight := -1
+	if !s.unfocused {
+		highlight = s.selected
+	}
 	s.visual = make([]int, len(s.rows))
 	lines := make([]string, 0, len(s.rows))
 	for i, row := range s.rows {
 		s.visual[i] = len(lines)
 		switch {
-		case wrapping && i == s.selected:
+		case wrapping && i == highlight:
 			lines = append(lines, jsonTreeHighlightedWrapped(row.text, s.laidWidth)...)
 		case wrapping:
 			lines = append(lines, s.wrappedRow(i, s.laidWidth)...)
-		case i == s.selected:
+		case i == highlight:
 			lines = append(lines, jsonTreeHighlightedRow(row.text, width)+s.panPadding(row.text, width))
 		default:
 			lines = append(lines, row.text)

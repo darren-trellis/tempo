@@ -242,9 +242,12 @@ func (wl *WorkflowList) applyFocusStyles() {
 	if wl.previewPanel != nil {
 		wl.previewPanel.SetFocused(active && wl.focusPane == focusEvents)
 	}
+	ioFocused := active && wl.previewShowsSidePane() && wl.focusPane == focusEventDetail
 	if wl.eventDetailPanel != nil {
-		wl.eventDetailPanel.SetFocused(active && wl.previewShowsSidePane() && wl.focusPane == focusEventDetail)
+		wl.eventDetailPanel.SetFocused(ioFocused)
 	}
+	wl.eventDetailTree.setFocused(ioFocused)
+	wl.workflowIOTree.setFocused(ioFocused)
 	if wl.eventsPanel != nil {
 		wl.eventsPanel.SetFocused(active && wl.focusPane == focusEvents)
 	}

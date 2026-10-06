@@ -409,3 +409,45 @@ func TestSelectingASentenceBesideAWideRowDrawsQuickly(t *testing.T) {
 		t.Fatalf("padding a row that ends a sentence out to a 40k-wide row took %v", elapsed)
 	}
 }
+
+// The highlight shows only while the pane has focus. The row stays selected
+// underneath, so focus coming back puts it where it was.
+func TestJSONTreeHidesTheHighlightWithoutFocus(t *testing.T) {
+	view := tview.NewTextView().SetDynamicColors(true)
+	selection := newJSONTreeSelection(view)
+	if !selection.setContent(`{"a":1,"b":2}`, true) {
+		t.Fatal("expected selectable JSON tree")
+	}
+	selection.handleKey(tcell.NewEventKey(tcell.KeyDown, 0, tcell.ModNone))
+	bar := "[" + theme.ColorToHex(accentTextColor()) + ":" + theme.TagAccent() + ":b]"
+	if !strings.Contains(view.GetText(false), bar) {
+		t.Fatal("a focused tree should draw the highlight")
+	}
+
+	selection.setFocused(false)
+	if strings.Contains(view.GetText(false), bar) {
+		t.Fatalf("an unfocused tree should draw no highlight, text=%q", view.GetText(false))
+	}
+	if value, ok := selection.value(); !ok || value != "2" {
+		t.Fatalf("the selection should stay put, value=%q", value)
+	}
+
+	selection.setFocused(true)
+	if !strings.Contains(view.GetText(false), bar) {
+		t.Fatal("focus coming back should bring the highlight back")
+	}
+}
+
+func TestIOTreesFollowTheIOPaneFocus(t *testing.T) {
+	wl := NewWorkflowList(&App{}, "default")
+	wl.focusPane = focusWorkflows
+	wl.applyFocusStyles()
+	if !wl.workflowIOTree.unfocused || !wl.eventDetailTree.unfocused {
+		t.Fatal("the I/O trees should hide their highlight while another pane has focus")
+	}
+	wl.focusPane = focusEventDetail
+	wl.applyFocusStyles()
+	if wl.workflowIOTree.unfocused || wl.eventDetailTree.unfocused {
+		t.Fatal("the I/O trees should highlight while their pane has focus")
+	}
+}
