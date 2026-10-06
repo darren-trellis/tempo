@@ -116,16 +116,20 @@ func (wl *WorkflowList) activatePreviewDetailRow() {
 		wl.showPreviewChildren()
 		return
 	}
-	if !ok || row.Key != workflowInfoParent || row.Value == "" {
-		return
+	if ok && row.Key == workflowInfoParent && row.Value != "" {
+		wl.showPreviewParent(row.Value)
 	}
-	if wl.selectWorkflowByID(row.Value) {
-		wl.setFocusPane(focusWorkflows)
-		return
-	}
-	if wl.app != nil {
-		wl.app.ToastWarning("Parent workflow is not in the list")
-	}
+}
+
+// showPreviewParent narrows the list to the previewed workflow's parent,
+// layered on the running query like any clause added with f.
+func (wl *WorkflowList) showPreviewParent(parentID string) {
+	wl.appendAdHocClauses([]config.FilterClause{{
+		Key:   filterOpRaw,
+		Op:    filterOpRaw,
+		Value: "WorkflowId = " + quoteVisibilityValue(parentID),
+	}})
+	wl.setFocusPane(focusWorkflows)
 }
 
 // resolveChildStatuses returns what each open child reports about itself, as

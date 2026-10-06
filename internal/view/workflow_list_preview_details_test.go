@@ -38,34 +38,31 @@ func TestPreviewDetailsSelectsRows(t *testing.T) {
 	}
 }
 
-func TestPreviewDetailsEnterHighlightsParent(t *testing.T) {
-	wl := NewWorkflowList(&App{}, "default")
-	wl.loadMockData()
-	var child temporal.Workflow
-	childIdx := -1
-	parentIdx := -1
-	for i, w := range wl.workflows {
-		if w.ID == "payment-xyz789" {
-			child = w
-			childIdx = i
-		}
-		if w.ID == "order-processing-abc123" {
-			parentIdx = i
-		}
-	}
-	if childIdx < 0 || parentIdx < 0 {
-		t.Fatal("expected parent and child in mock data")
-	}
-	wl.table.SelectRow(childIdx)
-	wl.renderPreviewDetails(child)
+// Enter on the Parent row narrows the list to the parent with a temporary
+// filter, layered on the running query like a clause added with f.
+func TestPreviewDetailsEnterOnParentFiltersToIt(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.SavedFilters = []config.SavedFilter{{Name: "Recent", Query: "StartTime > '2026-01-01T00:00:00Z'"}}
+	_, wl := adHocWorkflowList(t, cfg)
+	wl.applySavedFilter(cfg.SavedFilters[0])
+	parent := "it's-parent"
+	wl.renderPreviewDetails(temporal.Workflow{ID: "child", RunID: "r", ParentID: &parent})
 	wl.workflowDetail.SelectRow(workflowInfoRowIndex(wl.previewDetailRows, workflowInfoParent))
 	wl.focusPane = focusEvents
+
 	wl.activatePreviewDetailRow()
-	if wl.table.SelectedRow() != parentIdx {
-		t.Fatalf("parent row=%d want %d", wl.table.SelectedRow(), parentIdx)
+	want := "StartTime > '2026-01-01T00:00:00Z' AND WorkflowId = 'it''s-parent'"
+	if wl.visibilityQuery != want {
+		t.Fatalf("query=%q want %q", wl.visibilityQuery, want)
+	}
+	if !wl.adHoc.active() || wl.activeFilterName != "Recent" {
+		t.Fatalf("the parent should be a temporary clause on the active filter, active=%q", wl.activeFilterName)
+	}
+	if got := cfg.SavedFiltersFor("local")[0].Query; got != cfg.SavedFilters[0].Query {
+		t.Fatalf("the saved filter should not change, stored %q", got)
 	}
 	if wl.focusPane != focusWorkflows {
-		t.Fatalf("focus=%d", wl.focusPane)
+		t.Fatalf("focus should move to the list, focus=%d", wl.focusPane)
 	}
 }
 
