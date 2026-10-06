@@ -456,6 +456,7 @@ func (wl *WorkflowList) setListKind(kind listKind) {
 	if !changing {
 		return
 	}
+	wl.applyProfileTitle()
 	if prev == listTaskQueues && wl.taskQueues != nil {
 		wl.taskQueues.Stop()
 	}

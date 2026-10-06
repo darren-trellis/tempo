@@ -363,7 +363,25 @@ func (wl *WorkflowList) applyProfileTitle() {
 	if wl == nil || wl.workflowsPanel == nil {
 		return
 	}
-	wl.workflowsPanel.SetTitle("")
+	wl.workflowsPanel.SetTitle(wl.workflowSearchTitle())
+}
+
+// workflowSearchTitle reads the / search back for the pane title with how
+// many loaded workflows match it, like the Activities tab, or "" when no
+// search is running. In the tree the count leaves out the parents shown only
+// to place the matches.
+func (wl *WorkflowList) workflowSearchTitle() string {
+	if !wl.workflowsActive() {
+		return ""
+	}
+	term := wl.filterText
+	if term == "" && wl.searchOwnsQuery() {
+		term = searchTermFromVisibilityQuery(wl.visibilityQuery)
+	}
+	if term == "" {
+		return ""
+	}
+	return searchLabel(term, len(wl.searchMatches(term)))
 }
 
 func (wl *WorkflowList) SetMasterTitle(title string) {

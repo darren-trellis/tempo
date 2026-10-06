@@ -371,3 +371,45 @@ func TestEscapePeelsAdHocClausesOffASavedFilter(t *testing.T) {
 		t.Fatalf("the saved filter should remain, name=%q query=%q", wl.activeFilterName, wl.visibilityQuery)
 	}
 }
+
+// A / search shows in the pane title with how many loaded workflows match,
+// leaving out the parents the tree shows only to place the matches.
+func TestWorkflowSearchShowsInThePaneTitle(t *testing.T) {
+	wl := treeTestList(t, nil, []temporal.Workflow{
+		{ID: "order-1", ParentID: strptr("batch")},
+		{ID: "order-2"},
+		{ID: "batch"},
+		{ID: "refund-1"},
+	})
+	if got := wl.workflowSearchTitle(); got != "" {
+		t.Fatalf("no search should leave the title empty, got %q", got)
+	}
+
+	wl.filterText = "order"
+	wl.applyFilter()
+	if got := wl.workflowSearchTitle(); got != "/order (2)" {
+		t.Fatalf("title=%q rows=%s", got, treeIDs(wl.workflows))
+	}
+	if got := paneTitle(wl.workflowsPanel); got != "/order(2)" {
+		t.Fatalf("applying the search should title the pane, got %q", got)
+	}
+
+	wl.listKind = listTaskQueues
+	if got := wl.workflowSearchTitle(); got != "" {
+		t.Fatalf("other tabs should not show the workflow search, got %q", got)
+	}
+	wl.listKind = listWorkflows
+
+	wl.filterText = ""
+	wl.visibilityQuery = workflowIDFilterQuery("order")
+	wl.allWorkflows = []temporal.Workflow{{ID: "order-9"}}
+	if got := wl.workflowSearchTitle(); got != "/order (1)" {
+		t.Fatalf("a search moved to the server should keep its title, got %q", got)
+	}
+
+	wl.activeFilterName = "Running"
+	wl.visibilityQuery = "ExecutionStatus = 'Running'"
+	if got := wl.workflowSearchTitle(); got != "" {
+		t.Fatalf("a saved filter is not a search, got %q", got)
+	}
+}

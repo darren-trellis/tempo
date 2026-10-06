@@ -25,7 +25,7 @@ func TestPrimaryPaneHasNoTitle(t *testing.T) {
 	}
 }
 
-func TestPrimaryPaneOmitsCountsAndFilter(t *testing.T) {
+func TestPrimaryPaneOmitsCountsButShowsTheSearch(t *testing.T) {
 	a := &App{chromeProfile: "prod"}
 	wl := NewWorkflowList(a, "default")
 	wl.allWorkflows = []temporal.Workflow{
@@ -43,8 +43,8 @@ func TestPrimaryPaneOmitsCountsAndFilter(t *testing.T) {
 	}
 	wl.filterText = "wf-1"
 	wl.applyProfileTitle()
-	if got := paneTitle(wl.workflowsPanel); got != "" {
-		t.Fatalf("filter should not live on the pane, got %q", got)
+	if got := paneTitle(wl.workflowsPanel); got != "/wf-1(1)" {
+		t.Fatalf("the search should show on the pane with its match count, got %q", got)
 	}
 	if wl.workflowTab != nil && strings.Contains(wl.workflowTab.Name, "wf-1") {
 		t.Fatalf("filter should not live on the workflows tab, got %q", wl.workflowTab.Name)

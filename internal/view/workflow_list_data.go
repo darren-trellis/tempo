@@ -791,6 +791,7 @@ func (wl *WorkflowList) displayedStats() WorkflowStats {
 }
 
 func (wl *WorkflowList) updateStats() {
+	wl.applyProfileTitle()
 	if wl.app == nil {
 		return
 	}
