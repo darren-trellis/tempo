@@ -13,7 +13,6 @@ import (
 	"github.com/galaxy-io/tempo/internal/config"
 	"github.com/galaxy-io/tempo/internal/temporal"
 	"github.com/gdamore/tcell/v2"
-	"github.com/rivo/tview"
 )
 
 type workflowColumn struct {
@@ -21,6 +20,8 @@ type workflowColumn struct {
 	header string
 	width  int
 	custom *customColumnProgram
+	// tree marks the column that draws the tree's hierarchy glyphs.
+	tree bool
 }
 
 func (wl *WorkflowList) columnLayout() []workflowColumn {
@@ -50,7 +51,25 @@ func (wl *WorkflowList) columnLayout() []workflowColumn {
 			cols = append(cols, workflowColumn{id: col.ID, header: header, width: col.Width})
 		}
 	}
+	markWorkflowTreeColumn(cols, cfg.WorkflowTreeColumnID())
 	return cols
+}
+
+// markWorkflowTreeColumn picks the column that draws the tree's glyphs: the
+// one asked for, or the first column when that one is hidden, so the tree
+// never loses its shape.
+func markWorkflowTreeColumn(cols []workflowColumn, id string) {
+	if len(cols) == 0 {
+		return
+	}
+	at := 0
+	for i, col := range cols {
+		if col.id == id {
+			at = i
+			break
+		}
+	}
+	cols[at].tree = true
 }
 
 func (wl *WorkflowList) reportCustomColumnError(def config.CustomColumnConfig, program *customColumnProgram) {
@@ -96,21 +115,23 @@ func workflowColumnHeader(id string) (string, bool) {
 	}
 }
 
+// cell renders w's value for the column. prefix is the row's tree glyphs,
+// drawn only in the tree column.
 func (c workflowColumn) cell(now time.Time, w temporal.Workflow, prefix, timeFmt string) components.TableCell {
+	if !c.tree {
+		prefix = ""
+	}
 	var text string
 	var status *theme.Status
 	switch {
 	case c.id == config.WorkflowColumnStatus:
-		text, status = workflowStatusText(w, c.width)
+		text, status = workflowStatusText(w, max(c.width-len([]rune(prefix)), 1))
+		text = colorizeWorkflowTreePrefix(prefix+text, prefix)
 	case c.custom != nil:
-		text = tview.Escape(fitWidth(c.custom.value(now, w, timeFmt), c.width))
+		text = colorizeWorkflowTreePrefix(fitWidth(prefix+c.custom.value(now, w, timeFmt), c.width), prefix)
 	default:
 		text, status = workflowColumnValue(c.id, now, w, timeFmt)
-		if c.id == config.WorkflowColumnWorkflowID && prefix != "" {
-			text = colorizeWorkflowTreePrefix(fitWidth(prefix+text, c.width), prefix)
-		} else {
-			text = tview.Escape(fitWidth(text, c.width))
-		}
+		text = colorizeWorkflowTreePrefix(fitWidth(prefix+text, c.width), prefix)
 	}
 	return components.TableCell{
 		Text:       text,
@@ -468,6 +489,12 @@ type tableColumnEditor struct {
 	restore  func([]config.WorkflowColumnConfig)
 	commit   func([]config.WorkflowColumnConfig) error
 	redraw   func()
+	// tree reads and setTree applies the column that draws the tree's
+	// glyphs, and defaultTree is the one a reset picks. A table without a
+	// tree leaves them unset.
+	tree        func() string
+	setTree     func(string)
+	defaultTree string
 }
 
 func (wl *WorkflowList) showColumnEditor() {
@@ -487,7 +514,10 @@ func (wl *WorkflowList) showColumnEditor() {
 			}
 			return nil
 		},
-		redraw: wl.populateTable,
+		redraw:      wl.populateTable,
+		tree:        func() string { return wl.app.Config().WorkflowTreeColumnID() },
+		setTree:     func(id string) { wl.app.Config().SetWorkflowTreeColumn(id) },
+		defaultTree: config.WorkflowColumnWorkflowID,
 	})
 }
 
@@ -518,6 +548,12 @@ func (wl *WorkflowList) showTableColumnEditor(spec tableColumnEditor) {
 	table.SetBorder(false)
 
 	original := spec.snapshot()
+	hasTree := spec.tree != nil && spec.setTree != nil
+	var originalTree, treeID string
+	if hasTree {
+		originalTree = spec.tree()
+		treeID = originalTree
+	}
 
 	editedColumns := func() []config.WorkflowColumnConfig {
 		var cols []config.WorkflowColumnConfig
@@ -531,6 +567,9 @@ func (wl *WorkflowList) showTableColumnEditor(spec tableColumnEditor) {
 	}
 
 	preview := func() {
+		if hasTree {
+			spec.setTree(treeID)
+		}
 		spec.preview(editedColumns())
 	}
 
@@ -540,6 +579,9 @@ func (wl *WorkflowList) showTableColumnEditor(spec tableColumnEditor) {
 		if committed {
 			return
 		}
+		if hasTree {
+			spec.setTree(originalTree)
+		}
 		spec.restore(original)
 	}
 
@@ -547,17 +589,29 @@ func (wl *WorkflowList) showTableColumnEditor(spec tableColumnEditor) {
 	refresh = func() {
 		row := table.SelectedRow()
 		table.ClearRows()
-		table.SetHeaders("COLUMN", "WIDTH", "VISIBLE")
+		headers := []string{"COLUMN", "WIDTH", "VISIBLE"}
+		if hasTree {
+			headers = append(headers, "TREE")
+		}
+		table.SetHeaders(headers...)
 		for _, item := range items {
 			header, _ := spec.header(item.id)
 			visible := "yes"
 			if item.hidden {
 				visible = "no"
 			}
+			cells := []string{header, strconv.Itoa(item.width), visible}
+			if hasTree {
+				tree := ""
+				if item.id == treeID {
+					tree = "*"
+				}
+				cells = append(cells, tree)
+			}
 			if item.hidden {
-				table.AddRowWithColor(theme.FgDim(), header, strconv.Itoa(item.width), visible)
+				table.AddRowWithColor(theme.FgDim(), cells...)
 			} else {
-				table.AddRow(header, strconv.Itoa(item.width), visible)
+				table.AddRow(cells...)
 			}
 		}
 		if row < 0 {
@@ -619,12 +673,29 @@ func (wl *WorkflowList) showTableColumnEditor(spec tableColumnEditor) {
 		table.SelectRow(row)
 	}
 
+	// markTree draws the tree's glyphs in the selected column, showing it if
+	// it was hidden.
+	markTree := func() {
+		row := table.SelectedRow()
+		if !hasTree || row < 0 || row >= len(items) {
+			return
+		}
+		treeID = items[row].id
+		items[row].hidden = false
+		refresh()
+		preview()
+		table.SelectRow(row)
+	}
+
 	var saving bool
 	save := func() {
 		if saving {
 			return
 		}
 		saving = true
+		if hasTree {
+			spec.setTree(treeID)
+		}
 		if err := spec.commit(editedColumns()); err != nil {
 			saving = false
 			wl.app.ToastError("Failed to save columns: " + err.Error())
@@ -669,8 +740,13 @@ func (wl *WorkflowList) showTableColumnEditor(spec tableColumnEditor) {
 			toggle()
 			return true
 		}).
+		OnRune('*', func(e *tcell.EventKey) bool {
+			markTree()
+			return true
+		}).
 		OnRune('r', func(e *tcell.EventKey) bool {
 			items = spec.defaults()
+			treeID = spec.defaultTree
 			refresh()
 			preview()
 			table.SelectRow(0)
@@ -714,10 +790,15 @@ func (wl *WorkflowList) showTableColumnEditor(spec tableColumnEditor) {
 		{Key: "J/K", Description: "Reorder"},
 		{Key: "+/-", Description: "Width"},
 		{Key: "space", Description: "Hide"},
+	}
+	if hasTree {
+		hints = append(hints, components.KeyHint{Key: "*", Description: "Tree Column"})
+	}
+	hints = append(hints, []components.KeyHint{
 		{Key: "r", Description: "Reset"},
 		{Key: "enter", Description: "Save"},
 		{Key: "esc", Description: "Cancel"},
-	}
+	}...)
 	modal.SetHints(hints)
 	modal.SetOnSubmit(save)
 	modal.SetOnDismiss(func() bool {

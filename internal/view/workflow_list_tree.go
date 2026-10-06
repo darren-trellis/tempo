@@ -7,6 +7,7 @@ import (
 	"github.com/atterpac/jig/theme"
 	"github.com/galaxy-io/tempo/internal/temporal"
 	"github.com/gdamore/tcell/v2"
+	"github.com/rivo/tview"
 )
 
 const (
@@ -187,15 +188,17 @@ func (wl *WorkflowList) foldAllWorkflowParents() {
 	wl.workflowCollapsed = collapsed
 }
 
+// colorizeWorkflowTreePrefix dims the tree glyphs that start text and escapes
+// the rest for tview.
 func colorizeWorkflowTreePrefix(text, prefix string) string {
 	if prefix == "" {
-		return text
+		return tview.Escape(text)
 	}
 	dim := "[" + theme.TagFgDim() + "]"
 	if strings.HasPrefix(text, prefix) && len(text) >= len(prefix) {
-		return dim + prefix + "[-]" + text[len(prefix):]
+		return dim + prefix + "[-]" + tview.Escape(text[len(prefix):])
 	}
-	return dim + text + "[-]"
+	return dim + tview.Escape(text) + "[-]"
 }
 
 func workflowTreePrefix(isLastAtLevel []bool) string {

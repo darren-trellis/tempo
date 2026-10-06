@@ -123,7 +123,7 @@ func TestColorizeWorkflowTreePrefix(t *testing.T) {
 }
 
 func TestWorkflowIDCellDimsTreePrefix(t *testing.T) {
-	col := workflowColumn{id: config.WorkflowColumnWorkflowID, width: 40}
+	col := workflowColumn{id: config.WorkflowColumnWorkflowID, width: 40, tree: true}
 	cell := col.cell(time.Now(), temporal.Workflow{ID: "child-wf"}, "└── ", config.TimeFormatRelative)
 	if !strings.HasPrefix(cell.Text, "["+theme.TagFgDim()+"]└── [-]") {
 		t.Fatalf("expected dim tree prefix, got %q", cell.Text)
@@ -355,4 +355,45 @@ func selectWorkflowByID(wl *WorkflowList, id string) bool {
 		}
 	}
 	return false
+}
+
+func TestTreeGlyphsDrawInTheConfiguredColumn(t *testing.T) {
+	cols := []workflowColumn{
+		{id: config.WorkflowColumnWorkflowID, width: 40},
+		{id: config.WorkflowColumnType, width: 40},
+	}
+	markWorkflowTreeColumn(cols, config.WorkflowColumnType)
+	w := temporal.Workflow{ID: "child-wf", Type: "OrderWorkflow"}
+	now := time.Now()
+	dim := "[" + theme.TagFgDim() + "]└── [-]"
+
+	if id := cols[0].cell(now, w, "└── ", config.TimeFormatRelative).Text; strings.Contains(id, "└") {
+		t.Fatalf("the ID column should draw no glyphs, got %q", id)
+	}
+	if typ := cols[1].cell(now, w, "└── ", config.TimeFormatRelative).Text; !strings.HasPrefix(typ, dim+"OrderWorkflow") {
+		t.Fatalf("the type column should draw the glyphs, got %q", typ)
+	}
+}
+
+func TestTreeGlyphsFallBackToTheFirstColumnWhenTheirsIsHidden(t *testing.T) {
+	cols := []workflowColumn{
+		{id: config.WorkflowColumnStatus, width: 12},
+		{id: config.WorkflowColumnType, width: 24},
+	}
+	markWorkflowTreeColumn(cols, config.WorkflowColumnWorkflowID)
+	if !cols[0].tree || cols[1].tree {
+		t.Fatalf("the first column should draw the glyphs, got %+v", cols)
+	}
+	cell := cols[0].cell(time.Now(), temporal.Workflow{ID: "wf", Status: "Running"}, "└── ", config.TimeFormatRelative)
+	if !strings.HasPrefix(cell.Text, "["+theme.TagFgDim()+"]└── [-]") || cell.Status == nil {
+		t.Fatalf("the status column should draw the glyphs and keep its color, got %+v", cell)
+	}
+}
+
+func TestTreeCellEscapesItsText(t *testing.T) {
+	col := workflowColumn{id: config.WorkflowColumnWorkflowID, width: 40, tree: true}
+	cell := col.cell(time.Now(), temporal.Workflow{ID: "wf-[red]"}, "└── ", config.TimeFormatRelative)
+	if !strings.Contains(cell.Text, "wf-[red[]") {
+		t.Fatalf("brackets in the value should be escaped, got %q", cell.Text)
+	}
 }

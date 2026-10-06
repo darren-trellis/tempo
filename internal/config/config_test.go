@@ -834,3 +834,19 @@ profiles:
 		t.Fatalf("got %+v", only)
 	}
 }
+
+func TestWorkflowTreeColumnDefaultsToTheWorkflowID(t *testing.T) {
+	var c *Config
+	if got := c.WorkflowTreeColumnID(); got != WorkflowColumnWorkflowID {
+		t.Fatalf("nil config tree column=%q", got)
+	}
+	c = &Config{}
+	c.SetWorkflowTreeColumn(WorkflowColumnType)
+	if c.WorkflowTreeColumn != WorkflowColumnType || c.WorkflowTreeColumnID() != WorkflowColumnType {
+		t.Fatalf("tree column=%q", c.WorkflowTreeColumn)
+	}
+	c.SetWorkflowTreeColumn(WorkflowColumnWorkflowID)
+	if c.WorkflowTreeColumn != "" {
+		t.Fatalf("the default should stay out of the config, got %q", c.WorkflowTreeColumn)
+	}
+}

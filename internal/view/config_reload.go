@@ -87,6 +87,7 @@ func (a *App) applyLoadedConfig(cfg *config.Config, force bool) {
 	oldIOTree := false
 	oldIOWrap := false
 	oldRootsOnly := false
+	oldTreeColumn := config.WorkflowColumnWorkflowID
 	if old != nil {
 		oldTheme = old.Theme
 		oldCols = old.WorkflowColumnLayout()
@@ -101,6 +102,7 @@ func (a *App) applyLoadedConfig(cfg *config.Config, force bool) {
 		oldIOTree = old.ShouldShowIOTree()
 		oldIOWrap = old.ShouldWrapIO()
 		oldRootsOnly = old.ShouldFilterRootsOnly()
+		oldTreeColumn = old.WorkflowTreeColumnID()
 		if conn, ok := old.GetProfile(oldProfile); ok {
 			oldConn = conn
 		}
@@ -114,7 +116,8 @@ func (a *App) applyLoadedConfig(cfg *config.Config, force bool) {
 	needReconnect := hasConn && (newProfile != oldProfile || !config.ConnectionSettingsEqual(oldConn, newConn))
 	needTheme := cfg.Theme != "" && cfg.Theme != oldTheme
 	needColumns := !workflowColumnsEqual(cfg.WorkflowColumnLayout(), oldCols) ||
-		!slices.Equal(cfg.CustomColumns, oldCustomCols)
+		!slices.Equal(cfg.CustomColumns, oldCustomCols) ||
+		cfg.WorkflowTreeColumnID() != oldTreeColumn
 	needActivityColumns := !workflowColumnsEqual(cfg.ActivityColumnLayout(), oldActivityCols)
 	needWorkflowTime := cfg.ResolvedWorkflowTimeFormat() != oldWorkflowTime
 	needActivityTime := cfg.ResolvedActivityTimeFormat() != oldActivityTime

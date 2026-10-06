@@ -257,3 +257,66 @@ func TestActivityColumnEditorOpensFromPreview(t *testing.T) {
 		t.Fatal("the activity column editor should be a modal page")
 	}
 }
+
+// * picks the column that draws the tree's glyphs, which previews like any
+// other edit: escape puts the old one back and enter keeps it.
+func TestColumnEditorStarPicksTheTreeColumn(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	cfg := config.DefaultConfig()
+	a := NewAppWithProvider(nil, "default", cfg, "local")
+	wl := NewWorkflowList(a, "default")
+	a.app.Pages().Push(wl)
+
+	pickSecond := func() {
+		wl.showColumnEditor()
+		pressModal(a, tcell.NewEventKey(tcell.KeyDown, 0, tcell.ModNone))
+		pressModal(a, tcell.NewEventKey(tcell.KeyRune, '*', tcell.ModNone))
+	}
+
+	pickSecond()
+	if got := cfg.WorkflowTreeColumnID(); got != config.WorkflowColumnParentID {
+		t.Fatalf("* should preview the tree column, got %q", got)
+	}
+	pressModal(a, tcell.NewEventKey(tcell.KeyEscape, 0, tcell.ModNone))
+	if cfg.WorkflowTreeColumn != "" {
+		t.Fatalf("escape should put the tree column back, got %q", cfg.WorkflowTreeColumn)
+	}
+
+	pickSecond()
+	pressModal(a, tcell.NewEventKey(tcell.KeyEnter, 0, tcell.ModNone))
+	if cfg.WorkflowTreeColumn != config.WorkflowColumnParentID {
+		t.Fatalf("enter should keep the tree column, got %q", cfg.WorkflowTreeColumn)
+	}
+
+	wl.showColumnEditor()
+	pressModal(a, tcell.NewEventKey(tcell.KeyRune, 'r', tcell.ModNone))
+	pressModal(a, tcell.NewEventKey(tcell.KeyEnter, 0, tcell.ModNone))
+	if cfg.WorkflowTreeColumn != "" {
+		t.Fatalf("reset should go back to the workflow ID, got %q", cfg.WorkflowTreeColumn)
+	}
+}
+
+// Marking a hidden column as the tree column shows it.
+func TestColumnEditorStarShowsAHiddenColumn(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	cfg := config.DefaultConfig()
+	a := NewAppWithProvider(nil, "default", cfg, "local")
+	wl := NewWorkflowList(a, "default")
+	a.app.Pages().Push(wl)
+
+	wl.showColumnEditor()
+	pressModal(a, tcell.NewEventKey(tcell.KeyDown, 0, tcell.ModNone))
+	pressModal(a, tcell.NewEventKey(tcell.KeyRune, ' ', tcell.ModNone))
+	pressModal(a, tcell.NewEventKey(tcell.KeyRune, '*', tcell.ModNone))
+	pressModal(a, tcell.NewEventKey(tcell.KeyEnter, 0, tcell.ModNone))
+
+	shown := false
+	for _, col := range cfg.WorkflowColumnLayout() {
+		if col.ID == config.WorkflowColumnParentID {
+			shown = true
+		}
+	}
+	if !shown || cfg.WorkflowTreeColumnID() != config.WorkflowColumnParentID {
+		t.Fatalf("columns=%+v tree=%q", cfg.WorkflowColumnLayout(), cfg.WorkflowTreeColumnID())
+	}
+}

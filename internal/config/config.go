@@ -225,6 +225,9 @@ type Config struct {
 	// FilterRootsOnly makes a filter in the tree view pick root workflows
 	// only, and shows every child of those roots whether it matches or not.
 	FilterRootsOnly *bool `yaml:"filter_roots_only,omitempty"`
+	// WorkflowTreeColumn is the workflows column that draws the tree's
+	// hierarchy glyphs. Defaults to the workflow ID.
+	WorkflowTreeColumn string `yaml:"workflow_tree_column,omitempty"`
 	// How long a worker may go unseen before the workers tab calls it stale,
 	// written as a duration such as "45s" or "2m", or as a plain number of
 	// seconds.
@@ -1231,6 +1234,27 @@ func (c *Config) WorkflowColumnLayout() []WorkflowColumnConfig {
 		return c.DefaultWorkflowColumnLayout()
 	}
 	return ResolveWorkflowColumns(c.WorkflowColumns)
+}
+
+// WorkflowTreeColumnID returns the workflows column that draws the tree's
+// hierarchy glyphs.
+func (c *Config) WorkflowTreeColumnID() string {
+	if c == nil || strings.TrimSpace(c.WorkflowTreeColumn) == "" {
+		return WorkflowColumnWorkflowID
+	}
+	return strings.TrimSpace(c.WorkflowTreeColumn)
+}
+
+// SetWorkflowTreeColumn stores the tree column. The default is omitted from
+// yaml.
+func (c *Config) SetWorkflowTreeColumn(id string) {
+	if c == nil {
+		return
+	}
+	if id = strings.TrimSpace(id); id == WorkflowColumnWorkflowID {
+		id = ""
+	}
+	c.WorkflowTreeColumn = id
 }
 
 // SetWorkflowColumns stores a resolved layout. Defaults are omitted from yaml.
