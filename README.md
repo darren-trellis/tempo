@@ -166,6 +166,8 @@ preview_load_delay: 200ms
 
 `filter_roots_only: true` makes a filter in the tree view pick root workflows only, those no other workflow started, and shows every child of those roots under them whether it matches or not. Children are looked up by their parent's ID as the roots load. It is off by default, and the flat list and `/` searches always filter every workflow.
 
+Whether or not it is on, when a filter in the tree view matches a child whose parent it does not, the tree fetches the parent and shows all of that parent's children and their descendants, not just the ones that matched. A `/` search shows only its matches under the parent.
+
 `show_scrollbars` draws a track and thumb on overflow tables, text views, and the event tree (default on). Set `show_scrollbars: false` to hide them.
 
 `preview_load_delay` is how long preview waits after you highlight a workflow before fetching its history (default `200ms`). That keeps rapid movement from firing a request per row. Set `0` to load immediately. Values are Go durations, clamped to 2s.
