@@ -116,6 +116,9 @@ The **Primary** pane is Workflows, Task Queues, Schedules, or Workers. **Seconda
 | `:` | Command mode |
 | `Ctrl+O` | Toggle mouse support (off allows terminal text selection) |
 | `/` | Filter (in workflow list) |
+| `f` | Add a temporary filter clause (in workflow list) |
+| `F` | Manage saved filters (in workflow list) |
+| `S` | Save temporary filter clauses into the active filter, or as a new one on All (in workflow list) |
 
 **Workflow Actions**
 | Key | Action |
