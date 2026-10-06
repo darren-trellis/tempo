@@ -24,13 +24,8 @@ func treeModeHint(tree bool) string {
 }
 
 func (wl *WorkflowList) toggleWorkflowTree() {
-	rootsOnly := wl.rootsOnlyFilter()
 	wl.workflowTreeMode = !wl.workflowTreeMode
 	id, runID, _ := wl.CommandContext()
-	if wl.rootsOnlyFilter() != rootsOnly {
-		// The server is asked for different workflows in each view.
-		wl.loadData()
-	}
 	wl.applyFilter()
 	wl.updatePanelTitle()
 	if id != "" {

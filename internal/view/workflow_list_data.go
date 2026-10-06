@@ -155,7 +155,6 @@ func (wl *WorkflowList) startWindow(live bool) {
 		wl.liveBusy = false
 		return
 	}
-	resolvedQuery = wl.listQuery(resolvedQuery)
 
 	provider := wl.app.Provider()
 	if provider == nil {
@@ -330,7 +329,7 @@ func (wl *WorkflowList) refreshCounts() {
 			wl.liveBusy = false
 			return
 		}
-		query = wl.listQuery(resolved)
+		query = resolved
 	}
 	gen := wl.pageGen
 	wl.setRefreshing(true)

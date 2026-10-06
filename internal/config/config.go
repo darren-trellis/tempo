@@ -222,9 +222,6 @@ type Config struct {
 	SavedFiltersPosition string                   `yaml:"saved_filters_position,omitempty"`
 	ModalShadow          string                   `yaml:"modal_shadow,omitempty"`
 	WorkflowPageSize     *int                     `yaml:"workflow_page_size,omitempty"`
-	// FilterRootsOnly makes a filter in the tree view pick root workflows
-	// only, and shows every child of those roots whether it matches or not.
-	FilterRootsOnly *bool `yaml:"filter_roots_only,omitempty"`
 	// WorkflowTreeColumn is the workflows column that draws the tree's
 	// hierarchy glyphs. Defaults to the workflow ID.
 	WorkflowTreeColumn string `yaml:"workflow_tree_column,omitempty"`
@@ -357,15 +354,6 @@ func (c *Config) ShouldColorCodeWorkflows() bool {
 		return false
 	}
 	return *c.ColorCodeWorkflows
-}
-
-// ShouldFilterRootsOnly reports whether a filter in the tree view applies to
-// root workflows only. Defaults to off.
-func (c *Config) ShouldFilterRootsOnly() bool {
-	if c == nil || c.FilterRootsOnly == nil {
-		return false
-	}
-	return *c.FilterRootsOnly
 }
 
 func (c *Config) ShouldShowIOTree() bool {

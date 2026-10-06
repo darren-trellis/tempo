@@ -86,7 +86,6 @@ func (a *App) applyLoadedConfig(cfg *config.Config, force bool) {
 	oldTertiaryTab := ""
 	oldIOTree := false
 	oldIOWrap := false
-	oldRootsOnly := false
 	oldTreeColumn := config.WorkflowColumnWorkflowID
 	if old != nil {
 		oldTheme = old.Theme
@@ -101,7 +100,6 @@ func (a *App) applyLoadedConfig(cfg *config.Config, force bool) {
 		oldTertiaryTab = old.ResolvedTertiaryTab()
 		oldIOTree = old.ShouldShowIOTree()
 		oldIOWrap = old.ShouldWrapIO()
-		oldRootsOnly = old.ShouldFilterRootsOnly()
 		oldTreeColumn = old.WorkflowTreeColumnID()
 		if conn, ok := old.GetProfile(oldProfile); ok {
 			oldConn = conn
@@ -144,8 +142,6 @@ func (a *App) applyLoadedConfig(cfg *config.Config, force bool) {
 				}
 				if cfg.WorkflowPageLimit() != oldPageSize {
 					wl.refresh()
-				} else if cfg.ShouldFilterRootsOnly() != oldRootsOnly {
-					wl.loadData()
 				}
 				if cfg.ResolvedPrimaryTab() != oldPrimaryTab ||
 					cfg.ResolvedSecondaryTab() != oldSecondaryTab ||

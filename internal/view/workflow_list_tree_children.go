@@ -9,14 +9,11 @@ import (
 )
 
 const (
-	// rootsOnlyClause narrows a filter to workflows that no other workflow
-	// started.
-	rootsOnlyClause = "ParentWorkflowId IS NULL"
 	// treeChildPageSize is how many children one page of a child lookup asks
 	// for, and treeChildPages how many pages one batch of parents may take.
 	treeChildPageSize = 1000
 	treeChildPages    = 5
-	// treeChildDepth is how many generations below a root are looked up.
+	// treeChildDepth is how many generations below a match are looked up.
 	treeChildDepth = 16
 )
 
@@ -89,61 +86,30 @@ func (t *childLookup) accept(gen uint64, ids []string, found map[string][]tempor
 	return changed
 }
 
-// rootsOnlyFilter reports whether the list's filter picks root workflows only,
-// leaving their children to be looked up whatever the filter says. A / search
-// that moved to the server is looking for a workflow, root or not, so it is
-// left alone.
-func (wl *WorkflowList) rootsOnlyFilter() bool {
-	return wl != nil && wl.workflowTreeMode && wl.visibilityQuery != "" &&
-		wl.app != nil && wl.app.Config().ShouldFilterRootsOnly() && !wl.searchOwnsQuery()
-}
-
-// listQuery is the query the server is asked for the list's pages and counts.
-func (wl *WorkflowList) listQuery(resolved string) string {
-	if !wl.rootsOnlyFilter() {
-		return resolved
-	}
-	return andFilterQueries(resolved, rootsOnlyClause)
-}
-
-// withTreeRelatives adds the parents of workflows that the tree needs and the
-// list did not load, and the children of the workflows whose families the
-// tree shows in full.
+// withTreeRelatives adds what the tree shows around the workflows a filter
+// matched: every ancestor, so each match sits where it belongs, and every
+// descendant. A sibling of a match that did not match itself stays out.
 func (wl *WorkflowList) withTreeRelatives(workflows []temporal.Workflow) []temporal.Workflow {
 	withParents := wl.withTreeParents(workflows)
-	return wl.withTreeChildren(withParents, wl.treeFamilyRoots(workflows, withParents))
-}
-
-// treeFamilyRoots picks the workflows whose every descendant the tree shows:
-// each root when the filter picks roots only, and otherwise each parent that
-// was fetched because the list held only some of its children. Those are the
-// ones the filter matched, so without this a parent would show only them. A
-// / search that moved to the server is looking for a workflow, so its
-// parents' other children are left out.
-func (wl *WorkflowList) treeFamilyRoots(loaded, withParents []temporal.Workflow) []temporal.Workflow {
-	if wl.rootsOnlyFilter() {
+	if !wl.treeShowsDescendants() {
 		return withParents
 	}
-	if len(withParents) == len(loaded) || wl.searchOwnsQuery() {
-		return nil
-	}
-	isLoaded := make(map[string]bool, len(loaded))
-	for _, w := range loaded {
-		isLoaded[w.ID] = true
-	}
-	var fetched []temporal.Workflow
-	for _, w := range withParents {
-		if !isLoaded[w.ID] {
-			fetched = append(fetched, w)
-		}
-	}
-	return fetched
+	return wl.withTreeChildren(withParents, workflows)
+}
+
+// treeShowsDescendants reports whether the tree looks up the descendants of
+// the workflows the list loaded. Without a filter the list already holds
+// every workflow, and a search, local or moved to the server, is looking for
+// a workflow, so it shows just the matches.
+func (wl *WorkflowList) treeShowsDescendants() bool {
+	return wl != nil && wl.workflowTreeMode && wl.visibilityQuery != "" &&
+		wl.filterText == "" && !wl.searchOwnsQuery()
 }
 
 // withTreeChildren adds every descendant of roots that has been fetched to
-// workflows, and asks for the ones it does not have yet. The filter cannot
-// match those children, so without this a root would show none of them, or
-// only the ones the filter matched.
+// workflows, and asks for the ones it does not have yet. The filter need not
+// match those descendants, so without this a match would show only the ones
+// it did.
 func (wl *WorkflowList) withTreeChildren(workflows, roots []temporal.Workflow) []temporal.Workflow {
 	if len(roots) == 0 {
 		return workflows
