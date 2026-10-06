@@ -399,10 +399,32 @@ func (wl *WorkflowList) revealIOSearch() {
 		return
 	}
 	view, query := wl.focusedIOView()
+	// The tree narrows to the keys that hold the search. Plain text, or a
+	// payload that is not JSON, only scrolls to the first match.
+	if tree := wl.ioTreeFor(view); tree != nil {
+		tree.setFilter(query)
+		if tree.active() {
+			wl.syncSearchTitles()
+			return
+		}
+	}
 	if query != "" && view != nil {
 		scrollTextViewToMatch(view, query)
 	}
 	wl.syncSearchTitles()
+}
+
+// ioTreeFor returns the JSON tree drawn in view, or nil when it has none.
+func (wl *WorkflowList) ioTreeFor(view *tview.TextView) *jsonTreeSelection {
+	switch {
+	case view == nil:
+		return nil
+	case view == wl.workflowIOView:
+		return wl.workflowIOTree
+	case view == wl.eventDetail:
+		return wl.eventDetailTree
+	}
+	return nil
 }
 
 func (wl *WorkflowList) focusedIOView() (*tview.TextView, string) {
@@ -440,7 +462,9 @@ func (wl *WorkflowList) syncSearchTitles() {
 	if wl.eventDetailPanel != nil {
 		view, query := wl.focusedIOView()
 		count := 0
-		if view != nil && query != "" {
+		if tree := wl.ioTreeFor(view); tree.filtering() {
+			count = tree.matches
+		} else if view != nil && query != "" {
 			count = countSearchMatches(view.GetText(true), query)
 		}
 		wl.eventDetailPanel.SetTitle(searchLabel(query, count))

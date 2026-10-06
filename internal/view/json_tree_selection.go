@@ -36,6 +36,10 @@ type jsonTreeSelection struct {
 	// unfocused hides the highlight while the pane does not have focus, so
 	// the row stays selected but does not look like where keys go.
 	unfocused bool
+	// filter keeps only the keys that hold it, as a / search does, and
+	// matches counts them.
+	filter  string
+	matches int
 }
 
 func newJSONTreeSelection(view *tview.TextView) *jsonTreeSelection {
@@ -72,6 +76,49 @@ func newJSONTreeSelection(view *tview.TextView) *jsonTreeSelection {
 		return x, y, width, height
 	})
 	return selection
+}
+
+// buildRows lays out the payload under the filter. A filter that matches no
+// key leaves a single row saying so rather than the whole payload.
+func (s *jsonTreeSelection) buildRows() ([]jsonTreeRow, bool) {
+	rows, matches, ok := buildFilteredJSONTreeRows(s.content, s.folded, s.filter)
+	s.matches = matches
+	if ok && len(rows) == 0 && s.filter != "" {
+		rows = []jsonTreeRow{{text: jsonTreeDim("No keys match " + tview.Escape(s.filter))}}
+	}
+	return rows, ok
+}
+
+// setFilter keeps only the keys that hold query, what is under them, and the
+// rows that lead to them, and moves the highlight to the first match. An
+// empty query shows the whole payload again.
+func (s *jsonTreeSelection) setFilter(query string) {
+	if s == nil || s.filter == query {
+		return
+	}
+	s.filter = query
+	if !s.active() {
+		return
+	}
+	s.setContent(s.source, true)
+	if index, found := s.firstMatch(); found {
+		s.selectRow(index)
+	}
+}
+
+// firstMatch finds the first row whose key holds the filter.
+func (s *jsonTreeSelection) firstMatch() (int, bool) {
+	for i, row := range s.rows {
+		if row.match {
+			return i, true
+		}
+	}
+	return 0, false
+}
+
+// filtering reports whether a filter is narrowing the drawn tree.
+func (s *jsonTreeSelection) filtering() bool {
+	return s != nil && s.filter != "" && s.active()
 }
 
 // setFocused shows the highlight only while the tree's pane has focus.
@@ -125,13 +172,15 @@ func (s *jsonTreeSelection) setContent(content string, enabled bool) bool {
 			}
 		})
 	}
-	rows, ok := buildJSONTreeRows(s.content, s.folded)
+	rows, ok := s.buildRows()
 	if !ok || len(rows) == 0 {
 		return false
 	}
 	s.setRows(rows)
 	// Added entries can shift rows, so follow the highlighted one by path.
 	if index, found := s.indexOfPath(keepPath); keepPath != "" && found {
+		s.selected = index
+	} else if index, found := s.firstMatch(); fresh && found {
 		s.selected = index
 	}
 	if s.selected >= len(rows) {
@@ -193,7 +242,7 @@ func (s *jsonTreeSelection) toggleFold() {
 	} else {
 		s.folded[row.path] = true
 	}
-	rows, built := buildJSONTreeRows(s.content, s.folded)
+	rows, built := s.buildRows()
 	if !built || len(rows) == 0 {
 		return
 	}

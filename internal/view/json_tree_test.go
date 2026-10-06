@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/atterpac/jig/theme"
+	"github.com/galaxy-io/tempo/internal/config"
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 )
@@ -449,5 +450,119 @@ func TestIOTreesFollowTheIOPaneFocus(t *testing.T) {
 	wl.applyFocusStyles()
 	if wl.workflowIOTree.unfocused || wl.eventDetailTree.unfocused {
 		t.Fatal("the I/O trees should highlight while their pane has focus")
+	}
+}
+
+func jsonTreeRowPaths(rows []jsonTreeRow) string {
+	paths := make([]string, len(rows))
+	for i, row := range rows {
+		paths[i] = strings.ReplaceAll(row.path, "\x00", ".")
+	}
+	return strings.Join(paths, ",")
+}
+
+const jsonTreeFilterPayload = `{"customer":{"ID":1,"name":"x"},"order":{"items":[{"sku":"a","id":2},{"sku":"b"}]},"total":5}`
+
+// A filter keeps the keys that hold it, case aside, and the rows that lead to
+// them. A sibling that holds no match is dropped, and an array index is not a
+// key, so it never matches by itself.
+func TestJSONTreeFilterKeepsMatchingKeysAndTheirAncestors(t *testing.T) {
+	rows, matches, ok := buildFilteredJSONTreeRows(jsonTreeFilterPayload, nil, "Id")
+	if !ok {
+		t.Fatal("expected JSON")
+	}
+	if got := jsonTreeRowPaths(rows); got != "customer,customer.ID,order,order.items,order.items.0,order.items.0.id" {
+		t.Fatalf("rows=%s", got)
+	}
+	if matches != 2 {
+		t.Fatalf("matches=%d", matches)
+	}
+	for _, row := range rows {
+		want := strings.HasSuffix(strings.ToLower(row.path), "\x00id")
+		if row.match != want {
+			t.Fatalf("row %q match=%v", row.path, row.match)
+		}
+		if row.foldable && !row.match {
+			t.Fatalf("a row shown only to lead to a match should not fold, %q", row.path)
+		}
+	}
+
+	if _, matches, _ := buildFilteredJSONTreeRows(jsonTreeFilterPayload, nil, "1"); matches != 0 {
+		t.Fatalf("an array index should not match, matches=%d", matches)
+	}
+}
+
+// Everything under a matching key shows, so its value can be read.
+func TestJSONTreeFilterShowsWhatIsUnderAMatch(t *testing.T) {
+	rows, matches, _ := buildFilteredJSONTreeRows(jsonTreeFilterPayload, nil, "customer")
+	if got := jsonTreeRowPaths(rows); got != "customer,customer.ID,customer.name" || matches != 1 {
+		t.Fatalf("rows=%s matches=%d", got, matches)
+	}
+}
+
+// A fold the reader made does not hide a match: the rows that lead to it stay
+// open while the filter is on, and the fold is back once it is cleared.
+func TestJSONTreeFilterOpensFoldedAncestors(t *testing.T) {
+	folded := map[string]bool{"customer": true}
+	rows, _, _ := buildFilteredJSONTreeRows(jsonTreeFilterPayload, folded, "name")
+	if got := jsonTreeRowPaths(rows); got != "customer,customer.name" {
+		t.Fatalf("rows=%s", got)
+	}
+	rows, _, _ = buildFilteredJSONTreeRows(jsonTreeFilterPayload, folded, "")
+	if got := jsonTreeRowPaths(rows); got != "customer,order,order.items,order.items.0,order.items.0.id,order.items.0.sku,order.items.1,order.items.1.sku,total" {
+		t.Fatalf("rows=%s", got)
+	}
+}
+
+func TestJSONTreeSelectionFiltersAndSelectsTheFirstMatch(t *testing.T) {
+	view := tview.NewTextView().SetDynamicColors(true)
+	selection := newJSONTreeSelection(view)
+	if !selection.setContent(jsonTreeFilterPayload, true) {
+		t.Fatal("expected selectable JSON tree")
+	}
+
+	selection.setFilter("sku")
+	if row, _ := selection.selectedRow(); row.path != "order\x00items\x000\x00sku" {
+		t.Fatalf("the highlight should land on the first match, got %q", row.path)
+	}
+	if !selection.filtering() || selection.matches != 2 || len(selection.rows) != 6 {
+		t.Fatalf("matches=%d rows=%s", selection.matches, jsonTreeRowPaths(selection.rows))
+	}
+
+	selection.setFilter("nothing")
+	if !selection.active() || len(selection.rows) != 1 || !strings.Contains(view.GetText(true), "No keys match nothing") {
+		t.Fatalf("no match should say so, text=%q", view.GetText(true))
+	}
+	if selection.matches != 0 {
+		t.Fatalf("matches=%d", selection.matches)
+	}
+
+	selection.setFilter("")
+	if selection.filtering() || len(selection.rows) != 11 {
+		t.Fatalf("clearing the filter should show everything, rows=%s", jsonTreeRowPaths(selection.rows))
+	}
+}
+
+// The pane's / search filters the tree in io_tree mode and only scrolls in
+// plain text.
+func TestIOSearchFiltersOnlyTheTree(t *testing.T) {
+	on := true
+	wl := NewWorkflowList(&App{config: &config.Config{IOTree: &on}}, "default")
+	wl.previewKind = previewDetails
+	wl.workflowIOKind = workflowIOInput
+	wl.workflowIOTree.setContent(jsonTreeFilterPayload, true)
+
+	wl.applyFocusedIOSearch("id")
+	if !wl.workflowIOTree.filtering() || wl.workflowIOTree.matches != 2 {
+		t.Fatalf("the tree should narrow to the matching keys, rows=%s", jsonTreeRowPaths(wl.workflowIOTree.rows))
+	}
+
+	wl.applyFocusedIOSearch("")
+	wl.workflowIOTree.setContent("", false)
+	wl.workflowIOView.SetText(formatIOContent("Input", jsonTreeFilterPayload, false))
+	before := wl.workflowIOView.GetText(false)
+	wl.applyFocusedIOSearch("id")
+	if wl.workflowIOTree.filtering() || wl.workflowIOView.GetText(false) != before {
+		t.Fatal("plain text should not be filtered")
 	}
 }
