@@ -126,3 +126,63 @@ func TestChildLookupsFromAnOldListAreDropped(t *testing.T) {
 		t.Fatal("a lookup started before a refresh should be ignored")
 	}
 }
+
+// A filter that matched only some of a parent's children, such as the running
+// ones, fetches the parent, and the parent then shows all of its children.
+func TestFetchedParentShowsEveryChild(t *testing.T) {
+	var queries []string
+	provider := &pageListProvider{list: func(_ context.Context, _ string, opts temporal.ListOptions) ([]temporal.Workflow, string, error) {
+		queries = append(queries, opts.Query)
+		switch {
+		case opts.Query == "WorkflowId IN ('parent')":
+			return []temporal.Workflow{{ID: "parent", Status: "Completed"}}, "", nil
+		case opts.Query == "ParentWorkflowId IN ('parent')":
+			return []temporal.Workflow{
+				{ID: "running", ParentID: strptr("parent"), Status: "Running"},
+				{ID: "done", ParentID: strptr("parent"), Status: "Completed"},
+			}, "", nil
+		case strings.HasPrefix(opts.Query, "ParentWorkflowId") && strings.Contains(opts.Query, "'done'"):
+			return []temporal.Workflow{{ID: "grandchild", ParentID: strptr("done"), Status: "Completed"}}, "", nil
+		}
+		return nil, "", nil
+	}}
+	wl := treeTestList(t, provider, []temporal.Workflow{
+		{ID: "running", ParentID: strptr("parent"), Status: "Running"},
+		{ID: "other", Status: "Running"},
+	})
+	wl.visibilityQuery = "ExecutionStatus = 'Running'"
+	wl.applyFilter()
+
+	got := treeIDs(wl.workflows)
+	for _, id := range []string{"parent", "running", "done", "grandchild", "other"} {
+		if !strings.Contains(","+got+",", ","+id+",") {
+			t.Fatalf("%s should show, order=%s", id, got)
+		}
+	}
+	if strings.Count(got, "running") != 1 {
+		t.Fatalf("a loaded child should show once, order=%s", got)
+	}
+	for _, q := range queries {
+		if strings.Contains(q, "'other'") {
+			t.Fatalf("only the fetched parent's family should be looked up, queries=%v", queries)
+		}
+	}
+}
+
+func TestSearchDoesNotShowAFetchedParentsOtherChildren(t *testing.T) {
+	provider := &pageListProvider{list: func(_ context.Context, _ string, opts temporal.ListOptions) ([]temporal.Workflow, string, error) {
+		if strings.HasPrefix(opts.Query, "ParentWorkflowId") {
+			t.Fatalf("no child lookup expected, query=%q", opts.Query)
+		}
+		if opts.Query == "WorkflowId IN ('parent')" {
+			return []temporal.Workflow{{ID: "parent", Status: "Completed"}}, "", nil
+		}
+		return nil, "", nil
+	}}
+	wl := treeTestList(t, provider, []temporal.Workflow{{ID: "child-1", ParentID: strptr("parent")}})
+	wl.visibilityQuery = workflowIDFilterQuery("child-")
+	wl.applyFilter()
+	if got := treeIDs(wl.workflows); got != "parent,child-1" {
+		t.Fatalf("order=%s", got)
+	}
+}

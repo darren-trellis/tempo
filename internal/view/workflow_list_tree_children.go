@@ -106,18 +106,46 @@ func (wl *WorkflowList) listQuery(resolved string) string {
 	return andFilterQueries(resolved, rootsOnlyClause)
 }
 
-// withTreeRelatives adds the parents and, for a roots-only filter, the
-// children of workflows that the tree needs and the list did not load.
+// withTreeRelatives adds the parents of workflows that the tree needs and the
+// list did not load, and the children of the workflows whose families the
+// tree shows in full.
 func (wl *WorkflowList) withTreeRelatives(workflows []temporal.Workflow) []temporal.Workflow {
-	return wl.withTreeChildren(wl.withTreeParents(workflows))
+	withParents := wl.withTreeParents(workflows)
+	return wl.withTreeChildren(withParents, wl.treeFamilyRoots(workflows, withParents))
 }
 
-// withTreeChildren adds every descendant of workflows that has been fetched,
-// and asks for the ones it does not have yet, when the filter picks roots
-// only. The filter cannot match those children, so without this a root would
-// show none.
-func (wl *WorkflowList) withTreeChildren(workflows []temporal.Workflow) []temporal.Workflow {
-	if !wl.rootsOnlyFilter() {
+// treeFamilyRoots picks the workflows whose every descendant the tree shows:
+// each root when the filter picks roots only, and otherwise each parent that
+// was fetched because the list held only some of its children. Those are the
+// ones the filter matched, so without this a parent would show only them. A
+// / search that moved to the server is looking for a workflow, so its
+// parents' other children are left out.
+func (wl *WorkflowList) treeFamilyRoots(loaded, withParents []temporal.Workflow) []temporal.Workflow {
+	if wl.rootsOnlyFilter() {
+		return withParents
+	}
+	if len(withParents) == len(loaded) || wl.searchOwnsQuery() {
+		return nil
+	}
+	isLoaded := make(map[string]bool, len(loaded))
+	for _, w := range loaded {
+		isLoaded[w.ID] = true
+	}
+	var fetched []temporal.Workflow
+	for _, w := range withParents {
+		if !isLoaded[w.ID] {
+			fetched = append(fetched, w)
+		}
+	}
+	return fetched
+}
+
+// withTreeChildren adds every descendant of roots that has been fetched to
+// workflows, and asks for the ones it does not have yet. The filter cannot
+// match those children, so without this a root would show none of them, or
+// only the ones the filter matched.
+func (wl *WorkflowList) withTreeChildren(workflows, roots []temporal.Workflow) []temporal.Workflow {
+	if len(roots) == 0 {
 		return workflows
 	}
 	if wl.treeChildren.namespace != wl.namespace {
@@ -153,11 +181,11 @@ func (wl *WorkflowList) withTreeChildren(workflows []temporal.Workflow) []tempor
 		}
 	}
 
-	for _, w := range workflows {
+	for _, w := range roots {
 		addChildren(w, 0)
 	}
 	if len(fetch) > 0 && wl.fetchTreeChildren(fetch) {
-		return wl.withTreeChildren(workflows)
+		return wl.withTreeChildren(workflows, roots)
 	}
 	return out
 }
