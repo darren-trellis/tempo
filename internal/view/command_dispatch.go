@@ -576,12 +576,12 @@ func (a *App) execSearch() {
 }
 
 func (a *App) execFilter(args []string) {
-	wl, ok := a.requireWorkflowList("usage: filter [manage|load <name>]")
+	wl, ok := a.requireWorkflowList("usage: filter [manage|load <name>|save]")
 	if !ok {
 		return
 	}
 	if !wl.workflowsActive() {
-		a.ToastWarning("usage: filter [manage|load <name>]")
+		a.ToastWarning("usage: filter [manage|load <name>|save]")
 		return
 	}
 	if len(args) == 0 {
@@ -597,8 +597,10 @@ func (a *App) execFilter(args []string) {
 			return
 		}
 		wl.showFilterManager()
+	case "save":
+		wl.saveAdHocFilter()
 	default:
-		a.ToastWarning("usage: filter [manage|load <name>]")
+		a.ToastWarning("usage: filter [manage|load <name>|save]")
 	}
 }
 

@@ -103,6 +103,7 @@ func builtinCommandCatalog() []commandInfo {
 		{name: "filter", help: "Manage saved filters"},
 		{name: "filter manage", help: "Manage saved filters"},
 		{name: "filter load", help: "Load a saved filter"},
+		{name: "filter save", help: "Save temporary filters to the active filter"},
 		{name: "workflow start", help: "Start a workflow"},
 		{name: "workflow cancel", help: "Cancel selected workflow"},
 		{name: "workflow terminate", help: "Terminate selected workflow"},

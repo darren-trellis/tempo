@@ -58,6 +58,40 @@ func (wl *WorkflowList) rebaseVisibilityQuery(query string) {
 	wl.runVisibilityQuery(wl.adHocQuery())
 }
 
+// saveAdHocFilter folds the unsaved clauses into the active saved filter, or
+// asks for a name and saves them as a new filter when none is active.
+func (wl *WorkflowList) saveAdHocFilter() {
+	if wl == nil || wl.app == nil || wl.app.Config() == nil {
+		return
+	}
+	if !wl.adHoc.active() {
+		wl.app.ToastWarning("No temporary filters to save")
+		return
+	}
+	add := parseFilterTree(compileFilterClausesFor(wl, wl.adHoc.clauses))
+	if wl.activeFilterName != "" {
+		if f, ok := wl.app.Config().SavedFilterFor(wl.app.activeProfile, wl.activeFilterName); ok {
+			root := newFilterGroup(filterGroupAnd, []*filterNode{parseFilterTree(compiledFilterQueryFor(wl, f)), add})
+			wl.storeAdHocFilter(f, root)
+			wl.app.ToastSuccess("Saved filters to " + f.Name)
+			return
+		}
+	}
+	root := newFilterGroup(filterGroupAnd, []*filterNode{parseFilterTree(wl.adHoc.base), add})
+	wl.showFilterNamePrompt("Save Filter", "", func(name string) {
+		wl.storeAdHocFilter(config.SavedFilter{Name: name}, root)
+		wl.app.ToastSuccess("Saved filter " + name)
+	})
+}
+
+func (wl *WorkflowList) storeAdHocFilter(f config.SavedFilter, root *filterNode) {
+	f.Query = root.query(wl)
+	f.Clauses = nil
+	wl.persistSavedFilter(f)
+	wl.clearAdHocFilter()
+	wl.applySavedFilter(f)
+}
+
 func (wl *WorkflowList) clearAdHocFilter() {
 	if wl == nil {
 		return

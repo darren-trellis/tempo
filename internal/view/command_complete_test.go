@@ -267,11 +267,8 @@ func TestCommandSuggestionsConfigAndFilters(t *testing.T) {
 	}
 
 	items = suggestionsFor("filter ", catalog, commandExtras{})
-	if !hasLabel(items, "manage") || !hasLabel(items, "load") {
+	if !hasLabel(items, "manage") || !hasLabel(items, "load") || !hasLabel(items, "save") {
 		t.Fatalf("filter subcommands=%v", suggestionLabels(items))
-	}
-	if hasLabel(items, "save") {
-		t.Fatalf("filter save should be gone, got %v", suggestionLabels(items))
 	}
 
 	items = suggestionsFor("filter load ", catalog, commandExtras{filters: []string{"failed-today"}})

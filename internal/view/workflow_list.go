@@ -465,6 +465,10 @@ func (wl *WorkflowList) Start() {
 			wl.showFilterManager()
 			return true
 		}).
+		OnRune('S', func(e *tcell.EventKey) bool {
+			wl.saveAdHocFilter()
+			return true
+		}).
 		OnRune('d', func(e *tcell.EventKey) bool {
 			if wl.selectionMode {
 				if len(wl.table.GetSelectedRows()) > 0 {
@@ -876,6 +880,9 @@ func (wl *WorkflowList) workflowPaneHints() []KeyHint {
 		KeyHint{Key: "f", Description: "Add Filter"},
 		KeyHint{Key: "F", Description: "Filters"},
 	)
+	if wl.adHoc.active() {
+		hints = append(hints, KeyHint{Key: "S", Description: "Save Filter"})
+	}
 	hints = append(hints,
 		KeyHint{Key: "v", Description: "Select Mode"},
 		KeyHint{Key: "N", Description: "Start"},

@@ -4,8 +4,10 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/atterpac/jig/components"
 	"github.com/galaxy-io/tempo/internal/config"
 	"github.com/gdamore/tcell/v2"
+	"github.com/rivo/tview"
 )
 
 func adHocWorkflowList(t *testing.T, cfg *config.Config) (*App, *WorkflowList) {
@@ -226,5 +228,94 @@ func TestFilterKeysOpenTheClauseEditorAndTheManager(t *testing.T) {
 	}
 	if hintDescription(om.Hints(), "n") != "New Filter" {
 		t.Fatalf("F should open the Filters dialog, got hints %+v", om.Hints())
+	}
+}
+
+func TestSaveFoldsAdHocClausesIntoTheActiveFilter(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.SavedFilters = []config.SavedFilter{{Name: "Running", Query: "ExecutionStatus = 'Running'"}}
+	_, wl := adHocWorkflowList(t, cfg)
+	wl.Start()
+	wl.applySavedFilter(cfg.SavedFilters[0])
+	wl.appendAdHocClauses([]config.FilterClause{{Key: "WorkflowType", Op: filterOpEq, Value: "Order"}})
+
+	capture := wl.table.GetInputCapture()
+	if ev := capture(tcell.NewEventKey(tcell.KeyRune, 'S', tcell.ModNone)); ev != nil {
+		t.Fatal("S should be handled")
+	}
+
+	want := "ExecutionStatus = 'Running' AND WorkflowType = 'Order'"
+	if got := cfg.SavedFiltersFor("local")[0].Query; got != want {
+		t.Fatalf("stored %q want %q", got, want)
+	}
+	if wl.adHoc.active() {
+		t.Fatal("saving should drop the temporary clauses")
+	}
+	if wl.visibilityQuery != want || wl.activeFilterName != "Running" {
+		t.Fatalf("query=%q active=%q", wl.visibilityQuery, wl.activeFilterName)
+	}
+	if items := filterBarItems(wl); items[1].label != "Running" {
+		t.Fatalf("the asterisk should go once saved, got %+v", items)
+	}
+}
+
+func TestSaveKeepsADisjunctiveFilterGrouped(t *testing.T) {
+	cfg := config.DefaultConfig()
+	f := config.SavedFilter{Name: "Open", Query: "ExecutionStatus = 'Running' OR ExecutionStatus = 'ContinuedAsNew'"}
+	cfg.SavedFilters = []config.SavedFilter{f}
+	_, wl := adHocWorkflowList(t, cfg)
+	wl.applySavedFilter(f)
+	wl.appendAdHocClauses([]config.FilterClause{{Key: "WorkflowType", Op: filterOpEq, Value: "Order"}})
+
+	wl.saveAdHocFilter()
+
+	want := "(ExecutionStatus = 'Running' OR ExecutionStatus = 'ContinuedAsNew') AND WorkflowType = 'Order'"
+	if got := cfg.SavedFiltersFor("local")[0].Query; got != want {
+		t.Fatalf("stored %q want %q", got, want)
+	}
+}
+
+func TestSaveOnAllNamesANewFilter(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.SavedFilters = []config.SavedFilter{{Name: "Running", Query: "ExecutionStatus = 'Running'"}}
+	a, wl := adHocWorkflowList(t, cfg)
+	wl.appendAdHocClauses([]config.FilterClause{{Key: "WorkflowType", Op: filterOpEq, Value: "Order"}})
+
+	wl.saveAdHocFilter()
+
+	prompt, ok := a.app.Pages().Current().(*overlayModal)
+	if !ok {
+		t.Fatalf("saving on All should ask for a name, current=%T", a.app.Pages().Current())
+	}
+	form, ok := prompt.body.(*components.Form)
+	if !ok {
+		t.Fatalf("prompt body=%T", prompt.body)
+	}
+	nameField, ok := form.GetTextField("name")
+	if !ok {
+		t.Fatal("name prompt should have a name field")
+	}
+	nameField.SetValue("Orders")
+	form.InputHandler()(tcell.NewEventKey(tcell.KeyEnter, 0, tcell.ModNone), func(tview.Primitive) {})
+
+	saved, ok := cfg.SavedFilterFor("local", "Orders")
+	if !ok || saved.Query != "WorkflowType = 'Order'" {
+		t.Fatalf("new filter not saved: %+v", cfg.SavedFiltersFor("local"))
+	}
+	if wl.adHoc.active() || wl.activeFilterName != "Orders" || wl.visibilityQuery != "WorkflowType = 'Order'" {
+		t.Fatalf("new filter should be active without temporary clauses, active=%q query=%q", wl.activeFilterName, wl.visibilityQuery)
+	}
+}
+
+func TestSaveWithoutAdHocClausesSavesNothing(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.SavedFilters = []config.SavedFilter{{Name: "Running", Query: "ExecutionStatus = 'Running'"}}
+	_, wl := adHocWorkflowList(t, cfg)
+	wl.applySavedFilter(cfg.SavedFilters[0])
+
+	wl.saveAdHocFilter()
+
+	if got := cfg.SavedFiltersFor("local")[0].Query; got != "ExecutionStatus = 'Running'" {
+		t.Fatalf("nothing should change, stored %q", got)
 	}
 }
