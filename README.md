@@ -165,7 +165,7 @@ preview_load_delay: 200ms
 
 `workflow_page_size` is how many workflows each list page fetches (default 100, between 10 and 1000). Scrolling loads more pages.
 
-A filter in the tree view shows the workflows it matches, at any level, together with every ancestor of each match up to its root and every descendant below it, whether those match or not. A sibling of a match that does not match itself is left out. Ancestors and descendants are looked up by ID as the matches load. The flat list shows only the matches, and a `/` search shows only its matches under their ancestors.
+A filter in the tree view shows the workflows it matches, at any level, together with every ancestor of each match up to its root and every descendant below it, whether those match or not. A sibling of a match that does not match itself is left out. Ancestors and descendants are looked up by ID as the matches load. The flat list shows only the matches, and a `/` search shows only its matches under their ancestors. Turn off `filter_show_parents` to leave out ancestors that do not match, so a match whose parent is hidden sits at the top level, and `filter_show_children` to leave out descendants that do not match. Both are on by default.
 
 `workflow_tree_column` is the workflows column that draws the tree's hierarchy glyphs (default `workflow_id`). Set it with `*` in the Workflow Columns modal (`|`), which also shows the column if it was hidden. If the column is hidden later, the glyphs move to the first visible column.
 
